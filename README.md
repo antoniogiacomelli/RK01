@@ -52,33 +52,42 @@ rectangle "Privileged kernel\nhandlers + system tasks" as Kernel {
   component "scheduler" as Scheduler
   component "SVC dispatch" as SVC
   component "object pools" as Pools
+  component "fault cleanup" as FaultCleanup
 }
 
-node "Echo module\nunprivileged PSP" as Echo {
-  component "EchoTask" as EchoTask
-  database "Echo RAM" as EchoRam
+node "Module A\nunprivileged PSP" as ModuleA {
+  component "Task A1" as TaskA1
+  component "Task A2" as TaskA2
+  database "Module A private RAM" as ModuleARam
 }
 
-node "Rec module\nunprivileged PSP" as Rec {
-  component "RecordTask" as RecTask
-  database "Record RAM" as RecRam
+node "Module B\nunprivileged PSP" as ModuleB {
+  component "Task B1" as TaskB1
+  database "Module B private RAM" as ModuleBRam
 }
 
-node "FS service\nprivileged task" as FsService {
-  component "rkFsServerTask" as FsTask
-  database "FS_FLASH" as FsFlash
+node "Privileged service\noptional trusted task" as Service {
+  component "ServiceTask" as ServiceTask
+  database "device / flash / peripheral state" as DeviceState
 }
 
-database "Shared line ring\n.rk_shared_ram" as Shared
+database "Global shared RAM\n.rk_shared_ram" as GlobalShared
+database "Explicit shared memory\nattached to selected modules" as ExplicitShared
 
-EchoTask --> Kernel : k* APIs through SVC
-RecTask --> Kernel : k* APIs through SVC
-EchoTask --> Shared
-EchoTask --> RecTask : copied synchronous message
-RecTask --> FsTask : copied RKFS call
-FsTask --> FsFlash
-EchoTask -[#red,dashed]-> RecRam : MPU denies direct write
-RecTask -[#red,dashed]-> EchoRam : MPU denies direct write
+TaskA1 --> Kernel : k* APIs through SVC
+TaskA2 --> Kernel : k* APIs through SVC
+TaskB1 --> Kernel : k* APIs through SVC
+TaskA1 --> ModuleARam : same-module data
+TaskA2 --> ModuleARam : same-module data
+TaskA1 --> GlobalShared
+TaskB1 --> GlobalShared
+TaskA2 --> ExplicitShared
+TaskB1 --> ExplicitShared
+TaskA1 --> TaskB1 : copied message or handle API
+TaskB1 --> ServiceTask : copied request
+ServiceTask --> DeviceState
+TaskA1 -[#red,dashed]-> ModuleBRam : MPU denies direct write
+TaskB1 -[#red,dashed]-> ModuleARam : MPU denies direct write
 @enduml
 ```
 
@@ -101,7 +110,9 @@ The containment claim is narrower and more useful for small embedded firmware:
 a defective unprivileged task should not be able to corrupt kernel RAM, another
 module's private RAM or privileged service state merely by using a bad pointer.
 
-## Supported Targets
+## Delivered Supported Targets
+
+This repo delivers a build environment to run on Nucleo STM32F401RE M4F, and a QEMU environment for MPS2 Cortex-M33. RK01 does not use the _Trusted Environment_ from ARMv8M but this was the QEMU system of choice, and a means to test portability to _ARMv8M_.
 
 | Target | Role | Status |
 | --- | --- | --- |
@@ -134,6 +145,8 @@ private harnesses, scratch scripts, `.DS_Store`, stack-usage files and personal
 IDE settings.
 
 ## Build Requirements
+
+- Different from RK0 that convervatively keeps aligned to C99 standard, RK01 requires a C11 compiler. 
 
 Required for firmware builds:
 
