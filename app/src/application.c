@@ -10,9 +10,9 @@
 /*
  * Default application wiring for the record-console example.
  *
- * The application domain constructs the service domains and connects console
- * RX to the unprivileged Echo task. Console parsing, record ownership and
- * shared helpers live in the neighbouring tiny_* sources.
+ * The application domain constructs shared infrastructure and boots the source
+ * bundled domains. Console parsing and shared helpers live in tiny_console.c;
+ * record ownership lives behind record_domain.h.
  */
 
 #include "tiny_app.h"
@@ -26,8 +26,6 @@
 
 RK_DECLARE_DOMAIN(echoDomain, echoRam, ECHO_DOMAIN_BYTES)
 RK_DECLARE_DOMAIN_TASK(echoTaskHandle, EchoTask)
-RK_DECLARE_DOMAIN(recordDomain, recordRam, RECORD_DOMAIN_BYTES)
-RK_DECLARE_DOMAIN_TASK(recordTaskHandle, RecordTask)
 RK_DECLARE_GLOBAL_SEMAPHORE(lineReadySemaHandle)
 
 #if defined(RK_MCU_F401RE)
@@ -36,7 +34,7 @@ static RK_DOMAIN fsDomain RK_DOMAIN_DESC_ATTR;
 RK_DECLARE_DOMAIN_TASK(fsTaskHandle, rkFsServerTask)
 #endif
 
-static RecordState *recordState;
+static RECORD_DOMAIN_EXPORTS recordDomainExports RK_SHARED_RAM_ATTR;
 AppLineRing sharedLineRing K_ALIGN(4) RK_SHARED_RAM_ATTR;
 
 /*
@@ -62,7 +60,7 @@ int main(void)
  *   1. Start the logger before any task can call kLog().
  *   2. Create the writable domains.
  *   3. Start the flash filesystem service when this target has one.
- *   4. Start RecordTask and its synchronous-message endpoint.
+ *   4. Boot the Record domain and publish its service handle.
  *   5. Create the global counting semaphore used by console RX.
  *   6. Start EchoTask as the console front-end.
  *   7. Claim foreground console RX for EchoTask's line feeder.
@@ -72,10 +70,6 @@ VOID kApplicationInit(VOID)
     kLogInit(APP_LOG_PRIO);
 
     AppCheck_(kDomainInit(&echoDomain, echoRam, sizeof(echoRam), "Echo"));
-    AppCheck_(kDomainInit(&recordDomain, recordRam, sizeof(recordRam), "Rec"));
-
-    recordState = AppCheckPtr_(RK_DOMAIN_ALLOC(&recordDomain, RecordState));
-    RK_MEMSET(recordState, 0, sizeof(*recordState));
 
 #if defined(RK_MCU_F401RE)
     AppCheck_(kDomainInit(&fsDomain, (BYTE *)&fsRam, sizeof(fsRam), "FS"));
@@ -89,16 +83,13 @@ VOID kApplicationInit(VOID)
     AppCheck_(kSynchMesgInit(fsTaskHandle, sizeof(RKFS_REQUEST)));
 #endif
 
-    AppCheck_(kDomainTaskInit(&recordDomain, &recordTaskHandle, RecordTask,
-                              recordState, "Record", TASK_STACK_WORDS,
-                              RECORD_TASK_PRIO, RK_PREEMPT));
-    AppCheck_(kSynchMesgInit(recordTaskHandle, sizeof(RecordRequest)));
+    AppCheck_(RecordDomainBoot(&recordDomainExports));
 
     AppCheck_(kSemaphoreCreateGlobalScope(&lineReadySemaHandle, "LineRdy", 0U,
                                           APP_LINE_READY_MAX));
     AppCheck_(kDomainTaskInit(&echoDomain, &echoTaskHandle, EchoTask,
-                              RK_NO_ARGS, "Echo", TASK_STACK_WORDS,
-                              ECHO_TASK_PRIO, RK_PREEMPT));
+                              &recordDomainExports, "Echo",
+                              TASK_STACK_WORDS, ECHO_TASK_PRIO, RK_PREEMPT));
     AppCheck_(kConsoleRxClaim(AppLineByteFromConsole_));
     AppCheck_(kSysMonInit());
 }

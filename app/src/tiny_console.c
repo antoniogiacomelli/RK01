@@ -364,7 +364,8 @@ static RK_ERR AppMaybeSubmitSysMonCommand_(BYTE const *const linePtr,
                                  sysMonActivePtr));
 }
 
-static RK_ERR AppRecordCall_(RecordRequest *const reqPtr,
+static RK_ERR AppRecordCall_(RK_TASK_HANDLE const serviceHandle,
+                             RecordRequest *const reqPtr,
                              RecordReply *const replyPtr)
 {
     RK_SYNCH_ATTR attr;
@@ -377,7 +378,12 @@ static RK_ERR AppRecordCall_(RecordRequest *const reqPtr,
     attr.replyMaxBytes = sizeof(*replyPtr);
     attr.replyBytesPtr = &replyBytes;
 
-    err = kSynchMesgCall(recordTaskHandle, &attr, RK_WAIT_FOREVER);
+    if (serviceHandle == NULL)
+    {
+        return (RK_ERR_OBJ_NULL);
+    }
+
+    err = kSynchMesgCall(serviceHandle, &attr, RK_WAIT_FOREVER);
     if (err != RK_ERR_SUCCESS)
     {
         return (err);
@@ -614,9 +620,12 @@ VOID EchoTask(VOID *args)
     static CHAR const sysMonErr[] = "ERR sysmon\r\n";
     static CHAR const storageErr[] = "ERR storage\r\n";
     static CHAR const notFound[] = "NOT FOUND ";
+    RECORD_DOMAIN_EXPORTS const *const recordExportsPtr =
+        (RECORD_DOMAIN_EXPORTS const *)args;
+    RK_TASK_HANDLE const recordServiceHandle =
+        (recordExportsPtr != NULL) ? recordExportsPtr->serviceHandle :
+                                     NULL;
     RK_BOOL sysMonActive = RK_FALSE;
-
-    K_UNUSE(args);
 
     AppConsoleWriteText_(banner);
 
@@ -668,7 +677,7 @@ VOID EchoTask(VOID *args)
         }
 
         RK_MEMSET(&reply, 0, sizeof(reply));
-        err = AppRecordCall_(&req, &reply);
+        err = AppRecordCall_(recordServiceHandle, &req, &reply);
         if (err != RK_ERR_SUCCESS)
         {
             AppConsoleWriteText_(serviceErr);

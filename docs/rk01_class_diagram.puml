@@ -599,7 +599,7 @@ package "Middleware RKFS\nmiddleware/inc/rkfs.h" as Rkfs {
     class lfs_config <<external>>
 }
 
-package "Default application\napp/src/application.c" as DefaultApp {
+package "Default app and Record domain\napp/src/*.c" as DefaultApp {
     class RECORD <<struct>> {
         +seq : BYTE
         +nome : BYTE
@@ -628,6 +628,10 @@ package "Default application\napp/src/application.c" as DefaultApp {
         +record : RECORD
     }
 
+    class RECORD_DOMAIN_EXPORTS <<struct>> {
+        +serviceHandle : RK_TASK_HANDLE
+    }
+
     class RecordSlot <<struct>> {
         +record : RECORD
         +valid : BYTE
@@ -636,6 +640,12 @@ package "Default application\napp/src/application.c" as DefaultApp {
     class RecordState <<struct>> {
         +slots[RECORD_SLOT_COUNT] : RecordSlot
         +nextSeq : BYTE
+    }
+
+    class RECORD_DOMAIN_RAM <<struct>> {
+        +serverStack[RECORD_TASK_STACK_WORDS] : RK_STACK
+        +recordState : RecordState
+        +serverHandle : RK_TASK_HANDLE
     }
 
     class AppLineRing <<struct>> {
@@ -769,13 +779,17 @@ RKFS_SERVER_TASK ..> KAPI_APP : synch message APIs
 ' Default application data flow
 RecordRequest *-- RECORD
 RecordReply *-- RECORD
+RECORD_DOMAIN_EXPORTS --> RK_TASK_HANDLE
 RecordSlot *-- RECORD
 RecordState *-- "RECORD_SLOT_COUNT" RecordSlot
+RECORD_DOMAIN_RAM *-- RecordState
+RECORD_DOMAIN_RAM --> RK_TASK_HANDLE : serverHandle
 RK_CONSOLE_SERVICE --> AppLineRing : owner callback writes bytes
 EchoTask --> AppLineRing : reads lines
 EchoTask ..> RK_CONSOLE_SERVICE : SVC + sync write
 EchoTask ..> RecordRequest : builds
 EchoTask ..> RecordReply : reads
+EchoTask ..> RECORD_DOMAIN_EXPORTS : reads service handle
 EchoTask ..> RecordTask : kSynchMesgCall()
 RecordTask *-- RecordState : owns
 RecordTask ..> RecordRequest : accepts
