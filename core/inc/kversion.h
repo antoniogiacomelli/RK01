@@ -1,0 +1,54 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/******************************************************************************/
+/*                                                                            */
+/* RK01 - Bounded Responses. Bounded domains.                                   */
+/* VERSION: V0.1.0                                                            */
+/* (C) 2026 Antonio Giacomelli <dev@kernel0.org>                               */
+/*                                                                            */
+/******************************************************************************/
+
+#ifndef RK_VERSION_H
+#define RK_VERSION_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
+struct RK_gKversion
+{
+    unsigned char major;
+    unsigned char minor;
+    unsigned char patch;
+};
+
+#define RK_VERSION_MAJOR 0
+#define RK_VERSION_MINOR 1
+#define RK_VERSION_PATCH 0
+
+
+extern struct RK_gKversion const RK_gKversion;
+
+#define RK_VALID_VERSION (unsigned)((RK_VERSION_MAJOR <<\
+                                     16) | (RK_VERSION_MINOR <<\
+    8) | (RK_VERSION_PATCH << 0))
+
+#define RK_VERSION RK_VALID_VERSION
+#define RK_DATE __DATE__
+
+#define RK_STRFY_(x) #x
+#define RK_STRFY(x) RK_STRFY_(x)
+
+#define RK_VER_INFO\
+        RK_STRFY(RK_VERSION_MAJOR) "." RK_STRFY(RK_VERSION_MINOR) "." RK_STRFY(\
+            RK_VERSION_PATCH) ", " RK_DATE
+
+unsigned kIsValidVersion(void);
+unsigned kGetVersion(void);
+void kGetInfo(const char **infoPPtr);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* KVERSION_H */

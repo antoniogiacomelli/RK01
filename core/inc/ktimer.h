@@ -1,0 +1,98 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/******************************************************************************/
+/*                                                                            */
+/* RK01 - Bounded Responses. Bounded domains.                                   */
+/* VERSION: V0.1.0                                                            */
+/* (C) 2026 Antonio Giacomelli <dev@kernel0.org>                               */
+/*                                                                            */
+/******************************************************************************/
+
+#ifndef RK_TIMER_H
+#define RK_TIMER_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#include <kcoredefs.h>
+#include <kobjs.h>
+#include <kcommondefs.h>
+
+#ifndef RK_TICK_INTERVAL_MS
+#define RK_TICK_INTERVAL_MS (1000UL / RK_CONF_SYSTICK_DIV)
+#endif
+
+#if (RK_CONF_CALLOUT_TIMER == ON)
+
+RK_ERR kTimerInit(RK_TIMER*, RK_TICK, RK_TICK, RK_TIMER_CALLOUT, VOID*, RK_OPTION);
+RK_ERR kTimerCreate(RK_TIMER_HANDLE *const, RK_TICK const, RK_TICK const,
+                    RK_TIMER_CALLOUT const, VOID *const, RK_OPTION const);
+RK_ERR kTimerCreateGlobalScope(RK_TIMER_HANDLE *const, RK_TICK const,
+                               RK_TICK const, RK_TIMER_CALLOUT const,
+                               VOID *const, RK_OPTION const);
+RK_ERR kTimerCreateModuleScope(RK_TIMER_HANDLE *const, RK_TICK const,
+                               RK_TICK const, RK_TIMER_CALLOUT const,
+                               VOID *const, RK_OPTION const,
+                               RK_MODULE *const);
+RK_ERR kTimerDestroy(RK_TIMER_HANDLE *const);
+RK_ERR kTimerCancel(RK_TIMER_HANDLE const);
+VOID kRemoveTimerNode(RK_TIMEOUT_NODE*);
+VOID kTimerReload(RK_TIMER_HANDLE const, RK_TICK);
+#endif
+
+extern volatile RK_TIMEOUT_NODE* RK_gTimeOutListHeadPtr;
+extern volatile RK_TIMEOUT_NODE* RK_gTimerListHeadPtr;
+RK_BOOL kTimeoutNodeIsArmed(RK_TIMEOUT_NODE const*);
+VOID kTimeoutNodeReset(RK_TIMEOUT_NODE*);
+RK_ERR kTimeoutNodeAdd(RK_TIMEOUT_NODE*, RK_TICK);
+RK_ERR kTimeoutNodeDisarm(RK_TIMEOUT_NODE*);
+UINT kHandleTimeoutList(VOID);
+RK_ERR kRemoveTimeoutNode(RK_TIMEOUT_NODE*);
+extern volatile struct RK_STRUCT_RUNTIME RK_gRunTime;     /* record of run time */
+RK_ERR kSleepDelay(RK_TICK const);
+RK_TICK kTickGet(VOID);
+RK_ERR kSleepRelease(RK_TICK const);
+RK_TICK kTickGetMs(VOID);
+RK_ERR kSleepUntil(RK_TICK*, RK_TICK const);
+RK_ERR kDelay(RK_TICK const);
+
+#ifndef kSleepPeriodic
+#define kSleepPeriodic(t) kSleepRelease(t)
+#endif
+
+RK_FORCE_INLINE
+static inline unsigned kTickIsElapsed(RK_TICK then, RK_TICK now)
+{
+    return (((RK_STICK)(now - then)) >= 0);
+}
+
+#ifndef K_TICKS_TO_MS
+#define K_TICKS_TO_MS(ticks) (RK_TICK)(ticks * RK_TICK_INTERVAL_MS)
+#endif
+
+#ifndef K_MS_TO_TICKS_CEIL
+#define K_MS_TO_TICKS_CEIL(ms) \
+((RK_TICK)(((RK_TICK)(ms) + (RK_TICK)(RK_gSysTickInterval) - 1UL)/(RK_gSysTickInterval)))
+#endif
+#define K_TICK_ADD(base, offset) (RK_TICK)((base + offset))
+
+/* signed diff helper */
+#define K_TICK_DIFF(a, b)   ((RK_STICK)((RK_TICK)(a) - (RK_TICK)(b)))
+
+/* linux-like wrap-safe ordering (half-range) */
+#define K_TICK_IS_AFTER(a, b)      (K_TICK_DIFF((a), (b)) >  0)
+#define K_TICK_IS_AFTER_EQ(a, b)   (K_TICK_DIFF((a), (b)) >= 0)
+#define K_TICK_IS_BEFORE(a, b)     (K_TICK_DIFF((a), (b)) <  0)
+#define K_TICK_IS_BEFORE_EQ(a, b)  (K_TICK_DIFF((a), (b)) <= 0)
+
+/* expired */
+#define K_TICK_EXPIRED(deadline)   K_TICK_IS_AFTER_EQ(kTickGet(), (deadline))
+
+/* Delta magnitude */
+#define K_TICK_DELTA(to, from)     ((RK_TICK)((RK_TICK)(to) - (RK_TICK)(from)))
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif

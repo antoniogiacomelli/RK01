@@ -1,0 +1,42 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/******************************************************************************/
+/*                                                                            */
+/* RK01 - Bounded Responses. Bounded domains.                                   */
+/* VERSION: V0.1.0                                                            */
+/* (C) 2026 Antonio Giacomelli <dev@kernel0.org>                               */
+/*                                                                            */
+/******************************************************************************/
+
+#ifndef RK_KSTRING_H
+#define RK_KSTRING_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#if defined(__GNUC__) || defined(__clang__)
+  #define RK_MEMSET  __builtin_memset
+  #define RK_MEMCPY  __builtin_memcpy
+  #define RK_MEMMOVE __builtin_memmove
+  #define RK_STRCPY  __builtin_strcpy
+  #if defined(__has_builtin) && __has_builtin(__builtin_memcpy_inline)
+    #define RK_MEMCPY_INLINE(d,s,n) __builtin_memcpy_inline((d),(s),(n))
+  #else
+    #define RK_MEMCPY_INLINE(d,s,n) __builtin_memcpy((d),(s),(n))
+  #endif
+#else
+  #if defined(RK_USE_LIBC) || (__STDC_HOSTED__+0 == 1)
+    #include <string.h>
+    #define RK_MEMSET  memset
+    #define RK_MEMCPY  memcpy
+    #define RK_MEMMOVE memmove
+    #define RK_STRCPY  strcpy
+#endif
+
+#endif
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif

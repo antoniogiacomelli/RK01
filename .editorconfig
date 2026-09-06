@@ -1,0 +1,33 @@
+# Root EditorConfig file
+root = true
+
+# Global defaults
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# C/C++ source and header files
+[*.{c,h}]
+indent_style = space
+indent_size = 4
+max_line_length = 80
+
+# Assembly files (ARM startup, ISR handlers)
+[*.{s,S}]
+indent_style = space
+indent_size = 4
+
+# Makefiles
+[Makefile]
+indent_style = tab
+
+[*.mk]
+indent_style = tab
+
+# Markdown / documentation
+[*.md]
+trim_trailing_whitespace = false
+insert_final_newline = true
+max_line_length = off

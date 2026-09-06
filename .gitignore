@@ -1,55 +1,40 @@
-# Prerequisites
+# Build products
+build/
+build-*/
+Build/
 *.d
-
-# Object files
 *.o
-*.ko
 *.obj
 *.elf
-
-# Linker output
-*.ilk
+*.bin
+*.hex
 *.map
-*.exp
+*.lst
+*.su
 
-# Precompiled Headers
-*.gch
-*.pch
-
-# Libraries
-*.lib
+# Archives and libraries
 *.a
 *.la
+*.lib
 *.lo
 
-# Shared objects (inc. Windows DLLs)
-*.dll
-*.so
-*.so.*
-*.dylib
-
-# Executables
-*.exe
-*.out
-*.app
-*.i*86
-*.x86_64
-*.hex
-
-# Debug files
+# Host/debugger byproducts
 *.dSYM/
-*.su
 *.idb
 *.pdb
+compile_commands.json
+.config.stamp
 
-# Kernel Module Compile Results
-*.mod*
-*.cmd
-.tmp_versions/
-modules.order
-Module.symvers
-Mkfile.old
-dkms.conf
+# Local/editor state
+.DS_Store
+.vscode/c_cpp_properties.json
+.vscode/launch.json
+.vscode/settings.json
+.vscode/tasks.json
 
-# debug information files
-*.dwo
+# Scratch or private harness material
+scripts/*
+tests/*
+tools/*
+!tools/board_harness.sh
+uncrustify/
