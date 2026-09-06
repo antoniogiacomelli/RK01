@@ -43,72 +43,28 @@ RK0-style real-time firmware with MPU-backed containment.
 
 ## Architecture Sketch
 
-```plantuml
-@startuml
-title RK01 containment sketch
-skinparam componentStyle rectangle
+![RK01 containment sketch](docs/readme_architecture_sketch.svg)
 
-rectangle "Privileged kernel\nhandlers + system tasks" as Kernel {
-  component "scheduler" as Scheduler
-  component "SVC dispatch" as SVC
-  component "object pools" as Pools
-  component "fault cleanup" as FaultCleanup
-}
+## Containment Scope
 
-node "Module A\nunprivileged PSP" as ModuleA {
-  component "Task A1" as TaskA1
-  component "Task A2" as TaskA2
-  database "Module A private RAM" as ModuleARam
-}
+RK01 targets embedded firmware that is still built as one statically linked
+image, but needs MPU-backed damage containment after task dispatch. Its
+protection boundary is practical and local:
 
-node "Module B\nunprivileged PSP" as ModuleB {
-  component "Task B1" as TaskB1
-  database "Module B private RAM" as ModuleBRam
-}
+- ordinary tasks run unprivileged and enter kernel services through SVC;
+- kernel RAM, object pools, registries and privileged stacks remain
+  privileged-only;
+- each module gets an MPU-shaped private RAM domain for its tasks and stacks;
+- cross-module data moves through copied IPC, global shared RAM or explicitly
+  attached shared memory;
+- unprivileged MemManage faults can be recorded, contained and cleaned up by
+  PostProc.
 
-node "Privileged service\noptional trusted task" as Service {
-  component "ServiceTask" as ServiceTask
-  database "device / flash / peripheral state" as DeviceState
-}
-
-database "Global shared RAM\n.rk_shared_ram" as GlobalShared
-database "Explicit shared memory\nattached to selected modules" as ExplicitShared
-
-TaskA1 --> Kernel : k* APIs through SVC
-TaskA2 --> Kernel : k* APIs through SVC
-TaskB1 --> Kernel : k* APIs through SVC
-TaskA1 --> ModuleARam : same-module data
-TaskA2 --> ModuleARam : same-module data
-TaskA1 --> GlobalShared
-TaskB1 --> GlobalShared
-TaskA2 --> ExplicitShared
-TaskB1 --> ExplicitShared
-TaskA1 --> TaskB1 : copied message or handle API
-TaskB1 --> ServiceTask : copied request
-ServiceTask --> DeviceState
-TaskA1 -[#red,dashed]-> ModuleBRam : MPU denies direct write
-TaskB1 -[#red,dashed]-> ModuleARam : MPU denies direct write
-@enduml
-```
-
-## What RK01 Is Not
-
-RK01 is not trying to provide:
-
-- processes;
-- users or permissions;
-- a filesystem namespace;
-- loadable applications;
-- virtual memory;
-- per-process devices;
-- DMA isolation;
-- protection from privileged bugs;
-- protection from debug/SWD or physical access;
-- a GPOS-style capability system.
-
-The containment claim is narrower and more useful for small embedded firmware:
-a defective unprivileged task should not be able to corrupt kernel RAM, another
-module's private RAM or privileged service state merely by using a bad pointer.
+The trusted base remains the kernel, startup code, board port, privileged
+service tasks, build, DMA setup, debug access and physical device access. RK01
+focuses on preventing defective unprivileged task code from corrupting kernel
+RAM, another module's private RAM or privileged service state through ordinary
+bad-pointer mistakes.
 
 ## Delivered Supported Targets
 
@@ -258,7 +214,7 @@ make flash ARCH=armv7m PLATFORM=stm32f401re FLASH_TOOL=jlink
 
 Run the board harness:
 
-```sh
+```shgit
 make board-run SERIAL_PORT=/dev/cu.usbmodemXXXX
 make board-run BOARD_TIMEOUT=10
 make board-run BOARD_FLASH_TOOL=jlink SERIAL_PORT=/dev/cu.usbmodemXXXX
@@ -275,24 +231,7 @@ privileged system tasks, application BOOT construction, MPU layout finalisation
 and the first task dispatch. Ordinary task code then runs unprivileged and uses
 SVC for kernel services.
 
-```plantuml
-@startuml
-title RK01 startup and first dispatch
-start
-:Reset_Handler;
-:main();
-:kCoreInit();
-:kInit();
-:fixed object-pool setup;
-:privileged system task setup;
-:kApplicationInit();
-:kMpuLayoutFinalize();
-:first task dispatch through SVC;
-:ordinary task runs unprivileged on PSP;
-:kernel services entered through SVC;
-stop
-@enduml
-```
+![RK01 startup and first dispatch](docs/readme_execution_model.svg)
 
 Handlers run privileged on MSP. Ordinary tasks run on PSP and normally run
 unprivileged. Privileged system tasks also use PSP, but keep privileged CONTROL
@@ -302,26 +241,7 @@ state.
 
 RK01 separates memory by privilege first and by module ownership second.
 
-```plantuml
-@startuml
-title STM32F401RE memory domains
-skinparam monochrome true
-
-rectangle "FLASH\n0x08000000..0x08040000\nuser read + execute" as Flash
-rectangle "FS_FLASH\n0x08040000..0x08080000\nRKFS storage, not user executable" as FsFlash
-
-rectangle "TASK_RAM\n0x20000000..0x20010000\nmodule RAM, task stacks and shared aperture" as TaskRam {
-  rectangle "module/task RAM" as ModuleRam
-  rectangle ".rk_shared_ram\n0x20007000..0x20007400" as SharedRam
-}
-
-rectangle "KERNEL_RAM\n0x20010000..0x20018000\nTCBs, pools, registries and MSP" as KernelRam
-
-Flash -down-> FsFlash
-FsFlash -down-> TaskRam
-TaskRam -down-> KernelRam
-@enduml
-```
+![STM32F401RE memory domains](docs/readme_memory_model.svg)
 
 | Region | Access |
 | --- | --- |
@@ -388,25 +308,7 @@ dispatcher validates:
 - callback/function pointer validity;
 - packed argument structs before nested pointer use.
 
-```plantuml
-@startuml
-title User API call through SVC
-actor "Unprivileged task" as Task
-participant "k* wrapper" as API
-participant "SVC_Handler" as SVC
-participant "kSyscallDispatch" as Dispatch
-participant "kernel service" as Service
-
-Task -> API : kSemaphorePost(), kLogWrite(), ...
-API -> SVC : SVC #0 with call number and args
-SVC -> Dispatch : stacked frame + EXC_RETURN
-Dispatch -> Dispatch : validate origin, handles and user buffers
-Dispatch -> Service : privileged implementation
-Service --> Dispatch : result
-Dispatch --> SVC : result in stacked r0
-SVC --> Task : exception return
-@enduml
-```
+![User API call through SVC](docs/readme_svc_call.svg)
 
 Runtime kernel objects are fixed-capacity pool entries. Application code keeps
 opaque handles, not pointers to kernel control blocks:
@@ -442,26 +344,7 @@ printing is enabled, RK01 prints the first cause directly, for example:
 
 > `MPU TASK FAULT: data access violation task=Echo tid=4 pc=0x08001234 lr=0x08005678 addr=0x20010000 cfsr=0x00000082 mmfsr=0x82 frame=1`
 
-```plantuml
-@startuml
-title Contained unprivileged MPU fault
-start
-:Task touches kernel RAM or foreign module RAM;
-:MemManage handler runs privileged on MSP;
-if (fault came from unprivileged task?) then (yes)
-  :capture PC, LR, PSP, CONTROL and MMFAR;
-  :print MPU TASK FAULT when enabled;
-  :mark task FAULT_PENDING;
-  :PendSV switches away without saving faulted PSP;
-  :PostProc unlinks waits and releases task-owned resources;
-  :surviving tasks continue;
-else (no)
-  :raise RK_FAULT_MEM_ACCESS;
-  :fatal kernel fault path;
-endif
-stop
-@enduml
-```
+![Contained unprivileged MPU fault](docs/readme_fault_diagnostics.svg)
 
 Fatal privileged/kernel memory faults report `RK_FAULT_MEM_ACCESS`. Contained
 task faults are normally marked for cleanup; enabling

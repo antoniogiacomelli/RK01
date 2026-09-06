@@ -1,0 +1,17 @@
+' SPDX-License-Identifier: Apache-2.0
+@startuml
+title RK01 startup and first dispatch
+start
+:Reset_Handler;
+:main();
+:kCoreInit();
+:kInit();
+:fixed object-pool setup;
+:privileged system task setup;
+:kApplicationInit();
+:kMpuLayoutFinalize();
+:first task dispatch through SVC;
+:ordinary task runs unprivileged on PSP;
+:kernel services entered through SVC;
+stop
+@enduml
