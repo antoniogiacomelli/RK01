@@ -155,8 +155,10 @@ RK_ERR kModuleMapSharedRegion(RK_MODULE *const modulePtr,
  *        The backing RAM must have normal MPU region geometry and live in
  *        task RAM. This is a construction-phase service; attach modules before
  *        creating tasks in those modules.
+ * @param objName NUL-terminated object name.
  */
 RK_ERR kSharedMemCreate(RK_SHARED_MEM_HANDLE *const sharedMemHandlePtr,
+                        RK_STRING objName,
                         VOID *const regionBasePtr,
                         ULONG const regionBytes);
 
@@ -856,6 +858,7 @@ RK_ERR kEventClear(RK_TASK_HANDLE const taskHandle,
  * @brief               Create a semaphore from the semaphore object pool.
  * @param semaHandlePtr Pointer to a handle variable. The variable must be
  *                      RK_NULL_HANDLE.
+ * @param objName       NUL-terminated object name.
  * @param initValue     Initial value (0 <= initValue <= maxValue)
  * @param maxValue      Maximum value - after reaching this value the
  *                      semaphore does not increment its counter.
@@ -868,12 +871,15 @@ RK_ERR kEventClear(RK_TASK_HANDLE const taskHandle,
  *                                   RK_ERR_ERROR
  */
 RK_ERR kSemaphoreCreate(RK_HANDLE *const semaHandlePtr,
+                        RK_STRING objName,
                         UINT const initValue,
                         UINT const maxValue);
 RK_ERR kSemaphoreCreateGlobalScope(RK_HANDLE *const semaHandlePtr,
+                                   RK_STRING objName,
                                    UINT const initValue,
                                    UINT const maxValue);
 RK_ERR kSemaphoreCreateModuleScope(RK_HANDLE *const semaHandlePtr,
+                                   RK_STRING objName,
                                    UINT const initValue,
                                    UINT const maxValue,
                                    RK_MODULE *const modulePtr);
@@ -945,6 +951,7 @@ RK_ERR kSemaphoreQuery(RK_HANDLE const semaHandle,
  * @brief             Create a mutex from the mutex object pool.
  * @param mutexHandlePtr Pointer to a handle variable. The variable must be
  *                       RK_NULL_HANDLE.
+ * @param objName       NUL-terminated object name.
  * @param protocol    Mutex protocol (RK_PRIO_NONE / RK_PRIO_INHERITANCE).
  * @return            Successful:
  *                                   RK_ERR_SUCCESS
@@ -954,10 +961,13 @@ RK_ERR kSemaphoreQuery(RK_HANDLE const semaHandle,
  *                                   RK_ERR_INVALID_PARAM
  *                                   RK_ERR_BUFFER_EMPTY
  */
-RK_ERR kMutexCreate(RK_HANDLE *const mutexHandlePtr, UINT protocol);
+RK_ERR kMutexCreate(RK_HANDLE *const mutexHandlePtr, RK_STRING objName,
+                    UINT protocol);
 RK_ERR kMutexCreateGlobalScope(RK_HANDLE *const mutexHandlePtr,
+                               RK_STRING objName,
                                UINT protocol);
 RK_ERR kMutexCreateModuleScope(RK_HANDLE *const mutexHandlePtr,
+                               RK_STRING objName,
                                UINT protocol,
                                RK_MODULE *const modulePtr);
 RK_ERR kMutexDestroy(RK_HANDLE *const mutexHandlePtr);
@@ -1023,6 +1033,7 @@ RK_ERR kMutexQuery(RK_HANDLE const mutexHandle, UINT *const statePtr);
  * @brief           Create a sleep queue from the sleep-queue object pool.
  * @param sleepqHandlePtr Pointer to a handle variable. The variable must be
  *                        RK_NULL_HANDLE.
+ * @param objName       NUL-terminated object name.
  * @return          Successful:
  *                                   RK_ERR_SUCCESS
  *                      Errors:
@@ -1030,9 +1041,11 @@ RK_ERR kMutexQuery(RK_HANDLE const mutexHandle, UINT *const statePtr);
  *                                   RK_ERR_INVALID_PARAM
  *                                   RK_ERR_BUFFER_EMPTY
  */
-RK_ERR kSleepQueueCreate(RK_HANDLE *const sleepqHandlePtr);
-RK_ERR kSleepQueueCreateGlobalScope(RK_HANDLE *const sleepqHandlePtr);
+RK_ERR kSleepQueueCreate(RK_HANDLE *const sleepqHandlePtr, RK_STRING objName);
+RK_ERR kSleepQueueCreateGlobalScope(RK_HANDLE *const sleepqHandlePtr,
+                                    RK_STRING objName);
 RK_ERR kSleepQueueCreateModuleScope(RK_HANDLE *const sleepqHandlePtr,
+                                    RK_STRING objName,
                                     RK_MODULE *const modulePtr);
 RK_ERR kSleepQueueDestroy(RK_HANDLE *const sleepqHandlePtr);
 /**
@@ -1155,6 +1168,7 @@ RK_ERR kSleepQueueQuery(RK_HANDLE const sleepqHandle,
  * @brief               Create a message queue from the queue object pool.
  * @param queueHandlePtr Pointer to a handle variable. The variable must be
  *                       RK_NULL_HANDLE.
+ * @param objName       NUL-terminated object name.
  * @param bufPtr        Caller-provided message storage buffer.
  * @param mesgWords     Message size in words (1, 2, 4, 8 or 16).
  * @param nMesg         Max number of messages.
@@ -1168,13 +1182,16 @@ RK_ERR kSleepQueueQuery(RK_HANDLE const sleepqHandle,
  *                                   RK_ERR_BUFFER_EMPTY
  */
 RK_ERR kMesgQueueCreate(RK_HANDLE *const queueHandlePtr,
+                        RK_STRING objName,
                         VOID *const bufPtr,
                         ULONG const mesgWords, ULONG const nMesg);
 RK_ERR kMesgQueueCreateGlobalScope(RK_HANDLE *const queueHandlePtr,
+                                   RK_STRING objName,
                                    VOID *const bufPtr,
                                    ULONG const mesgWords,
                                    ULONG const nMesg);
 RK_ERR kMesgQueueCreateModuleScope(RK_HANDLE *const queueHandlePtr,
+                                   RK_STRING objName,
                                    VOID *const bufPtr,
                                    ULONG const mesgWords,
                                    ULONG const nMesg,
@@ -1967,10 +1984,12 @@ RK_ERR kSysMonCommand(CHAR const *linePtr, ULONG lineBytes);
 /**
  * @brief Attach a short display name to a registered kernel object.
  *
- *        The handle may be an encoded runtime object handle or a raw pointer to
- *        a BOOT-created object. Names are copied into the common object header
- *        and truncated to RK_NAME_SIZE, including the trailing NUL. Use the
- *        kObjectNameSet() helper for normal code:
+ *        Create APIs take the initial object name. This helper remains for
+ *        BOOT-created static objects and intentional renames. The handle may be
+ *        an encoded runtime object handle or a raw pointer to a BOOT-created
+ *        object. Names are copied into the common object header and truncated
+ *        to RK_NAME_SIZE, including the trailing NUL. Use the kObjectNameSet()
+ *        helper form:
  *
  *        kObjectNameSet(queueHandle, "FleetQ");
  *
@@ -2057,9 +2076,11 @@ VOID kTraceInputSignalFromISR(VOID);
 /**
  * @brief Attach a short user name to a registered kernel object.
  *
- *        The name is stored in the object's objName field and truncated to fit
- *        RK_NAME_SIZE, including the trailing NUL. Use kTraceNameObject() as the
- *        public convenience macro:
+ *        Create APIs take the initial object name. This helper remains for
+ *        BOOT-created static objects and intentional renames. The name is
+ *        stored in the object's objName field and truncated to fit
+ *        RK_NAME_SIZE, including the trailing NUL. Use kTraceNameObject() as
+ *        the public convenience macro:
  *
  *        kTraceNameObject(queueHandle, "UartQ");
  *
@@ -2260,6 +2281,7 @@ UINT kTraceTaskPrioSnapshot(RK_TASK_HANDLE const taskHandle,
  * @brief               Create an MRM control block from the MRM object pool.
  * @param mrmHandlePtr  Pointer to a handle variable. The variable must be
  *                      RK_NULL_HANDLE.
+ * @param objName       NUL-terminated object name.
  * @param mrmPoolPtr    Caller-provided pool of MRM buffers.
  * @param mesgPoolPtr   Caller-provided pool of message buffers.
  * @param nBufs         Number of MRM buffers; also the number of messages.
@@ -2272,10 +2294,12 @@ UINT kTraceTaskPrioSnapshot(RK_TASK_HANDLE const taskHandle,
  *                                   RK_ERR_BUFFER_EMPTY
  */
 RK_ERR kMRMCreate(RK_HANDLE *const mrmHandlePtr,
+                  RK_STRING objName,
                   RK_MRM_BUF *const mrmPoolPtr,
                   VOID *mesgPoolPtr, ULONG const nBufs,
                   ULONG const dataSizeWords);
 RK_ERR kMRMCreateModuleScope(RK_HANDLE *const mrmHandlePtr,
+                             RK_STRING objName,
                              RK_MRM_BUF *const mrmPoolPtr,
                              VOID *mesgPoolPtr, ULONG const nBufs,
                              ULONG const dataSizeWords,
@@ -2426,6 +2450,7 @@ static inline RK_BOOL kSeqCountReadRetry(RK_SEQCOUNT const *const seqPtr,
  *        timer remains created but inactive; there is no public rearm API.
  * @param timerHandlePtr Pointer to a handle variable. The variable must be
  *                       RK_NULL_HANDLE.
+ * @param objName       NUL-terminated object name.
  * @param phase Initial phase delay; does not apply to reloads.
  * @param countTicks Period/expiry delay in ticks. Must be non-zero.
  * @param funPtr Callout Function when it expires (callback)
@@ -2441,17 +2466,20 @@ static inline RK_BOOL kSeqCountReadRetry(RK_SEQCOUNT const *const seqPtr,
  *                                   RK_ERR_BUFFER_EMPTY
  */
 RK_ERR kTimerCreate(RK_HANDLE *const timerHandlePtr,
+                    RK_STRING objName,
                     RK_TICK const phase,
                     RK_TICK const countTicks,
                     RK_TIMER_CALLOUT const funPtr,
                     VOID *const argsPtr, RK_OPTION const reload);
 RK_ERR kTimerCreateGlobalScope(RK_HANDLE *const timerHandlePtr,
+                               RK_STRING objName,
                                RK_TICK const phase,
                                RK_TICK const countTicks,
                                RK_TIMER_CALLOUT const funPtr,
                                VOID *const argsPtr,
                                RK_OPTION const reload);
 RK_ERR kTimerCreateModuleScope(RK_HANDLE *const timerHandlePtr,
+                               RK_STRING objName,
                                RK_TICK const phase,
                                RK_TICK const countTicks,
                                RK_TIMER_CALLOUT const funPtr,

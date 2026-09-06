@@ -216,12 +216,24 @@ typedef struct RK_STRUCT_TIMER_INIT_SYSCALL_ARGS
 typedef struct RK_STRUCT_TIMER_CREATE_SYSCALL_ARGS
 {
     RK_TIMER_HANDLE *timerHandlePtr;
+    CHAR *objName;
     RK_TICK phase;
     RK_TICK countTicks;
     RK_TIMER_CALLOUT funPtr;
     VOID *argsPtr;
     RK_OPTION reload;
 } RK_TIMER_CREATE_SYSCALL_ARGS;
+#endif
+
+#if (RK_CONF_MESG_QUEUE == ON)
+typedef struct RK_STRUCT_MESG_QUEUE_CREATE_SYSCALL_ARGS
+{
+    RK_MESG_QUEUE_HANDLE *queueHandlePtr;
+    CHAR *objName;
+    VOID *bufPtr;
+    ULONG mesgWords;
+    ULONG depth;
+} RK_MESG_QUEUE_CREATE_SYSCALL_ARGS;
 #endif
 
 #if (RK_CONF_MRM == ON)
@@ -237,6 +249,7 @@ typedef struct RK_STRUCT_MRM_INIT_SYSCALL_ARGS
 typedef struct RK_STRUCT_MRM_CREATE_SYSCALL_ARGS
 {
     RK_MRM_HANDLE *mrmHandlePtr;
+    CHAR *objName;
     RK_MRM_BUF *mrmPoolPtr;
     VOID *mesgPoolPtr;
     ULONG nBufs;

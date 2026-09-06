@@ -22,6 +22,7 @@ RK_ERR kSharedMemInit(RK_SHARED_MEM *const sharedMemPtr,
                       VOID *const regionBasePtr,
                       ULONG const regionBytes);
 RK_ERR kSharedMemCreate(RK_SHARED_MEM_HANDLE *const sharedMemHandlePtr,
+                        RK_STRING objName,
                         VOID *const regionBasePtr,
                         ULONG const regionBytes);
 RK_ERR kSharedMemDestroy(RK_SHARED_MEM_HANDLE *const sharedMemHandlePtr);

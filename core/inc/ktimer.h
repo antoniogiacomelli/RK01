@@ -25,14 +25,17 @@ extern "C" {
 #if (RK_CONF_CALLOUT_TIMER == ON)
 
 RK_ERR kTimerInit(RK_TIMER*, RK_TICK, RK_TICK, RK_TIMER_CALLOUT, VOID*, RK_OPTION);
-RK_ERR kTimerCreate(RK_TIMER_HANDLE *const, RK_TICK const, RK_TICK const,
-                    RK_TIMER_CALLOUT const, VOID *const, RK_OPTION const);
-RK_ERR kTimerCreateGlobalScope(RK_TIMER_HANDLE *const, RK_TICK const,
-                               RK_TICK const, RK_TIMER_CALLOUT const,
-                               VOID *const, RK_OPTION const);
-RK_ERR kTimerCreateModuleScope(RK_TIMER_HANDLE *const, RK_TICK const,
-                               RK_TICK const, RK_TIMER_CALLOUT const,
-                               VOID *const, RK_OPTION const,
+RK_ERR kTimerCreate(RK_TIMER_HANDLE *const, RK_STRING, RK_TICK const,
+                    RK_TICK const, RK_TIMER_CALLOUT const, VOID *const,
+                    RK_OPTION const);
+RK_ERR kTimerCreateGlobalScope(RK_TIMER_HANDLE *const, RK_STRING,
+                               RK_TICK const, RK_TICK const,
+                               RK_TIMER_CALLOUT const, VOID *const,
+                               RK_OPTION const);
+RK_ERR kTimerCreateModuleScope(RK_TIMER_HANDLE *const, RK_STRING,
+                               RK_TICK const, RK_TICK const,
+                               RK_TIMER_CALLOUT const, VOID *const,
+                               RK_OPTION const,
                                RK_MODULE *const);
 RK_ERR kTimerDestroy(RK_TIMER_HANDLE *const);
 RK_ERR kTimerCancel(RK_TIMER_HANDLE const);

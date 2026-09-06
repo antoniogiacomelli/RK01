@@ -303,20 +303,47 @@ struct RK_STRUCT_TASK_MEMORY
 #ifndef UINT8_MAX
 #define UINT8_MAX (0xFF) /* 255 */
 #endif
+#ifdef UINT8_MAX
+#define BYTE_MAX UINT8_MAX
+#endif
+
 #ifndef INT8_MAX
 #define INT8_MAX (0x7F) /* 127 */
 #endif
+
+#ifdef INT8_MAX
+#define CHAR_MAX INT8_MAX
+#endif
+
 #ifndef UINT16_MAX
 #define UINT16_MAX (0xFFFF)
 #endif
+
+#ifdef UINT16_MAX
+#define USHORT_MAX UINT16_MAX
+#endif
+
 #ifndef INT16_MAX
 #define INT16_MAX (0x7FFF)
 #endif
+#ifdef INT16_MAX
+#define SHORT_MAX INT16_MAX
+#endif
+
 #ifndef UINT32_MAX
 #define UINT32_MAX (0xFFFFFFFF) /* 4,294,976,295 */
 #endif
+
+#ifdef UINT32_MAX
+#define ULONG_MAX UINT32_MAX
+#endif
+
 #ifndef INT32_MAX
 #define INT32_MAX (0x7FFFFFFF) /* 2,147,483,547 */
+#endif
+
+#ifdef INT32_MAX
+#define LONG_MAX INT32_MAX
 #endif
 
 #define RK_PRIO_TYPE_MAX UINT8_MAX

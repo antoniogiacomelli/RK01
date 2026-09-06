@@ -59,8 +59,7 @@ VOID kApplicationInit(VOID)
 {
     kLogInit(APP_LOG_PRIO);
 
-    AppCheck_(kSemaphoreCreate(&updateSema, 0U, 1U));
-    AppCheck_(kObjectNameSet(updateSema, "Update"));
+    AppCheck_(kSemaphoreCreate(&updateSema, "Update", 0U, 1U));
 
     AppCheck_(kTaskInit(&producerHandle, ProducerTask, RK_NO_ARGS,
                         "Prod", producerStack, TASK_STACK_WORDS,

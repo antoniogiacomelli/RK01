@@ -21,9 +21,9 @@ extern "C" {
 #if (RK_CONF_SLEEP_QUEUE == ON)
 RK_ERR kSleepQueueInit(RK_SLEEP_QUEUE* const);
 
-RK_ERR kSleepQueueCreate(RK_SLEEP_QUEUE_HANDLE *const);
-RK_ERR kSleepQueueCreateGlobalScope(RK_SLEEP_QUEUE_HANDLE *const);
-RK_ERR kSleepQueueCreateModuleScope(RK_SLEEP_QUEUE_HANDLE *const,
+RK_ERR kSleepQueueCreate(RK_SLEEP_QUEUE_HANDLE *const, RK_STRING);
+RK_ERR kSleepQueueCreateGlobalScope(RK_SLEEP_QUEUE_HANDLE *const, RK_STRING);
+RK_ERR kSleepQueueCreateModuleScope(RK_SLEEP_QUEUE_HANDLE *const, RK_STRING,
                                     RK_MODULE *const);
 RK_ERR kSleepQueueDestroy(RK_SLEEP_QUEUE_HANDLE *const);
 

@@ -53,6 +53,7 @@ RK_ERR kTaskInitIsolated(RK_TASK_HANDLE *taskHandlePtr,
                          const RK_PRIO priority,
                          const RK_OPTION preempt);
 RK_ERR kSharedMemCreate(RK_SHARED_MEM_HANDLE *const sharedMemHandlePtr,
+                        RK_STRING objName,
                         VOID *const regionBasePtr,
                         ULONG const regionBytes);
 RK_ERR kSharedMemAttach(RK_SHARED_MEM_HANDLE const sharedMemHandle,

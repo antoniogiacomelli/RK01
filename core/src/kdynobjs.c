@@ -788,6 +788,23 @@ static RK_ERR kDynObjApplyScope_(RK_KOBJ *const headerPtr,
     return (kObjHeaderScopeSet(headerPtr, attrPtr->scope, attrPtr->modulePtr));
 }
 
+static RK_ERR kDynObjNameArgErr_(RK_STRING objName)
+{
+    return ((objName != NULL) ? RK_ERR_SUCCESS : RK_ERR_OBJ_NULL);
+}
+
+static RK_ERR kDynObjApplyName_(VOID *const objPtr, RK_STRING objName)
+{
+    RK_ERR const err = kDynObjNameArgErr_(objName);
+
+    if (err != RK_ERR_SUCCESS)
+    {
+        return (err);
+    }
+
+    return (kTraceNameObject(objPtr, objName));
+}
+
 #if (RK_DYN_OBJ_HAS_ANY_POOL)
 /* Initialise each dynamic object partition through the boot-only raw init path. */
 static RK_ERR kDynObjInitPart_(RK_MEM_PARTITION *const partPtr,
@@ -935,6 +952,7 @@ RK_ERR kObjPartitionsInit(VOID)
  */
 
 RK_ERR kSharedMemCreate(RK_SHARED_MEM_HANDLE *const sharedMemHandlePtr,
+                        RK_STRING objName,
                         VOID *const regionBasePtr,
                         ULONG const regionBytes)
 {
@@ -943,10 +961,17 @@ RK_ERR kSharedMemCreate(RK_SHARED_MEM_HANDLE *const sharedMemHandlePtr,
         return ((RK_ERR)kSyscallInvoke4(
             RK_SYSCALL_SHARED_MEM_CREATE,
             (ULONG)(UINTPTR)sharedMemHandlePtr,
-            (ULONG)(UINTPTR)regionBasePtr, regionBytes, 0UL));
+            (ULONG)(UINTPTR)objName,
+            (ULONG)(UINTPTR)regionBasePtr, regionBytes));
     }
 
-    RK_ERR err = kDynObjCheckCreateHandle_(sharedMemHandlePtr);
+    RK_ERR err = kDynObjNameArgErr_(objName);
+    if (err != RK_ERR_SUCCESS)
+    {
+        return (err);
+    }
+
+    err = kDynObjCheckCreateHandle_(sharedMemHandlePtr);
     if (err != RK_ERR_SUCCESS)
     {
         return (err);
@@ -980,6 +1005,16 @@ RK_ERR kSharedMemCreate(RK_SHARED_MEM_HANDLE *const sharedMemHandlePtr,
     kKernelConstructionExit();
     if (err != RK_ERR_SUCCESS)
     {
+        RK_MEMSET(sharedMemPtr, 0, sizeof(RK_SHARED_MEM));
+        kMemPartitionFree(&dynSharedMemPart, sharedMemPtr);
+        return (err);
+    }
+
+    err = kDynObjApplyName_(sharedMemPtr, objName);
+    if (err != RK_ERR_SUCCESS)
+    {
+        kMpuSharedRegionMemoryRelease(&sharedMemPtr->region);
+        kTraceUnregisterObject(sharedMemPtr);
         RK_MEMSET(sharedMemPtr, 0, sizeof(RK_SHARED_MEM));
         kMemPartitionFree(&dynSharedMemPart, sharedMemPtr);
         return (err);
@@ -1093,6 +1128,7 @@ RK_ERR kSharedMemDestroy(RK_SHARED_MEM_HANDLE *const sharedMemHandlePtr)
 #if (RK_CONF_SEMAPHORE == ON)
 static RK_ERR kSemaphoreCreateWithAttr_(
     RK_SEMAPHORE_HANDLE *const semaHandlePtr,
+    RK_STRING objName,
     UINT const initValue,
     UINT const maxValue,
     RK_OBJ_ATTR const *const attrPtr)
@@ -1102,7 +1138,13 @@ static RK_ERR kSemaphoreCreateWithAttr_(
         return (RK_ERR_INVALID_PHASE);
     }
 
-    RK_ERR err = kDynObjScopeAttrErr_(attrPtr);
+    RK_ERR err = kDynObjNameArgErr_(objName);
+    if (err != RK_ERR_SUCCESS)
+    {
+        return (err);
+    }
+
+    err = kDynObjScopeAttrErr_(attrPtr);
     if (err != RK_ERR_SUCCESS)
     {
         return (err);
@@ -1139,7 +1181,11 @@ static RK_ERR kSemaphoreCreateWithAttr_(
         return (err);
     }
 
-    err = kDynObjApplyScope_(&semaPtr->header, attrPtr);
+    err = kDynObjApplyName_(semaPtr, objName);
+    if (err == RK_ERR_SUCCESS)
+    {
+        err = kDynObjApplyScope_(&semaPtr->header, attrPtr);
+    }
     if (err != RK_ERR_SUCCESS)
     {
         kTraceUnregisterObject(semaPtr);
@@ -1167,6 +1213,7 @@ static RK_ERR kSemaphoreCreateWithAttr_(
 }
 
 RK_ERR kSemaphoreCreate(RK_SEMAPHORE_HANDLE *const semaHandlePtr,
+                        RK_STRING objName,
                         UINT const initValue,
                         UINT const maxValue)
 {
@@ -1174,30 +1221,35 @@ RK_ERR kSemaphoreCreate(RK_SEMAPHORE_HANDLE *const semaHandlePtr,
     {
         return ((RK_ERR)kSyscallInvoke4(
             RK_SYSCALL_SEMAPHORE_CREATE,
-            (ULONG)(UINTPTR)semaHandlePtr, (ULONG)initValue,
-            (ULONG)maxValue, 0UL));
+            (ULONG)(UINTPTR)semaHandlePtr, (ULONG)(UINTPTR)objName,
+            (ULONG)initValue, (ULONG)maxValue));
     }
 
-    return (kSemaphoreCreateWithAttr_(semaHandlePtr, initValue, maxValue,
+    return (kSemaphoreCreateWithAttr_(semaHandlePtr, objName, initValue,
+                                      maxValue,
                                       NULL));
 }
 
 RK_ERR kSemaphoreCreateGlobalScope(RK_SEMAPHORE_HANDLE *const semaHandlePtr,
+                                   RK_STRING objName,
                                    UINT const initValue,
                                    UINT const maxValue)
 {
     RK_OBJ_ATTR const attr = { RK_SCOPE_KERNEL_GLOBAL, NULL };
-    return (kSemaphoreCreateWithAttr_(semaHandlePtr, initValue, maxValue,
+    return (kSemaphoreCreateWithAttr_(semaHandlePtr, objName, initValue,
+                                      maxValue,
                                       &attr));
 }
 
 RK_ERR kSemaphoreCreateModuleScope(RK_SEMAPHORE_HANDLE *const semaHandlePtr,
+                                   RK_STRING objName,
                                    UINT const initValue,
                                    UINT const maxValue,
                                    RK_MODULE *const modulePtr)
 {
     RK_OBJ_ATTR const attr = { RK_SCOPE_MODULE_LOCAL, modulePtr };
-    return (kSemaphoreCreateWithAttr_(semaHandlePtr, initValue, maxValue,
+    return (kSemaphoreCreateWithAttr_(semaHandlePtr, objName, initValue,
+                                      maxValue,
                                       &attr));
 }
 
@@ -1288,6 +1340,7 @@ RK_ERR kSemaphoreDestroy(RK_SEMAPHORE_HANDLE *const semaHandlePtr)
 
 #if (RK_CONF_MUTEX == ON)
 static RK_ERR kMutexCreateWithAttr_(RK_MUTEX_HANDLE *const mutexHandlePtr,
+                                    RK_STRING objName,
                                     UINT const protocol,
                                     RK_OBJ_ATTR const *const attrPtr)
 {
@@ -1296,7 +1349,13 @@ static RK_ERR kMutexCreateWithAttr_(RK_MUTEX_HANDLE *const mutexHandlePtr,
         return (RK_ERR_INVALID_PHASE);
     }
 
-    RK_ERR err = kDynObjScopeAttrErr_(attrPtr);
+    RK_ERR err = kDynObjNameArgErr_(objName);
+    if (err != RK_ERR_SUCCESS)
+    {
+        return (err);
+    }
+
+    err = kDynObjScopeAttrErr_(attrPtr);
     if (err != RK_ERR_SUCCESS)
     {
         return (err);
@@ -1333,7 +1392,11 @@ static RK_ERR kMutexCreateWithAttr_(RK_MUTEX_HANDLE *const mutexHandlePtr,
         return (err);
     }
 
-    err = kDynObjApplyScope_(&mutexPtr->header, attrPtr);
+    err = kDynObjApplyName_(mutexPtr, objName);
+    if (err == RK_ERR_SUCCESS)
+    {
+        err = kDynObjApplyScope_(&mutexPtr->header, attrPtr);
+    }
     if (err != RK_ERR_SUCCESS)
     {
         kTraceUnregisterObject(mutexPtr);
@@ -1361,31 +1424,34 @@ static RK_ERR kMutexCreateWithAttr_(RK_MUTEX_HANDLE *const mutexHandlePtr,
 }
 
 RK_ERR kMutexCreate(RK_MUTEX_HANDLE *const mutexHandlePtr,
+                    RK_STRING objName,
                     UINT const protocol)
 {
     if (kSyscallRequired() == RK_TRUE)
     {
         return ((RK_ERR)kSyscallInvoke4(
             RK_SYSCALL_MUTEX_CREATE, (ULONG)(UINTPTR)mutexHandlePtr,
-            (ULONG)protocol, 0UL, 0UL));
+            (ULONG)(UINTPTR)objName, (ULONG)protocol, 0UL));
     }
 
-    return (kMutexCreateWithAttr_(mutexHandlePtr, protocol, NULL));
+    return (kMutexCreateWithAttr_(mutexHandlePtr, objName, protocol, NULL));
 }
 
 RK_ERR kMutexCreateGlobalScope(RK_MUTEX_HANDLE *const mutexHandlePtr,
+                               RK_STRING objName,
                                UINT const protocol)
 {
     RK_OBJ_ATTR const attr = { RK_SCOPE_KERNEL_GLOBAL, NULL };
-    return (kMutexCreateWithAttr_(mutexHandlePtr, protocol, &attr));
+    return (kMutexCreateWithAttr_(mutexHandlePtr, objName, protocol, &attr));
 }
 
 RK_ERR kMutexCreateModuleScope(RK_MUTEX_HANDLE *const mutexHandlePtr,
+                               RK_STRING objName,
                                UINT const protocol,
                                RK_MODULE *const modulePtr)
 {
     RK_OBJ_ATTR const attr = { RK_SCOPE_MODULE_LOCAL, modulePtr };
-    return (kMutexCreateWithAttr_(mutexHandlePtr, protocol, &attr));
+    return (kMutexCreateWithAttr_(mutexHandlePtr, objName, protocol, &attr));
 }
 
 RK_ERR kMutexDestroy(RK_MUTEX_HANDLE *const mutexHandlePtr)
@@ -1480,6 +1546,7 @@ RK_ERR kMutexDestroy(RK_MUTEX_HANDLE *const mutexHandlePtr)
 #if (RK_CONF_SLEEP_QUEUE == ON)
 static RK_ERR kSleepQueueCreateWithAttr_(
     RK_SLEEP_QUEUE_HANDLE *const sleepqHandlePtr,
+    RK_STRING objName,
     RK_OBJ_ATTR const *const attrPtr)
 {
     if (kSyscallRequired() == RK_TRUE)
@@ -1487,7 +1554,13 @@ static RK_ERR kSleepQueueCreateWithAttr_(
         return (RK_ERR_INVALID_PHASE);
     }
 
-    RK_ERR err = kDynObjScopeAttrErr_(attrPtr);
+    RK_ERR err = kDynObjNameArgErr_(objName);
+    if (err != RK_ERR_SUCCESS)
+    {
+        return (err);
+    }
+
+    err = kDynObjScopeAttrErr_(attrPtr);
     if (err != RK_ERR_SUCCESS)
     {
         return (err);
@@ -1524,7 +1597,11 @@ static RK_ERR kSleepQueueCreateWithAttr_(
         return (err);
     }
 
-    err = kDynObjApplyScope_(&sleepqPtr->header, attrPtr);
+    err = kDynObjApplyName_(sleepqPtr, objName);
+    if (err == RK_ERR_SUCCESS)
+    {
+        err = kDynObjApplyScope_(&sleepqPtr->header, attrPtr);
+    }
     if (err != RK_ERR_SUCCESS)
     {
         kTraceUnregisterObject(sleepqPtr);
@@ -1551,31 +1628,35 @@ static RK_ERR kSleepQueueCreateWithAttr_(
 #endif
 }
 
-RK_ERR kSleepQueueCreate(RK_SLEEP_QUEUE_HANDLE *const sleepqHandlePtr)
+RK_ERR kSleepQueueCreate(RK_SLEEP_QUEUE_HANDLE *const sleepqHandlePtr,
+                         RK_STRING objName)
 {
     if (kSyscallRequired() == RK_TRUE)
     {
         return ((RK_ERR)kSyscallInvoke4(
             RK_SYSCALL_SLEEP_QUEUE_CREATE,
-            (ULONG)(UINTPTR)sleepqHandlePtr, 0UL, 0UL, 0UL));
+            (ULONG)(UINTPTR)sleepqHandlePtr, (ULONG)(UINTPTR)objName,
+            0UL, 0UL));
     }
 
-    return (kSleepQueueCreateWithAttr_(sleepqHandlePtr, NULL));
+    return (kSleepQueueCreateWithAttr_(sleepqHandlePtr, objName, NULL));
 }
 
 RK_ERR kSleepQueueCreateGlobalScope(
-    RK_SLEEP_QUEUE_HANDLE *const sleepqHandlePtr)
+    RK_SLEEP_QUEUE_HANDLE *const sleepqHandlePtr,
+    RK_STRING objName)
 {
     RK_OBJ_ATTR const attr = { RK_SCOPE_KERNEL_GLOBAL, NULL };
-    return (kSleepQueueCreateWithAttr_(sleepqHandlePtr, &attr));
+    return (kSleepQueueCreateWithAttr_(sleepqHandlePtr, objName, &attr));
 }
 
 RK_ERR kSleepQueueCreateModuleScope(
     RK_SLEEP_QUEUE_HANDLE *const sleepqHandlePtr,
+    RK_STRING objName,
     RK_MODULE *const modulePtr)
 {
     RK_OBJ_ATTR const attr = { RK_SCOPE_MODULE_LOCAL, modulePtr };
-    return (kSleepQueueCreateWithAttr_(sleepqHandlePtr, &attr));
+    return (kSleepQueueCreateWithAttr_(sleepqHandlePtr, objName, &attr));
 }
 
 RK_ERR kSleepQueueDestroy(RK_SLEEP_QUEUE_HANDLE *const sleepqHandlePtr)
@@ -1666,6 +1747,7 @@ RK_ERR kSleepQueueDestroy(RK_SLEEP_QUEUE_HANDLE *const sleepqHandlePtr)
 #if (RK_CONF_MESG_QUEUE == ON)
 static RK_ERR kMesgQueueCreateWithAttr_(
     RK_MESG_QUEUE_HANDLE *const queueHandlePtr,
+    RK_STRING objName,
     VOID *const bufPtr,
     ULONG const mesgWords,
     ULONG const depth,
@@ -1676,7 +1758,13 @@ static RK_ERR kMesgQueueCreateWithAttr_(
         return (RK_ERR_INVALID_PHASE);
     }
 
-    RK_ERR err = kDynObjScopeAttrErr_(attrPtr);
+    RK_ERR err = kDynObjNameArgErr_(objName);
+    if (err != RK_ERR_SUCCESS)
+    {
+        return (err);
+    }
+
+    err = kDynObjScopeAttrErr_(attrPtr);
     if (err != RK_ERR_SUCCESS)
     {
         return (err);
@@ -1713,7 +1801,11 @@ static RK_ERR kMesgQueueCreateWithAttr_(
         return (err);
     }
 
-    err = kDynObjApplyScope_(&queuePtr->header, attrPtr);
+    err = kDynObjApplyName_(queuePtr, objName);
+    if (err == RK_ERR_SUCCESS)
+    {
+        err = kDynObjApplyScope_(&queuePtr->header, attrPtr);
+    }
     if (err != RK_ERR_SUCCESS)
     {
         kTraceUnregisterObject(queuePtr);
@@ -1741,43 +1833,53 @@ static RK_ERR kMesgQueueCreateWithAttr_(
 }
 
 RK_ERR kMesgQueueCreate(RK_MESG_QUEUE_HANDLE *const queueHandlePtr,
+                        RK_STRING objName,
                         VOID *const bufPtr,
                         ULONG const mesgWords,
                         ULONG const depth)
 {
     if (kSyscallRequired() == RK_TRUE)
     {
-        return ((RK_ERR)kSyscallInvoke4(
-            RK_SYSCALL_MESG_QUEUE_CREATE,
-            (ULONG)(UINTPTR)queueHandlePtr, (ULONG)(UINTPTR)bufPtr,
-            (ULONG)mesgWords, (ULONG)depth));
+        RK_MESG_QUEUE_CREATE_SYSCALL_ARGS syscallArgs;
+
+        syscallArgs.queueHandlePtr = queueHandlePtr;
+        syscallArgs.objName = objName;
+        syscallArgs.bufPtr = bufPtr;
+        syscallArgs.mesgWords = mesgWords;
+        syscallArgs.depth = depth;
+
+        return ((RK_ERR)kSyscallInvoke4(RK_SYSCALL_MESG_QUEUE_CREATE,
+                                        (ULONG)(UINTPTR)&syscallArgs,
+                                        0UL, 0UL, 0UL));
     }
 
-    return (kMesgQueueCreateWithAttr_(queueHandlePtr, bufPtr, mesgWords,
-                                      depth, NULL));
+    return (kMesgQueueCreateWithAttr_(queueHandlePtr, objName, bufPtr,
+                                      mesgWords, depth, NULL));
 }
 
 RK_ERR kMesgQueueCreateGlobalScope(
     RK_MESG_QUEUE_HANDLE *const queueHandlePtr,
+    RK_STRING objName,
     VOID *const bufPtr,
     ULONG const mesgWords,
     ULONG const depth)
 {
     RK_OBJ_ATTR const attr = { RK_SCOPE_KERNEL_GLOBAL, NULL };
-    return (kMesgQueueCreateWithAttr_(queueHandlePtr, bufPtr, mesgWords,
-                                      depth, &attr));
+    return (kMesgQueueCreateWithAttr_(queueHandlePtr, objName, bufPtr,
+                                      mesgWords, depth, &attr));
 }
 
 RK_ERR kMesgQueueCreateModuleScope(
     RK_MESG_QUEUE_HANDLE *const queueHandlePtr,
+    RK_STRING objName,
     VOID *const bufPtr,
     ULONG const mesgWords,
     ULONG const depth,
     RK_MODULE *const modulePtr)
 {
     RK_OBJ_ATTR const attr = { RK_SCOPE_MODULE_LOCAL, modulePtr };
-    return (kMesgQueueCreateWithAttr_(queueHandlePtr, bufPtr, mesgWords,
-                                      depth, &attr));
+    return (kMesgQueueCreateWithAttr_(queueHandlePtr, objName, bufPtr,
+                                      mesgWords, depth, &attr));
 }
 
 RK_ERR kMesgQueueDestroy(RK_MESG_QUEUE_HANDLE *const queueHandlePtr)
@@ -1873,6 +1975,7 @@ RK_ERR kMesgQueueDestroy(RK_MESG_QUEUE_HANDLE *const queueHandlePtr)
 #if (RK_CONF_CALLOUT_TIMER == ON)
 static RK_ERR kTimerCreateWithAttr_(
     RK_TIMER_HANDLE *const timerHandlePtr,
+    RK_STRING objName,
     RK_TICK const phase,
     RK_TICK const countTicks,
     RK_TIMER_CALLOUT const funPtr,
@@ -1885,7 +1988,13 @@ static RK_ERR kTimerCreateWithAttr_(
         return (RK_ERR_INVALID_PHASE);
     }
 
-    RK_ERR err = kDynObjScopeAttrErr_(attrPtr);
+    RK_ERR err = kDynObjNameArgErr_(objName);
+    if (err != RK_ERR_SUCCESS)
+    {
+        return (err);
+    }
+
+    err = kDynObjScopeAttrErr_(attrPtr);
     if (err != RK_ERR_SUCCESS)
     {
         return (err);
@@ -1922,7 +2031,11 @@ static RK_ERR kTimerCreateWithAttr_(
         return (err);
     }
 
-    err = kDynObjApplyScope_(&timerPtr->header, attrPtr);
+    err = kDynObjApplyName_(timerPtr, objName);
+    if (err == RK_ERR_SUCCESS)
+    {
+        err = kDynObjApplyScope_(&timerPtr->header, attrPtr);
+    }
     if (err != RK_ERR_SUCCESS)
     {
         if (kTimeoutNodeIsArmed(&timerPtr->timeoutNode) == RK_TRUE)
@@ -1963,6 +2076,7 @@ static RK_ERR kTimerCreateWithAttr_(
 }
 
 RK_ERR kTimerCreate(RK_TIMER_HANDLE *const timerHandlePtr,
+                    RK_STRING objName,
                     RK_TICK const phase,
                     RK_TICK const countTicks,
                     RK_TIMER_CALLOUT const funPtr,
@@ -1974,6 +2088,7 @@ RK_ERR kTimerCreate(RK_TIMER_HANDLE *const timerHandlePtr,
         RK_TIMER_CREATE_SYSCALL_ARGS syscallArgs;
 
         syscallArgs.timerHandlePtr = timerHandlePtr;
+        syscallArgs.objName = objName;
         syscallArgs.phase = phase;
         syscallArgs.countTicks = countTicks;
         syscallArgs.funPtr = funPtr;
@@ -1985,11 +2100,12 @@ RK_ERR kTimerCreate(RK_TIMER_HANDLE *const timerHandlePtr,
                                         0UL, 0UL, 0UL));
     }
 
-    return (kTimerCreateWithAttr_(timerHandlePtr, phase, countTicks, funPtr,
-                                  argsPtr, reload, NULL));
+    return (kTimerCreateWithAttr_(timerHandlePtr, objName, phase, countTicks,
+                                  funPtr, argsPtr, reload, NULL));
 }
 
 RK_ERR kTimerCreateGlobalScope(RK_TIMER_HANDLE *const timerHandlePtr,
+                               RK_STRING objName,
                                RK_TICK const phase,
                                RK_TICK const countTicks,
                                RK_TIMER_CALLOUT const funPtr,
@@ -1997,11 +2113,12 @@ RK_ERR kTimerCreateGlobalScope(RK_TIMER_HANDLE *const timerHandlePtr,
                                RK_OPTION const reload)
 {
     RK_OBJ_ATTR const attr = { RK_SCOPE_KERNEL_GLOBAL, NULL };
-    return (kTimerCreateWithAttr_(timerHandlePtr, phase, countTicks, funPtr,
-                                  argsPtr, reload, &attr));
+    return (kTimerCreateWithAttr_(timerHandlePtr, objName, phase, countTicks,
+                                  funPtr, argsPtr, reload, &attr));
 }
 
 RK_ERR kTimerCreateModuleScope(RK_TIMER_HANDLE *const timerHandlePtr,
+                               RK_STRING objName,
                                RK_TICK const phase,
                                RK_TICK const countTicks,
                                RK_TIMER_CALLOUT const funPtr,
@@ -2010,8 +2127,8 @@ RK_ERR kTimerCreateModuleScope(RK_TIMER_HANDLE *const timerHandlePtr,
                                RK_MODULE *const modulePtr)
 {
     RK_OBJ_ATTR const attr = { RK_SCOPE_MODULE_LOCAL, modulePtr };
-    return (kTimerCreateWithAttr_(timerHandlePtr, phase, countTicks, funPtr,
-                                  argsPtr, reload, &attr));
+    return (kTimerCreateWithAttr_(timerHandlePtr, objName, phase, countTicks,
+                                  funPtr, argsPtr, reload, &attr));
 }
 
 RK_ERR kTimerDestroy(RK_TIMER_HANDLE *const timerHandlePtr)
@@ -2092,6 +2209,7 @@ RK_ERR kTimerDestroy(RK_TIMER_HANDLE *const timerHandlePtr)
 
 #if (RK_CONF_MRM == ON)
 static RK_ERR kMRMCreateWithAttr_(RK_MRM_HANDLE *const mrmHandlePtr,
+                                  RK_STRING objName,
                                   RK_MRM_BUF *const mrmPoolPtr,
                                   VOID *mesgPoolPtr,
                                   ULONG const nBufs,
@@ -2103,7 +2221,13 @@ static RK_ERR kMRMCreateWithAttr_(RK_MRM_HANDLE *const mrmHandlePtr,
         return (RK_ERR_INVALID_PHASE);
     }
 
-    RK_ERR err = kDynObjScopeAttrErr_(attrPtr);
+    RK_ERR err = kDynObjNameArgErr_(objName);
+    if (err != RK_ERR_SUCCESS)
+    {
+        return (err);
+    }
+
+    err = kDynObjScopeAttrErr_(attrPtr);
     if (err != RK_ERR_SUCCESS)
     {
         return (err);
@@ -2143,7 +2267,11 @@ static RK_ERR kMRMCreateWithAttr_(RK_MRM_HANDLE *const mrmHandlePtr,
         return (err);
     }
 
-    err = kDynObjApplyScope_(&mrmPtr->header, attrPtr);
+    err = kDynObjApplyName_(mrmPtr, objName);
+    if (err == RK_ERR_SUCCESS)
+    {
+        err = kDynObjApplyScope_(&mrmPtr->header, attrPtr);
+    }
     if (err == RK_ERR_SUCCESS)
     {
         err = kDynObjApplyScope_(&mrmPtr->mrmMem.header, attrPtr);
@@ -2182,6 +2310,7 @@ static RK_ERR kMRMCreateWithAttr_(RK_MRM_HANDLE *const mrmHandlePtr,
 }
 
 RK_ERR kMRMCreate(RK_MRM_HANDLE *const mrmHandlePtr,
+                  RK_STRING objName,
                   RK_MRM_BUF *const mrmPoolPtr,
                   VOID *mesgPoolPtr,
                   ULONG const nBufs,
@@ -2192,6 +2321,7 @@ RK_ERR kMRMCreate(RK_MRM_HANDLE *const mrmHandlePtr,
         RK_MRM_CREATE_SYSCALL_ARGS syscallArgs;
 
         syscallArgs.mrmHandlePtr = mrmHandlePtr;
+        syscallArgs.objName = objName;
         syscallArgs.mrmPoolPtr = mrmPoolPtr;
         syscallArgs.mesgPoolPtr = mesgPoolPtr;
         syscallArgs.nBufs = nBufs;
@@ -2202,11 +2332,12 @@ RK_ERR kMRMCreate(RK_MRM_HANDLE *const mrmHandlePtr,
                                         0UL, 0UL, 0UL));
     }
 
-    return (kMRMCreateWithAttr_(mrmHandlePtr, mrmPoolPtr, mesgPoolPtr,
-                                nBufs, dataSizeWords, NULL));
+    return (kMRMCreateWithAttr_(mrmHandlePtr, objName, mrmPoolPtr,
+                                mesgPoolPtr, nBufs, dataSizeWords, NULL));
 }
 
 RK_ERR kMRMCreateModuleScope(RK_MRM_HANDLE *const mrmHandlePtr,
+                             RK_STRING objName,
                              RK_MRM_BUF *const mrmPoolPtr,
                              VOID *mesgPoolPtr,
                              ULONG const nBufs,
@@ -2214,8 +2345,8 @@ RK_ERR kMRMCreateModuleScope(RK_MRM_HANDLE *const mrmHandlePtr,
                              RK_MODULE *const modulePtr)
 {
     RK_OBJ_ATTR const attr = { RK_SCOPE_MODULE_LOCAL, modulePtr };
-    return (kMRMCreateWithAttr_(mrmHandlePtr, mrmPoolPtr, mesgPoolPtr,
-                                nBufs, dataSizeWords, &attr));
+    return (kMRMCreateWithAttr_(mrmHandlePtr, objName, mrmPoolPtr,
+                                mesgPoolPtr, nBufs, dataSizeWords, &attr));
 }
 
 RK_ERR kMRMDestroy(RK_MRM_HANDLE *const mrmHandlePtr)

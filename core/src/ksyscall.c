@@ -986,6 +986,11 @@ static VOID kSyscallDispatchActive_(RK_EXCEPTION_FRAME *const framePtr)
             ret = kSyscallUserWriteRequired_(
                 (RK_SHARED_MEM_HANDLE *)(UINTPTR)arg0,
                 sizeof(RK_SHARED_MEM_HANDLE));
+            if (ret == RK_ERR_SUCCESS)
+            {
+                ret = kSyscallUserReadRequired_((CHAR const *)(UINTPTR)arg1,
+                                                RK_NAME_SIZE);
+            }
             if ((ret == RK_ERR_SUCCESS) &&
                 (kMpuLayoutIsFinalized() == RK_TRUE))
             {
@@ -993,14 +998,15 @@ static VOID kSyscallDispatchActive_(RK_EXCEPTION_FRAME *const framePtr)
             }
             if (ret == RK_ERR_SUCCESS)
             {
-                ret = kSyscallUserWriteRequired_((VOID *)(UINTPTR)arg1,
-                                                 arg2);
+                ret = kSyscallUserWriteRequired_((VOID *)(UINTPTR)arg2,
+                                                 arg3);
             }
             if (ret == RK_ERR_SUCCESS)
             {
                 ret = kSharedMemCreate(
                     (RK_SHARED_MEM_HANDLE *)(UINTPTR)arg0,
-                    (VOID *)(UINTPTR)arg1, arg2);
+                    (CHAR *)(UINTPTR)arg1,
+                    (VOID *)(UINTPTR)arg2, arg3);
             }
             break;
 
@@ -1264,8 +1270,14 @@ static VOID kSyscallDispatchActive_(RK_EXCEPTION_FRAME *const framePtr)
                 sizeof(RK_SEMAPHORE_HANDLE));
             if (ret == RK_ERR_SUCCESS)
             {
-                ret = kSemaphoreCreate((RK_SEMAPHORE_HANDLE *)(UINTPTR)arg0,
-                                       (UINT)arg1, (UINT)arg2);
+                ret = kSyscallUserReadRequired_((CHAR const *)(UINTPTR)arg1,
+                                                RK_NAME_SIZE);
+            }
+            if (ret == RK_ERR_SUCCESS)
+            {
+                ret = kSemaphoreCreate(
+                    (RK_SEMAPHORE_HANDLE *)(UINTPTR)arg0,
+                    (CHAR *)(UINTPTR)arg1, (UINT)arg2, (UINT)arg3);
             }
             break;
 
@@ -1315,8 +1327,13 @@ static VOID kSyscallDispatchActive_(RK_EXCEPTION_FRAME *const framePtr)
                 (RK_MUTEX_HANDLE *)(UINTPTR)arg0, sizeof(RK_MUTEX_HANDLE));
             if (ret == RK_ERR_SUCCESS)
             {
+                ret = kSyscallUserReadRequired_((CHAR const *)(UINTPTR)arg1,
+                                                RK_NAME_SIZE);
+            }
+            if (ret == RK_ERR_SUCCESS)
+            {
                 ret = kMutexCreate((RK_MUTEX_HANDLE *)(UINTPTR)arg0,
-                                   (UINT)arg1);
+                                   (CHAR *)(UINTPTR)arg1, (UINT)arg2);
             }
             break;
 
@@ -1387,7 +1404,14 @@ static VOID kSyscallDispatchActive_(RK_EXCEPTION_FRAME *const framePtr)
                 sizeof(RK_SLEEP_QUEUE_HANDLE));
             if (ret == RK_ERR_SUCCESS)
             {
-                ret = kSleepQueueCreate((RK_SLEEP_QUEUE_HANDLE *)(UINTPTR)arg0);
+                ret = kSyscallUserReadRequired_((CHAR const *)(UINTPTR)arg1,
+                                                RK_NAME_SIZE);
+            }
+            if (ret == RK_ERR_SUCCESS)
+            {
+                ret = kSleepQueueCreate(
+                    (RK_SLEEP_QUEUE_HANDLE *)(UINTPTR)arg0,
+                    (CHAR *)(UINTPTR)arg1);
             }
             break;
 
@@ -1547,15 +1571,24 @@ static VOID kSyscallDispatchActive_(RK_EXCEPTION_FRAME *const framePtr)
 
         case RK_SYSCALL_MESG_QUEUE_CREATE:
         {
+            RK_MESG_QUEUE_CREATE_SYSCALL_ARGS args;
             ULONG bufWords = 0UL;
             ULONG bufBytes = 0UL;
 
-            ret = kSyscallUserWriteRequired_(
-                (RK_MESG_QUEUE_HANDLE *)(UINTPTR)arg0,
-                sizeof(RK_MESG_QUEUE_HANDLE));
+            ret = kSyscallUserStructCopy_((VOID const *)(UINTPTR)arg0,
+                                          &args, sizeof(args));
             if (ret == RK_ERR_SUCCESS)
             {
-                ret = kSyscallSizeMul_(arg2, arg3, &bufWords);
+                ret = kSyscallUserWriteRequired_(
+                    args.queueHandlePtr, sizeof(RK_MESG_QUEUE_HANDLE));
+            }
+            if (ret == RK_ERR_SUCCESS)
+            {
+                ret = kSyscallUserReadRequired_(args.objName, RK_NAME_SIZE);
+            }
+            if (ret == RK_ERR_SUCCESS)
+            {
+                ret = kSyscallSizeMul_(args.mesgWords, args.depth, &bufWords);
             }
             if (ret == RK_ERR_SUCCESS)
             {
@@ -1563,13 +1596,13 @@ static VOID kSyscallDispatchActive_(RK_EXCEPTION_FRAME *const framePtr)
             }
             if (ret == RK_ERR_SUCCESS)
             {
-                ret = kSyscallUserWriteRequired_((VOID *)(UINTPTR)arg1,
-                                                 bufBytes);
+                ret = kSyscallUserWriteRequired_(args.bufPtr, bufBytes);
             }
             if (ret == RK_ERR_SUCCESS)
             {
-                ret = kMesgQueueCreate((RK_MESG_QUEUE_HANDLE *)(UINTPTR)arg0,
-                                       (VOID *)(UINTPTR)arg1, arg2, arg3);
+                ret = kMesgQueueCreate(args.queueHandlePtr, args.objName,
+                                       args.bufPtr, args.mesgWords,
+                                       args.depth);
             }
             break;
         }
@@ -1924,6 +1957,10 @@ static VOID kSyscallDispatchActive_(RK_EXCEPTION_FRAME *const framePtr)
             }
             if (ret == RK_ERR_SUCCESS)
             {
+                ret = kSyscallUserReadRequired_(args.objName, RK_NAME_SIZE);
+            }
+            if (ret == RK_ERR_SUCCESS)
+            {
                 ret = kSyscallSizeMul_(args.nBufs,
                                        (ULONG)sizeof(RK_MRM_BUF),
                                        &mrmPoolBytes);
@@ -1950,7 +1987,8 @@ static VOID kSyscallDispatchActive_(RK_EXCEPTION_FRAME *const framePtr)
             }
             if (ret == RK_ERR_SUCCESS)
             {
-                ret = kMRMCreate(args.mrmHandlePtr, args.mrmPoolPtr,
+                ret = kMRMCreate(args.mrmHandlePtr, args.objName,
+                                 args.mrmPoolPtr,
                                  args.mesgPoolPtr, args.nBufs,
                                  args.dataSizeWords);
             }

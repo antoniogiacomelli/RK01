@@ -302,12 +302,9 @@ static VOID AppConfigureWatchdog_(VOID)
 {
 #if (K_HAL_HAS_WATCHDOG == 1U)
     kHalWatchdogConfigure();
-    AppCheck_(kTimerCreate(&appWatchdogTimer, 0UL,
+    AppCheck_(kTimerCreate(&appWatchdogTimer, "WdgTmr", 0UL,
                            RK_MS_TO_TICKS(K_HAL_WATCHDOG_FEED_MS),
                            AppWatchdogTimer_, RK_NO_ARGS, RK_TIMER_RELOAD));
-#if (RK_CONF_SYSMON == ON)
-    AppCheck_(kObjectNameSet(appWatchdogTimer, "WdgTmr"));
-#endif
 #endif
 }
 
@@ -331,27 +328,15 @@ static VOID AppCreateModules_(VOID)
 
 static VOID AppCreateObjects_(VOID)
 {
-    AppCheck_(kMutexCreate(&plantStateMutex, RK_PRIO_INHERITANCE));
-#if (RK_CONF_SYSMON == ON)
-    AppCheck_(kObjectNameSet(plantStateMutex, "PlantM"));
-#endif
-    AppCheck_(kSemaphoreCreate(&plantActuatorSema, 0U, 1U));
-#if (RK_CONF_SYSMON == ON)
-    AppCheck_(kObjectNameSet(plantActuatorSema, "PlantS"));
-#endif
+    AppCheck_(kMutexCreate(&plantStateMutex, "PlantM", RK_PRIO_INHERITANCE));
+    AppCheck_(kSemaphoreCreate(&plantActuatorSema, "PlantS", 0U, 1U));
 
-    AppCheck_(kMutexCreateModuleScope(&fleetCommsMutex, RK_PRIO_INHERITANCE,
-                                      &fleetCommsModule));
-#if (RK_CONF_SYSMON == ON)
-    AppCheck_(kObjectNameSet(fleetCommsMutex, "FleetM"));
-#endif
-    AppCheck_(kMesgQueueCreateGlobalScope(&fleetOrderQueueHandle,
+    AppCheck_(kMutexCreateModuleScope(&fleetCommsMutex, "FleetM",
+                                      RK_PRIO_INHERITANCE, &fleetCommsModule));
+    AppCheck_(kMesgQueueCreateGlobalScope(&fleetOrderQueueHandle, "FleetQ",
                                           fleetOrderQueueBuf,
                                           RK_MESGQ_MESG_SIZE(FleetOrder),
                                           FLEET_ORDER_QUEUE_DEPTH));
-#if (RK_CONF_SYSMON == ON)
-    AppCheck_(kObjectNameSet(fleetOrderQueueHandle, "FleetQ"));
-#endif
 }
 
 static VOID AppCreateTasks_(VOID)

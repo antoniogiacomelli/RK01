@@ -276,6 +276,8 @@ static CHAR *kTraceObjNameBuf_(VOID *const objPtr, RK_ID const objID)
     {
         case RK_MEMALLOC_KOBJ_ID:
             return (((RK_MEM_PARTITION *)objPtr)->objName);
+        case RK_SHARED_MEM_KOBJ_ID:
+            return (((RK_SHARED_MEM *)objPtr)->objName);
 #if (RK_CONF_SEMAPHORE == ON)
         case RK_SEMAPHORE_KOBJ_ID:
             return (((RK_SEMAPHORE *)objPtr)->objName);
@@ -371,6 +373,8 @@ static const CHAR *kTraceObjName_(RK_ID const objID)
     {
         case RK_MEMALLOC_KOBJ_ID:
             return ("mem");
+        case RK_SHARED_MEM_KOBJ_ID:
+            return ("shared");
 #if (RK_CONF_SLEEP_QUEUE == ON)
         case RK_SLEEPQ_KOBJ_ID:
             return ("sleepq");

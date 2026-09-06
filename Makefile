@@ -30,7 +30,11 @@ BUILD_ROOT ?= build
 BUILD_PROFILE ?= $(BUILD)
 ifeq ($(origin APP_SRCS), undefined)
 ifeq ($(APP_EXAMPLE),tiny)
-APP_SRCS := $(APP_DIR)/src/application.c
+APP_SRCS := \
+    $(APP_DIR)/src/application.c \
+    $(APP_DIR)/src/tiny_console.c \
+    $(APP_DIR)/src/tiny_record.c \
+    $(APP_DIR)/src/tiny_support.c
 else ifeq ($(APP_EXAMPLE),01-fleet)
 APP_SRCS := $(APP_DIR)/examples/01_fleet_modules.c
 else ifeq ($(APP_EXAMPLE),02-isolated)

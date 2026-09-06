@@ -51,7 +51,9 @@ RK_ERR kEventClear(RK_TASK_HANDLE const taskHandle,
                    RK_TASK_EVENT const flagsToClear);
 
 #if (RK_CONF_MUTEX == ON)
-RK_ERR kMutexCreate(RK_MUTEX_HANDLE *const mutexHandlePtr, UINT protocol);
+RK_ERR kMutexCreate(RK_MUTEX_HANDLE *const mutexHandlePtr,
+                    RK_STRING objName,
+                    UINT protocol);
 RK_ERR kMutexDestroy(RK_MUTEX_HANDLE *const mutexHandlePtr);
 RK_ERR kMutexLock(RK_MUTEX_HANDLE const mutexHandle, RK_TICK const timeout);
 RK_ERR kMutexUnlock(RK_MUTEX_HANDLE const mutexHandle);
@@ -60,6 +62,7 @@ RK_ERR kMutexQuery(RK_MUTEX_HANDLE const mutexHandle, UINT *const protocolPtr);
 
 #if (RK_CONF_SEMAPHORE == ON)
 RK_ERR kSemaphoreCreate(RK_SEMAPHORE_HANDLE *const semaphoreHandlePtr,
+                        RK_STRING objName,
                         UINT const initialValue,
                         UINT const maxValue);
 RK_ERR kSemaphoreDestroy(RK_SEMAPHORE_HANDLE *const semaphoreHandlePtr);
@@ -71,7 +74,8 @@ RK_ERR kSemaphoreQuery(RK_SEMAPHORE_HANDLE const semaphoreHandle,
 #endif
 
 #if (RK_CONF_SLEEP_QUEUE == ON)
-RK_ERR kSleepQueueCreate(RK_HANDLE *const sleepqHandlePtr);
+RK_ERR kSleepQueueCreate(RK_HANDLE *const sleepqHandlePtr,
+                         RK_STRING objName);
 RK_ERR kSleepQueueDestroy(RK_HANDLE *const sleepqHandlePtr);
 RK_ERR kSleepQueueSleep(RK_HANDLE const sleepqHandle,
                         const RK_TICK timeout);
@@ -98,6 +102,7 @@ RK_ERR kCondVarBroadcast(RK_HANDLE const cv);
 
 #if (RK_CONF_MESG_QUEUE == ON)
 RK_ERR kMesgQueueCreate(RK_MESG_QUEUE_HANDLE *const queueHandlePtr,
+                        RK_STRING objName,
                         VOID *const queueBufPtr,
                         ULONG const mesgSizeWords,
                         ULONG const depth);
@@ -179,6 +184,7 @@ RK_ERR kSynchMesgReply(RK_SYNCH_CALL_DATA const *const callPtr,
 
 #if (RK_CONF_CALLOUT_TIMER == ON)
 RK_ERR kTimerCreate(RK_TIMER_HANDLE *const timerHandlePtr,
+                    RK_STRING objName,
                     RK_TICK const delay,
                     RK_TICK const period,
                     RK_TIMER_CALLOUT const callout,
@@ -207,6 +213,7 @@ RK_ERR kMemPartitionFree(RK_MEM_PARTITION *const kobj, VOID *blockPtr);
 
 #if (RK_CONF_MRM == ON)
 RK_ERR kMRMCreate(RK_MRM_HANDLE *const mrmHandlePtr,
+                  RK_STRING objName,
                   RK_MRM_BUF *const mrmPoolPtr,
                   VOID *mesgPoolPtr,
                   ULONG const nBufs,

@@ -21,9 +21,9 @@ extern "C" {
 
 #if (RK_CONF_MUTEX == ON)
 RK_ERR kMutexInit(RK_MUTEX *const, UINT);
-RK_ERR kMutexCreate(RK_MUTEX_HANDLE *const, UINT);
-RK_ERR kMutexCreateGlobalScope(RK_MUTEX_HANDLE *const, UINT);
-RK_ERR kMutexCreateModuleScope(RK_MUTEX_HANDLE *const, UINT,
+RK_ERR kMutexCreate(RK_MUTEX_HANDLE *const, RK_STRING, UINT);
+RK_ERR kMutexCreateGlobalScope(RK_MUTEX_HANDLE *const, RK_STRING, UINT);
+RK_ERR kMutexCreateModuleScope(RK_MUTEX_HANDLE *const, RK_STRING, UINT,
                                RK_MODULE *const);
 RK_ERR kMutexDestroy(RK_MUTEX_HANDLE *const);
 RK_ERR kMutexLock(RK_MUTEX_HANDLE const, RK_TICK const);

@@ -84,7 +84,7 @@ not as proof that multi-module isolation is practical on every MCU.
 | Path | Purpose |
 | --- | --- |
 | `Makefile` | Firmware build, flash and run entry point. |
-| `app/src/application.c` | Default public record-console example. |
+| `app/src/application.c`, `app/src/tiny_*.c` | Default public record-console example. |
 | `app/examples/` | Selectable `APP_EXAMPLE` profiles. |
 | `app/linker-modules.ld` | Module placement include used by the linker scripts. |
 | `arch/armv7m/` | STM32F401RE Cortex-M4 port. |
@@ -171,8 +171,8 @@ On STM32F401RE:
   `RK_CONF_CONSOLE_LINE_MAX_BYTES` bytes.
 - `EchoTask` runs unprivileged in an explicit `Echo` module.
 - `EchoTask` parses commands such as `SET A 123` and `READ A`.
-- In the default mixed console, SysMon diagnostics are routed explicitly with
-  `RKMONITOR <command>`, for example `RKMONITOR ps`.
+- In the default mixed console, `RKMONITOR` enters SysMon diagnostics. Commands
+  such as `ps` are then accepted directly until `exit` or `quit`.
 - `RecordTask` runs unprivileged in an explicit `Rec` module.
 - Echo calls Record through copied call/reply messages.
 - A privileged `FS` service task owns RKFS/LittleFS, reserved flash and the
@@ -181,10 +181,10 @@ On STM32F401RE:
 
 Expected board banner:
 
-> `RK01 USART2 record console ready. SET A 123, READ A, RKMONITOR help.`
+> `RK01 USART2 record console ready. SET A 123, READ A, RKMONITOR.`
 > `Record slots: 4, persisted in flash through rkfs.`
 
-Try `SET A 123`, `READ A`, `SET B 77`, `READ B` and `RKMONITOR ps`.
+Try `SET A 123`, `READ A`, `SET B 77`, `READ B`, `RKMONITOR`, `ps`, `exit`.
 
 The same application shape builds for the MPS2 AN505 target, but without
 STM32F401RE flash persistence.
@@ -325,7 +325,7 @@ opaque handles, not pointers to kernel control blocks:
 ```c
 RK_DECLARE_LOCAL_SEMAPHORE(readySema)
 
-kSemaphoreCreate(&readySema, 0U, 1U);
+kSemaphoreCreate(&readySema, "Ready", 0U, 1U);
 kSemaphorePost(readySema);
 kSemaphorePend(readySema, RK_WAIT_FOREVER);
 kSemaphoreDestroy(&readySema);

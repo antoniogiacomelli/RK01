@@ -23,10 +23,11 @@ extern "C" {
 #if (RK_CONF_MRM == ON)
 RK_ERR kMRMInit(RK_MRM *const, RK_MRM_BUF *const, VOID *, ULONG const,
                 ULONG const);
-RK_ERR kMRMCreate(RK_MRM_HANDLE *const, RK_MRM_BUF *const, VOID *, ULONG const,
-                  ULONG const);
-RK_ERR kMRMCreateModuleScope(RK_MRM_HANDLE *const, RK_MRM_BUF *const, VOID *,
-                             ULONG const, ULONG const, RK_MODULE *const);
+RK_ERR kMRMCreate(RK_MRM_HANDLE *const, RK_STRING, RK_MRM_BUF *const, VOID *,
+                  ULONG const, ULONG const);
+RK_ERR kMRMCreateModuleScope(RK_MRM_HANDLE *const, RK_STRING,
+                             RK_MRM_BUF *const, VOID *, ULONG const,
+                             ULONG const, RK_MODULE *const);
 RK_ERR kMRMDestroy(RK_MRM_HANDLE *const);
 RK_MRM_BUF *kMRMReserve(RK_MRM_HANDLE const);
 RK_ERR kMRMPublish(RK_MRM_HANDLE const, RK_MRM_BUF *const, VOID const *);

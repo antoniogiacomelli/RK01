@@ -65,7 +65,7 @@ VOID kApplicationInit(VOID)
 
 #if (K_HAL_HAS_WATCHDOG == 1U)
     kHalWatchdogConfigure();
-    AppCheck_(kTimerCreate(&watchdogTimer, 0UL,
+    AppCheck_(kTimerCreate(&watchdogTimer, "WdgTmr", 0UL,
                            RK_MS_TO_TICKS(K_HAL_WATCHDOG_FEED_MS),
                            WatchdogKick_, RK_NO_ARGS, RK_TIMER_RELOAD));
 #else
