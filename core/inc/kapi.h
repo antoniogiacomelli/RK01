@@ -612,6 +612,38 @@ RK_ERR kObjPartitionsInit(VOID);
     RK_DOMAIN DOMAIN RK_DOMAIN_DESC_ATTR;
 #endif
 
+#ifndef RK_DECLARE_DOMAIN_RAM
+#define RK_DECLARE_DOMAIN_RAM(RAM_LAYOUT, ...)                                  \
+    typedef struct                                                              \
+    {                                                                          \
+        __VA_ARGS__                                                            \
+    } RAM_LAYOUT;
+#endif
+
+#ifndef RK_DOMAIN_RAM_MEMBER
+#define RK_DOMAIN_RAM_MEMBER(TYPE, NAME) TYPE NAME;
+#endif
+
+#ifndef RK_DOMAIN_RAM_ARRAY
+#define RK_DOMAIN_RAM_ARRAY(TYPE, NAME, COUNT) TYPE NAME[COUNT];
+#endif
+
+#ifndef RK_DOMAIN_RAM_STACK
+#define RK_DOMAIN_RAM_STACK(NAME, NWORDS) _Alignas(8) RK_STACK NAME[NWORDS];
+#endif
+
+#ifndef RK_DOMAIN_RAM_TASK_HANDLE
+#define RK_DOMAIN_RAM_TASK_HANDLE(NAME) RK_TASK_HANDLE NAME;
+#endif
+
+#ifndef RK_DOMAIN_RAM_MUTEX_HANDLE
+#define RK_DOMAIN_RAM_MUTEX_HANDLE(NAME) RK_MUTEX_HANDLE NAME;
+#endif
+
+#ifndef RK_DOMAIN_RAM_SEMAPHORE_HANDLE
+#define RK_DOMAIN_RAM_SEMAPHORE_HANDLE(NAME) RK_SEMAPHORE_HANDLE NAME;
+#endif
+
 #ifndef RK_DOMAIN_WINDOW_STATIC_ASSERT_
 #define RK_DOMAIN_WINDOW_STATIC_ASSERT_(RAM_LAYOUT, NBYTES)                    \
     _Static_assert(sizeof(RAM_LAYOUT) <= (NBYTES),                             \

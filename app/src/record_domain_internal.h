@@ -39,12 +39,11 @@ typedef struct
     BYTE nextSeq;
 } RecordState;
 
-typedef struct
-{
-    _Alignas(8) RK_STACK serverStack[RECORD_TASK_STACK_WORDS];
-    RecordState recordState;
-    RK_TASK_HANDLE serverHandle;
-} RECORD_DOMAIN_RAM;
+RK_DECLARE_DOMAIN_RAM(RECORD_DOMAIN_RAM,
+    RK_DOMAIN_RAM_STACK(serverStack, RECORD_TASK_STACK_WORDS)
+    RK_DOMAIN_RAM_MEMBER(RecordState, recordState)
+    RK_DOMAIN_RAM_TASK_HANDLE(serverHandle)
+)
 
 _Static_assert((RECORD_TASK_STACK_WORDS % 2U) == 0U,
                "Record task stack must be word-even");

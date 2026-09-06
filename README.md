@@ -92,12 +92,7 @@ not as proof that multi-domain isolation is practical on every MCU.
 | `middleware/inc/rkfs.h` | RKFS public interface. |
 | `middleware/src/rkfs.c` | RKFS facade over LittleFS on F401. |
 | `middleware/littlefs/` | Vendored LittleFS source subset. |
-| `tools/audit_domain_writable.sh` | Optional build audit for unexpected writable globals in explicitly declared domain implementation sources. |
-| `tools/board_harness.sh` | Build, flash and serial capture helper. |
 
-The public repo intentionally leaves out local build products, board logs,
-private harnesses, scratch scripts, `.DS_Store`, stack-usage files and personal
-IDE settings.
 
 ## Build Requirements
 
@@ -215,7 +210,7 @@ That places the task in the implicit `App` domain. Tasks in the same domain can
 share domain RAM directly and should protect shared mutable state with ordinary
 RK0-style services such as mutexes or semaphores.
 
-Use explicit domains only when there is a real fault-containment boundary:
+It is advisable to use more than a single domain only when there is a real fault-containment boundary:
 
 ```c
 RK_DECLARE_DOMAIN(controlDomain, controlRam, 4096U)
@@ -226,7 +221,8 @@ kDomainTaskInit(&controlDomain, &controlHandle, ControlTask, RK_NO_ARGS,
                 "Control", 256U, CONTROL_PRIO, RK_PREEMPT);
 ```
 
-For service-style domains, prefer a source bundle:
+And for each domain create its .c and .h:
+
 
 | File | Role |
 | --- | --- |
@@ -239,12 +235,11 @@ The typed declaration creates an exact MPU-sized writable window while giving
 the domain implementation a normal C struct view:
 
 ```c
-typedef struct
-{
-    _Alignas(8) RK_STACK serverStack[256U];
-    RecordState recordState;
-    RK_TASK_HANDLE serverHandle;
-} RECORD_DOMAIN_RAM;
+RK_DECLARE_DOMAIN_RAM(RECORD_DOMAIN_RAM,
+    RK_DOMAIN_RAM_STACK(serverStack, 256U)
+    RK_DOMAIN_RAM_MEMBER(RecordState, recordState)
+    RK_DOMAIN_RAM_TASK_HANDLE(serverHandle)
+)
 
 RK_DECLARE_TYPED_DOMAIN(recordDomain, recordDomainRam,
                         RECORD_DOMAIN_RAM, 2048U)
@@ -273,15 +268,38 @@ RK_ERR RecordDomainBoot(RECORD_DOMAIN_EXPORTS *exportsPtr)
 }
 ```
 
-The linker generically collects `KEEP(*(.rk_domain_ram*))` into
-`.rk_domain_ram`; it does not enumerate domain object files. BOOT validation
-still enforces TASK_RAM placement, power-of-two size, natural alignment,
-overlap checks, stack containment and topology finalisation before dispatch.
-`DOMAIN_IMPL_SRCS` declares sources that should be audited for unexpected
-writable globals; `make audit-domain-writable` runs the warning-only check.
+- The linker generically collects `KEEP(*(.rk_domain_ram*))` into
+`.rk_domain_ram`; it does not enumerate domain object files.
 
- 
-## Syscalls And Handles
+- BOOT validation still enforces TASK_RAM placement, **power-of-two size, natural alignment,
+overlap checks, stack containment and topology finalisation before dispatch.**
+
+`DOMAIN_IMPL_SRCS` declares files should not define unexpected writable globals in sections like:
+```
+.data
+.bss
+.sdata
+.sbss
+COMMON
+```
+It catches this kind of mistake:
+```c
+/* bad in a domain implementation file */
+static ULONG counter;
+```
+
+```c
+/* correct form */
+RK_DECLARE_DOMAIN_RAM(RECORD_DOMAIN_RAM,
+    RK_DOMAIN_RAM_MEMBER(ULONG, counter)
+    RK_DOMAIN_RAM_STACK(serverStack, RECORD_TASK_STACK_WORDS)
+    RK_DOMAIN_RAM_MEMBER(RecordState, recordState)
+    RK_DOMAIN_RAM_TASK_HANDLE(serverHandle)
+)
+```
+
+## Syscalls And Object Life Cycle
+
 
 Public `k*` APIs are callable from privileged BOOT code and from unprivileged
 task code. When the caller is unprivileged, wrappers enter SVC and the
@@ -296,8 +314,12 @@ dispatcher validates:
 
 ![User API call through SVC](docs/readme_svc_call.svg)
 
-Runtime kernel objects are fixed-capacity pool entries. Application code keeps
-opaque handles, not pointers to kernel control blocks:
+Kernel objects representation and usage is probably the most radical change when compared to RK0.
+RK0 tried to keep objects creation and access the less opaque as possible. In RK1 objects are fully
+opaque -- they are indeed a _number_ the kernel resolves. Every kernel object is a `RK_HANDLE` 'sub-class'.
+
+Another difference is that objects are dynamic -- allocated/deallocated -- from object pools which maximum number is
+declared on configuration.
 
 ```c
 RK_DECLARE_LOCAL_SEMAPHORE(readySema)
@@ -314,16 +336,16 @@ Start with the RK0 interaction, then apply the RK01 memory rule.
 
 | Interaction | RK01 rule |
 | --- | --- |
-| Shared memory | Direct load/store is allowed only where the MPU maps the same RAM into the participating tasks. Use mutexes for shared-memory ownership. |
-| Asynchronous direct message | Transfers message ownership. By-reference messages require memory both sides can access; copied async messages can cross non-shared domain boundaries. Pool ceilings apply to this ownership contract. |
+| Shared memory | Direct load/store is allowed only where the MPU maps the same RAM into the participating tasks. Coordinate access for shared-memory between domains. |
+| Asynchronous direct message | Transfers message ownership. By-reference messages require memory both sides can access; copied async messages can cross non-shared domain boundaries. Priority ceilings apply to this ownership contract. |
 | Synchronous send/receive | Blocking copy rendezvous: the sender waits until the receiver copies the payload. There is no reply and no receiver priority substitution. |
 | Synchronous call/reply | Extended rendezvous: the caller waits for a reply and the server runs at caller effective priority while the call is queued or active. Syscall validation lets copied payloads cross non-shared domain boundaries. |
-| Cross-domain notification | Task events or copied messages. |
-| Cross-domain payload | Message queues, mailboxes, synchronous send/receive, synchronous call/reply or task-addressed copy messages. |
+| Cross-domain notification | Task events or indirect messages. |
+| Cross-domain payload through indirect messages | Message queues and mailboxes need to be declared with global scope so they can be seen by tasks of different domains.
+| Named message-passing synchronous send/receive, synchronous call/reply or task-addressed copy messages. |
 | Latest value | MRM is domain-local because leases are pointers. Use copied payloads or a small `RK_SHARED_MEM` snapshot across domains. |
 
-RK01 deliberately keeps both shared-state services and message-passing services.
-It does not force every local interaction into an actor model.
+RK01 deliberately keeps both shared-state services and message-passing services. _It does not force every local interaction into an actor model, you know better._
 
 ## Fault Diagnostics
 

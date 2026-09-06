@@ -35,4 +35,5 @@ scripts/*
 tests/*
 tools/*
 !tools/board_harness.sh
+!tools/audit_domain_writable.sh
 uncrustify/
