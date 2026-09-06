@@ -3,7 +3,7 @@
 RK01 is the RK0 kernel line with a Cortex-M MPU and an explicit kernel/user
 boundary.
 
-RK0 remains a flat real-time executive. Not a flaw. 
+RK0 remains a flat real-time executive; with all the benefits this provides for real-time, and drawbacks when it comes to corruption/fault containment.
 
 RK01 keeps the RK0 real-time model, but changes what happens when ordinary task code is wrong: task code runs
 unprivileged, kernel services are reached _through a system call, and domain-owned
