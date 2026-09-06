@@ -15,9 +15,9 @@ fault can be confined. Still, recovering from that fault is application-specific
 This repository is the first public RK01 source drop. 
 Current version: 0.1.0.
 
-## What RK01 Adds To RK0
+## Major Changes
 
-RK01 is not a better RK0; neither an embedded RTOS trying to be a GPOS. I
+RK01 is not a 'better' RK0; neither an embedded RTOS trying to be a GPOS. I
 t is still one statically linked firmware image for a microcontroller. The kernel, startup
 code, board port, privileged service tasks and build are trusted. Ordinary
 application tasks are treated as possibly defective after dispatch -- and if it fails, 
@@ -35,10 +35,12 @@ Immediate differences from RK0:
 | IPC rule | Pointer transfer is fine when firmware agrees. | By-reference direct messages are same-domain only; cross-domain data should be copied. |
 | Bad syscall pointers | A bad pointer can become a privileged fault if unchecked. | SVC validates user read/write/function ranges before privileged code dereferences them. |
 | Fault handling | Serious task faults usually become system faults. | Unprivileged MemManage faults can be contained, marked `FAULT_PENDING` and cleaned by PostProc. |
+| Performance | System calls, data validation, etc., are costy.  | Number up to know indicate RK01 is 3.7 times slower than RK0. Determinism is not importantly affected. | The user shall keep in mind the that every system call although bounded, is a way more work than a simple function call.
 | Documentation state | Mature RK0 docs exist outside the source tree. | First public drop uses this README as the primary public guide. |
 
 The short rule is: `RK0` is flat trusted real-time firmware; 
 `RK01` is RK0-style real-time with user space/kernel space.
+
 ## Architecture Sketch
 
 ![RK01 containment sketch](docs/readme_architecture_sketch.svg)
@@ -46,7 +48,7 @@ The short rule is: `RK0` is flat trusted real-time firmware;
 ## Containment Scope
 Its protection boundary is practical and local:
 
-- ordinary tasks run unprivileged and enter kernel services through SVC;
+- ordinary tasks run unprivileged and enter kernel services through Supervisor Calls;
 - kernel RAM, object pools, registries and privileged stacks remain
   privileged-only;
 - each domain provides a statically declared writable-authority boundary shared
@@ -57,9 +59,10 @@ Its protection boundary is practical and local:
   PostProc.
 
 The trusted base remains the kernel, startup code, board port, privileged
-service tasks, build, DMA setup, debug access and physical device access. RK01
-focuses on preventing defective unprivileged task code from corrupting kernel
-RAM, another domain's writable state or privileged service state through
+service tasks, build, DMA setup, debug access and physical device access. 
+
+RK01 focuses on preventing defective unprivileged task code from corrupting kernel
+RAM and another domain's writable state or privileged service state through
 ordinary bad-pointer mistakes.
 
 ## Delivered Supported Targets
@@ -149,129 +152,7 @@ Build with source-stepping-friendly optimisation:
 make -j4 ARCH=armv7m PLATFORM=stm32f401re OPT=-Og
 make -j4 ARCH=armv8m PLATFORM=mps2-an505 OPT=-Og
 ```
-
-## Default Application
-
-The default `APP_EXAMPLE=tiny` application is a small record console.
-
-On STM32F401RE:
-
-- USART2 on PA2/PA3 receives terminal input.
-- A privileged console driver task owns UART RX/TX for normal console traffic.
-- Ordinary task writes enter SVC and synchronously call that UART service; the
-  service executes the transaction at the caller's effective priority for the
-  extended call/reply rendezvous.
-- UART RX is interrupt-driven and delivered by the service to the current
-  foreground RX owner.
-- The foreground app console accepts CR, LF and CRLF endings.
-- Completed input lines are stored in a shared line ring, up to
-  `RK_CONF_CONSOLE_LINE_MAX_BYTES` bytes.
-- `EchoTask` runs unprivileged in an explicit `Echo` domain.
-- `EchoTask` parses commands such as `SET A 123` and `READ A`.
-- In the default mixed console, `RKMONITOR` enters SysMon diagnostics. Commands
-  such as `ps` are then accepted directly until `exit` or `quit`.
-- The Record service is a source-bundled `Rec` domain:
-  `record_domain.h` exposes copied request/reply types and
-  `RecordDomainBoot()`, while `record_domain_internal.h` keeps the private RAM
-  layout.
-- Echo calls Record through copied call/reply messages.
-- A privileged `FS` service task owns RKFS/LittleFS, reserved flash and the
-  STM32 flash controller.
-- Record slots are persisted in the reserved `FS_FLASH` region.
-
-Expected board banner:
-
-> `RK01 USART2 record console ready. SET A 123, READ A, RKMONITOR.`
-> `Record slots: 4, persisted in flash through rkfs.`
-
-Try `SET A 123`, `READ A`, `SET B 77`, `READ B`, `RKMONITOR`, `ps`, `exit`.
-
-The same application shape builds for the MPS2 AN505 target, but without
-STM32F401RE flash persistence.
-
-## Example Profiles
-
-Select examples with `APP_EXAMPLE`:
-
-```sh
-make -j4 APP_EXAMPLE=01-fleet
-make -j4 APP_EXAMPLE=02-isolated
-make -j4 APP_EXAMPLE=03-watchdog
-make -j4 APP_EXAMPLE=04-sysmon
-make -j4 APP_EXAMPLE=05-profile-preempt EXTRA_DEFS="-DNDEBUG -DRK_CONF_SYSTICK_DIV=1000"
-make -j4 APP_EXAMPLE=06-profile-ctxsw EXTRA_DEFS="-DNDEBUG"
-make -j4 APP_EXAMPLE=99-showcase
-```
-
-| Example | Focus |
-| --- | --- |
-| `tiny` | Record console, Echo/Record domains, copied call/reply, RKFS on F401. |
-| `01-fleet` | Explicit Control/Comms domains and copied task-addressed IPC. |
-| `02-isolated` | Isolated one-task domains exchanging copied messages. |
-| `03-watchdog` | STM32F401RE watchdog through the HAL, or a heartbeat task on targets without one. |
-| `04-sysmon` | Optional SysMon kernel diagnostic service. |
-| `05-profile-preempt` | RK0-style ThreadX preemptive scheduling counter profile. |
-| `06-profile-ctxsw` | RK0-style same-priority yield context-switch cycle profile. |
-| `99-showcase` | Larger combined example with App tasks, isolated tasks, explicit domains and copied IPC. |
-
-## Profiling
-
-The profiling examples mirror the RK0 profiling conditions on the
-STM32F401RE: Cortex-M4F at 80 MHz, `-O2`, `-DNDEBUG`, FPU disabled, debug
-symbols kept, stack-usage output enabled and stack-overflow checking not
-enabled.
-
-Run the preemptive scheduling counter profile with a 1 ms tick:
-
-```sh
-make board-run APP_EXAMPLE=05-profile-preempt \
-    SERIAL_PORT=/dev/cu.usbmodemXXXX \
-    BOARD_TIMEOUT=155 \
-    BOARD_FLASH_TOOL=openocd \
-    FPU=OFF \
-    EXTRA_DEFS="-DNDEBUG -DRK_CONF_SYSTICK_DIV=1000"
-```
-
-Run the context-switch cycle profile with the default 10 ms tick:
-
-```sh
-make board-run APP_EXAMPLE=06-profile-ctxsw \
-    SERIAL_PORT=/dev/cu.usbmodemXXXX \
-    BOARD_TIMEOUT=25 \
-    BOARD_FLASH_TOOL=openocd \
-    FPU=OFF \
-    EXTRA_DEFS="-DNDEBUG"
-```
-
-Captured board results from the RK01 STM32F401RE path:
-
-| Profile | Result |
-| --- | --- |
-| Preemptive scheduling | Five 30 s rounds, `errors=0`, final average `1441372` per task, max task-counter spread `1`. |
-| Context switch | Two 10 s rounds, raw PendSV min/last `385` cycles, raw max `409` cycles. With the RK0 `-7` cycle adjustment this is `378..402` cycles, about `4.7..5.0 us` at 80 MHz. |
-
-## Flashing And Board Capture
-
-Flash with the selected tool:
-
-```sh
-make flash ARCH=armv7m PLATFORM=stm32f401re FLASH_TOOL=openocd
-make flash ARCH=armv7m PLATFORM=stm32f401re FLASH_TOOL=st-flash
-make flash ARCH=armv7m PLATFORM=stm32f401re FLASH_TOOL=stm32programmer
-make flash ARCH=armv7m PLATFORM=stm32f401re FLASH_TOOL=jlink
-```
-
-Run the board harness:
-
-```sh
-make board-run SERIAL_PORT=/dev/cu.usbmodemXXXX
-make board-run BOARD_TIMEOUT=10
-make board-run BOARD_FLASH_TOOL=jlink SERIAL_PORT=/dev/cu.usbmodemXXXX
-```
-
-The harness builds, flashes, resets and captures a bounded UART log into
-`build-board/logs/`.
-
+ 
 ## Execution Model
 
 Startup remains simple: `Reset_Handler` enters `main()`, which calls
@@ -399,8 +280,7 @@ overlap checks, stack containment and topology finalisation before dispatch.
 `DOMAIN_IMPL_SRCS` declares sources that should be audited for unexpected
 writable globals; `make audit-domain-writable` runs the warning-only check.
 
-Cross-domain payload transfer should normally use copied IPC.
-
+ 
 ## Syscalls And Handles
 
 Public `k*` APIs are callable from privileged BOOT code and from unprivileged
