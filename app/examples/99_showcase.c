@@ -51,7 +51,7 @@ module-local synchronisers without declaring an RK_MODULE by hand.
 | FleetPlannerTask           |                            | FleetLinkTxTask            |
 | owns desired control state |                            | owns transmitted status    |
 |                            |                            |                            |
-| FleetTelemetryTask         | --- copied sync call ----> | FleetSupervisorTask        |
+| FleetTelemetryTask         | -- copied call/reply ----> | FleetSupervisorTask        |
 | asks for status            | <--- copied reply -------- | replies from comms state   |
 +----------------------------+                            +----------------------------+
 
@@ -94,13 +94,13 @@ Runs in fleetCommsModule. It receives copied orders, validates them and updates
 module-local comms state under fleetCommsMutex.
 
 o FleetSupervisorTask
-Runs in fleetCommsModule. It is a synchronous server: it accepts a copied status
-request, snapshots comms state under fleetCommsMutex and replies with a copied
-FleetStatusReply.
+Runs in fleetCommsModule. It is a synchronous call/reply server: it accepts a
+copied status request, snapshots comms state under fleetCommsMutex and replies
+with a copied FleetStatusReply.
 
 o FleetTelemetryTask
-Runs in fleetControlModule. It periodically sends a copied synchronous request
-to FleetSupervisorTask and logs the copied reply.
+Runs in fleetControlModule. It periodically makes a copied call/reply request to
+FleetSupervisorTask and logs the copied reply.
 
 ***************************************************************************************/
 

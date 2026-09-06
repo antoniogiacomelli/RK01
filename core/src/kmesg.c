@@ -555,13 +555,13 @@ static VOID kMesgSetOwner_(RK_MESG *const mesgPtr,
 
     if (oldOwnerPtr != NULL)
     {
-        /* Removing the message may drop the old owner's ceiling boost. */
+        /* Removing the message may drop the old owner's ceiling effect. */
         kTaskUpdateEffectivePrioChain(oldOwnerPtr);
     }
 
     if (ownerPtr != NULL)
     {
-        /* Adding the message may apply the new owner's ceiling boost. */
+        /* Adding the message may apply the new owner's ceiling effect. */
         kTaskUpdateEffectivePrioChain(ownerPtr);
     }
 }

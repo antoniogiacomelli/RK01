@@ -8,13 +8,14 @@
 /******************************************************************************/
 
 /*
- * Default application: interrupt-driven board-console RX to application tasks.
+ * Default application: console-service RX to application tasks.
  *
- * The target-specific console IRQ writes received bytes into a shared circular
- * buffer. CR, LF and CRLF terminal endings are accepted. When a complete line
- * is registered, the ISR posts a global counting semaphore. EchoTask consumes
- * one semaphore count per complete line, parses console commands and calls the
- * Record module through synchronous copied messages.
+ * The privileged console driver task writes received bytes into a shared
+ * circular buffer. CR, LF and CRLF terminal endings are accepted. When a
+ * complete line is registered, the console callback posts a global counting
+ * semaphore. EchoTask consumes one semaphore count per complete line, parses
+ * console commands and calls the Record module through copied call/reply
+ * messages.
  */
 
 #include <kapi.h>
@@ -39,7 +40,7 @@
 #endif
 
 /* One extra byte stores the CR or LF terminator inside the shared buffer. */
-#define APP_LINE_BYTES (64UL)
+#define APP_LINE_BYTES ((ULONG)RK_CONF_CONSOLE_LINE_MAX_BYTES)
 #define APP_LINE_BUF_BYTES (APP_LINE_BYTES + 1UL)
 #define APP_LINE_RING_BYTES (APP_LINE_BUF_BYTES * 4UL)
 #define APP_LINE_RING_CAP_BYTES (APP_LINE_RING_BYTES - 1UL)
@@ -53,6 +54,7 @@
 #else
 #define APP_CONSOLE_NAME "console"
 #endif
+#define APP_SYSMON_TOKEN "RKMONITOR"
 
 _Static_assert(APP_LINE_BUF_BYTES <= RK_CONSOLE_WRITE_MAX_BYTES,
                "Echo line must fit one bounded console write");
@@ -132,17 +134,17 @@ typedef struct
 _Static_assert(sizeof(RECORD) == 4UL,
                "RECORD must stay BYTE seq, BYTE nome, USHORT valor");
 _Static_assert((sizeof(RecordRequest) % RK_WORD_SIZE) == 0UL,
-               "RecordRequest must be word-sized for synchronous messages");
+               "RecordRequest must be word-sized for call/reply");
 _Static_assert((sizeof(RecordReply) % RK_WORD_SIZE) == 0UL,
-               "RecordReply must be word-sized for synchronous messages");
+               "RecordReply must be word-sized for call/reply");
 
 /*
- * ISR-to-task line ring.
+ * Console-service-to-task line ring.
  *
- * The UART IRQ writes each byte into bytes[]. When Enter arrives, the IRQ also
- * writes the CR or LF byte. That delimiter is the in-band "line complete"
- * marker. The counting semaphore below counts how many such delimiters are
- * ready for EchoTask.
+ * The console RX callback writes each byte into bytes[]. When Enter arrives,
+ * the callback also writes the CR or LF byte. That delimiter is the in-band
+ * "line complete" marker. The counting semaphore below counts how many such
+ * delimiters are ready for EchoTask.
  *
  *   bytes[]:
  *   +---+---+----+---+---+         +---+
@@ -158,15 +160,19 @@ _Static_assert((sizeof(RecordReply) % RK_WORD_SIZE) == 0UL,
  *   full:  next(writePos) == readPos
  *
  * Available room is derived from readPos/writePos. We do not store a room
- * field because both the IRQ and the task would have to update it atomically.
+ * field because both the console service and the task would have to update it
+ * atomically.
  *
- *   UART IRQ owns: writePos and bytes[writePos]
- *   EchoTask owns: readPos
+ *   Console service owns: writePos and bytes[writePos]
+ *   Console service owns: lineBytes and dropLf
+ *   EchoTask owns:        readPos
  */
 typedef struct
 {
     volatile ULONG readPos;      /* Next bytes[] slot EchoTask will read. */
-    volatile ULONG writePos;     /* Next bytes[] slot the UART IRQ will fill. */
+    volatile ULONG writePos;     /* Next slot the console service will fill. */
+    volatile ULONG lineBytes;    /* Current unterminated line length. */
+    volatile RK_BOOL dropLf;     /* CRLF suppression state. */
     volatile BYTE bytes[APP_LINE_RING_BYTES];
 } AppLineRing;
 
@@ -192,20 +198,19 @@ RK_DECLARE_MODULE_TASK(fsTaskHandle, rkFsServerTask)
 static RecordState *recordState;
 
 /*
- * Shared ISR-to-task circular line buffer.
+ * Shared console-service-to-task circular line buffer.
  *
- * The ISR writes ordinary bytes and the CR/LF delimiter into this ring. The
- * delimiter marks a complete line, and lineReadySemaHandle counts completed
- * delimiters, so no message queue object, per-message payload or stored length
- * field is needed.
+ * The console RX callback writes ordinary bytes and the CR/LF delimiter into
+ * this ring. The delimiter marks a complete line, and lineReadySemaHandle
+ * counts completed delimiters, so no message queue object, per-message payload
+ * or stored length field is needed.
  *
- * The ring lives in shared RAM because it is touched by handler mode and by an
- * unprivileged module task. The small CR/LF parser variables below are
- * ISR-owned only, so they can remain ordinary application globals.
+ * The ring lives in shared RAM because it is touched by the privileged console
+ * service and by an unprivileged module task. The CR/LF parser state lives in
+ * the same shared object so the service callback never writes ordinary
+ * App-module globals.
  */
 static AppLineRing sharedLineRing K_ALIGN(4) RK_SHARED_RAM_ATTR;
-static RK_BOOL isrDropLf;
-static ULONG isrLineBytes;
 
 /*
  * Fail fast during example construction/runtime.
@@ -256,9 +261,21 @@ static ULONG AppTextLen_(CHAR const *const textPtr, ULONG const maxBytes)
 
 static VOID AppConsoleWriteText_(CHAR const *const textPtr)
 {
-    AppCheck_(kConsoleWrite(textPtr,
-                            AppTextLen_(textPtr,
-                                        RK_CONSOLE_WRITE_MAX_BYTES)));
+    CHAR const *chunkPtr = textPtr;
+
+    while ((chunkPtr != NULL) && (*chunkPtr != '\0'))
+    {
+        ULONG const bytes =
+            AppTextLen_(chunkPtr, RK_CONSOLE_WRITE_MAX_BYTES);
+
+        if (bytes == 0UL)
+        {
+            return;
+        }
+
+        AppCheck_(kConsoleWrite(chunkPtr, bytes));
+        chunkPtr += bytes;
+    }
 }
 
 static BYTE AppUpper_(BYTE const ch)
@@ -504,6 +521,48 @@ static RK_BOOL AppParseRecordCommand_(BYTE const *const linePtr,
     return (RK_FALSE);
 }
 
+static RK_ERR AppMaybeSubmitSysMonCommand_(BYTE const *const linePtr,
+                                           ULONG const lineBytes,
+                                           RK_BOOL *const handledPtr)
+{
+    static CHAR const helpCommand[] = "help";
+    ULONG pos = 0UL;
+    ULONG tokenStart;
+    ULONG tokenBytes;
+
+    *handledPtr = RK_FALSE;
+
+    AppSkipSpaces_(linePtr, lineBytes, &pos);
+    if (pos >= lineBytes)
+    {
+        return (RK_ERR_SUCCESS);
+    }
+
+    tokenStart = pos;
+    while ((pos < lineBytes) &&
+           (AppIsSeparator_(linePtr[pos]) != RK_TRUE))
+    {
+        pos++;
+    }
+    tokenBytes = pos - tokenStart;
+
+    if (AppTokenEquals_(linePtr, tokenStart, tokenBytes,
+                        APP_SYSMON_TOKEN) != RK_TRUE)
+    {
+        return (RK_ERR_SUCCESS);
+    }
+
+    *handledPtr = RK_TRUE;
+    AppSkipValueSeparators_(linePtr, lineBytes, &pos);
+    if (pos >= lineBytes)
+    {
+        return (kSysMonCommand(helpCommand,
+                               (ULONG)(sizeof(helpCommand) - 1UL)));
+    }
+
+    return (kSysMonCommand((CHAR const *)&linePtr[pos], lineBytes - pos));
+}
+
 static RK_ERR AppRecordCall_(RecordRequest *const reqPtr,
                              RecordReply *const replyPtr)
 {
@@ -598,8 +657,8 @@ static ULONG AppLineRingNext_(ULONG const pos)
  * Compute free bytes from the two positions.
  *
  * This is called by the producer. If EchoTask advances readPos at the same
- * time, the ISR may briefly underestimate free room, which is safe: at worst a
- * byte is dropped even though space just became available.
+ * time, the producer may briefly underestimate free room, which is safe: at
+ * worst a byte is dropped even though space just became available.
  */
 static ULONG AppLineRingFree_(VOID)
 {
@@ -615,12 +674,13 @@ static ULONG AppLineRingFree_(VOID)
 }
 
 /*
- * Add one byte to the ISR-owned producer side of the ring.
+ * Add one byte to the console-service-owned producer side of the ring.
  *
  * Ordinary data bytes reserve one extra slot for the future CR/LF terminator,
  * so a partially typed line cannot consume the last byte needed to publish it.
  */
-static RK_BOOL AppLineRingWriteFromIsr_(BYTE const ch, RK_BOOL const reserveTerm)
+static RK_BOOL AppLineRingWriteFromConsole_(BYTE const ch,
+                                            RK_BOOL const reserveTerm)
 {
     ULONG const neededFree = (reserveTerm == RK_TRUE) ? 2UL : 1UL;
     ULONG const freeBytes = AppLineRingFree_();
@@ -638,14 +698,14 @@ static RK_BOOL AppLineRingWriteFromIsr_(BYTE const ch, RK_BOOL const reserveTerm
 }
 
 /*
- * Publish one completed line from interrupt context.
+ * Publish one completed line from the console-service callback.
  *
  * The terminator is a real byte in the shared ring. EchoTask later reads bytes
  * until it sees this terminator.
  */
-static VOID AppLineSubmitFromIsr_(BYTE const terminator)
+static VOID AppLineSubmitFromConsole_(BYTE const terminator)
 {
-    if (AppLineRingWriteFromIsr_(terminator, RK_FALSE) == RK_TRUE)
+    if (AppLineRingWriteFromConsole_(terminator, RK_FALSE) == RK_TRUE)
     {
         if (lineReadySemaHandle != RK_NULL_HANDLE)
         {
@@ -653,47 +713,47 @@ static VOID AppLineSubmitFromIsr_(BYTE const terminator)
         }
     }
 
-    isrLineBytes = 0UL;
+    sharedLineRing.lineBytes = 0UL;
 }
 
 /*
- * Console RX byte callback, called by the board-specific UART IRQ handler.
+ * Console RX byte callback, called by the privileged UART driver task.
  *
  * CR, LF and CRLF are accepted as Enter. For CRLF, the CR submits the line and
- * the following LF is consumed by isrDropLf so the terminal does not produce an
- * empty second line.
+ * the following LF is consumed by the shared dropLf flag so the terminal does not
+ * produce an empty second line.
  */
-static VOID AppLineByteFromIsr_(BYTE const ch)
+static VOID AppLineByteFromConsole_(BYTE const ch)
 {
     if (ch == (BYTE)'\n')
     {
-        if (isrDropLf == RK_TRUE)
+        if (sharedLineRing.dropLf == RK_TRUE)
         {
-            isrDropLf = RK_FALSE;
+            sharedLineRing.dropLf = RK_FALSE;
             return;
         }
 
-        AppLineSubmitFromIsr_((BYTE)'\n');
+        AppLineSubmitFromConsole_((BYTE)'\n');
         return;
     }
 
     if (ch == (BYTE)'\r')
     {
-        AppLineSubmitFromIsr_((BYTE)'\r');
-        isrDropLf = RK_TRUE;
+        AppLineSubmitFromConsole_((BYTE)'\r');
+        sharedLineRing.dropLf = RK_TRUE;
         return;
     }
 
-    isrDropLf = RK_FALSE;
+    sharedLineRing.dropLf = RK_FALSE;
 
-    if (isrLineBytes >= APP_LINE_BYTES)
+    if (sharedLineRing.lineBytes >= APP_LINE_BYTES)
     {
         return;
     }
 
-    if (AppLineRingWriteFromIsr_(ch, RK_TRUE) == RK_TRUE)
+    if (AppLineRingWriteFromConsole_(ch, RK_TRUE) == RK_TRUE)
     {
-        isrLineBytes++;
+        sharedLineRing.lineBytes++;
     }
 }
 
@@ -1074,9 +1134,9 @@ int main(void)
  *   2. Create the module RAM domains.
  *   3. Start the flash filesystem service when this target has one.
  *   4. Start RecordTask and its synchronous-message endpoint.
- *   5. Create the global counting semaphore used by the UART IRQ.
+ *   5. Create the global counting semaphore used by console RX.
  *   6. Start EchoTask as the console front-end.
- *   7. Enable console RX interrupts after the shared objects exist.
+ *   7. Claim foreground console RX for EchoTask's line feeder.
  */
 VOID kApplicationInit(VOID)
 {
@@ -1092,7 +1152,7 @@ VOID kApplicationInit(VOID)
     AppCheck_(kModuleInit(&fsModule, (BYTE *)&fsRam, sizeof(fsRam), "FS"));
     /*
      * RKFS owns reserved flash and STM32 flash-controller MMIO. Keep callers
-     * isolated by exposing it only through copied synchronous messages.
+     * isolated by exposing it only through copied call/reply.
      */
     AppCheck_(kTaskInitPrivileged(&fsTaskHandle, rkFsServerTask, &fsRam,
                                   "FS", fsRam.serverStack, RKFS_STACK_WORDS,
@@ -1110,14 +1170,15 @@ VOID kApplicationInit(VOID)
     AppCheck_(kModuleTaskInit(&echoModule, &echoTaskHandle, EchoTask,
                               RK_NO_ARGS, "Echo", TASK_STACK_WORDS,
                               ECHO_TASK_PRIO, RK_PREEMPT));
-    kBoardConsoleRxIsrEnable(AppLineByteFromIsr_);
+    AppCheck_(kConsoleRxClaim(AppLineByteFromConsole_));
+    AppCheck_(kSysMonInit());
 }
 
 /*
  * Record task.
  *
  * RecordTask is the only owner of RecordState. Other modules use copied
- * synchronous calls, so no caller can keep a raw pointer into the record ring.
+ * call/reply, so no caller can keep a raw pointer into the record ring.
  */
 VOID RecordTask(VOID *args)
 {
@@ -1183,15 +1244,16 @@ VOID EchoTask(VOID *args)
 {
     static CHAR const banner[] =
         "\r\nRK01 " APP_CONSOLE_NAME
-        " record console ready. SET A 123, READ A.\r\n"
+        " record console ready. SET A 123, READ A, RKMONITOR help.\r\n"
 #if defined(RK_MCU_F401RE)
         "Record slots: 4, persisted in flash through rkfs.\r\n";
 #else
         "Record slots: 4, RAM-only on this target.\r\n";
 #endif
     static CHAR const usage[] =
-        "ERR use SET X 123, X=123 or READ X\r\n";
+        "ERR use SET X 123, X=123, READ X or RKMONITOR help\r\n";
     static CHAR const serviceErr[] = "ERR record service\r\n";
+    static CHAR const sysMonErr[] = "ERR sysmon\r\n";
     static CHAR const storageErr[] = "ERR storage\r\n";
     static CHAR const notFound[] = "NOT FOUND ";
 
@@ -1203,6 +1265,7 @@ VOID EchoTask(VOID *args)
     {
         BYTE line[APP_LINE_BUF_BYTES];
         ULONG bytes = 0UL;
+        RK_BOOL handledBySysMon = RK_FALSE;
         RecordRequest req;
         RecordReply reply;
         RK_ERR err;
@@ -1215,6 +1278,16 @@ VOID EchoTask(VOID *args)
         }
         if (bytes == 0UL)
         {
+            continue;
+        }
+
+        err = AppMaybeSubmitSysMonCommand_(line, bytes, &handledBySysMon);
+        if (handledBySysMon == RK_TRUE)
+        {
+            if (err != RK_ERR_SUCCESS)
+            {
+                AppConsoleWriteText_(sysMonErr);
+            }
             continue;
         }
 

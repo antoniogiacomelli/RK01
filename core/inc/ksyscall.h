@@ -143,6 +143,8 @@ extern "C"
 #define RK_SYSCALL_TIMER_CANCEL (243UL)
 #define RK_SYSCALL_TIMER_RELOAD (244UL)
 
+#define RK_SYSCALL_SYSMON_COMMAND (250UL)
+
 #define RK_SYSCALL_TRACE_INIT (260UL)
 #define RK_SYSCALL_TRACE_POLL (261UL)
 #define RK_SYSCALL_TRACE_INPUT_SIGNAL (262UL)
@@ -413,6 +415,9 @@ RK_ERR kSynchMesgAcceptSyscall(RK_EXCEPTION_FRAME *const framePtr,
                                VOID *const recvPtr,
                                ULONG *const reqBytesPtr,
                                RK_TICK const timeout);
+RK_ERR kConsoleWriteSyscall(RK_EXCEPTION_FRAME *const framePtr,
+                            RK_SYNCH_ATTR const *const attrPtr,
+                            RK_TICK const timeout);
 #endif
 
 #ifdef __cplusplus

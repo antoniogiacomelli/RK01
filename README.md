@@ -160,22 +160,31 @@ The default `APP_EXAMPLE=tiny` application is a small record console.
 On STM32F401RE:
 
 - USART2 on PA2/PA3 receives terminal input.
-- The RX interrupt accepts CR, LF and CRLF endings.
-- Completed input lines are stored in a shared line ring, up to 64 bytes.
+- A privileged console driver task owns UART RX/TX for normal console traffic.
+- Ordinary task writes enter SVC and synchronously call that UART service; the
+  service executes the transaction at the caller's effective priority for the
+  extended call/reply rendezvous.
+- UART RX is interrupt-driven and delivered by the service to the current
+  foreground RX owner.
+- The foreground app console accepts CR, LF and CRLF endings.
+- Completed input lines are stored in a shared line ring, up to
+  `RK_CONF_CONSOLE_LINE_MAX_BYTES` bytes.
 - `EchoTask` runs unprivileged in an explicit `Echo` module.
 - `EchoTask` parses commands such as `SET A 123` and `READ A`.
+- In the default mixed console, SysMon diagnostics are routed explicitly with
+  `RKMONITOR <command>`, for example `RKMONITOR ps`.
 - `RecordTask` runs unprivileged in an explicit `Rec` module.
-- Echo calls Record through copied synchronous messages.
+- Echo calls Record through copied call/reply messages.
 - A privileged `FS` service task owns RKFS/LittleFS, reserved flash and the
   STM32 flash controller.
 - Record slots are persisted in the reserved `FS_FLASH` region.
 
 Expected board banner:
 
-> `RK01 USART2 record console ready. SET A 123, READ A.`
+> `RK01 USART2 record console ready. SET A 123, READ A, RKMONITOR help.`
 > `Record slots: 4, persisted in flash through rkfs.`
 
-Try `SET A 123`, `READ A`, `SET B 77` and `READ B`.
+Try `SET A 123`, `READ A`, `SET B 77`, `READ B` and `RKMONITOR ps`.
 
 The same application shape builds for the MPS2 AN505 target, but without
 STM32F401RE flash persistence.
@@ -194,11 +203,11 @@ make -j4 APP_EXAMPLE=99-showcase
 
 | Example | Focus |
 | --- | --- |
-| `tiny` | Record console, Echo/Record modules, copied synchronous calls, RKFS on F401. |
+| `tiny` | Record console, Echo/Record modules, copied call/reply, RKFS on F401. |
 | `01-fleet` | Explicit Control/Comms modules and copied task-addressed IPC. |
 | `02-isolated` | Isolated one-task modules exchanging copied messages. |
 | `03-watchdog` | STM32F401RE watchdog through the HAL, or a heartbeat task on targets without one. |
-| `04-sysmon` | Optional UART diagnostic monitor. |
+| `04-sysmon` | Optional SysMon kernel diagnostic service. |
 | `99-showcase` | Larger combined example with App tasks, isolated tasks, explicit modules and copied IPC. |
 
 ## Flashing And Board Capture
@@ -322,16 +331,18 @@ kSemaphorePend(readySema, RK_WAIT_FOREVER);
 kSemaphoreDestroy(&readySema);
 ```
 
-## IPC Rule
+## Synchronisation And IPC Contracts
 
 Start with the RK0 interaction, then apply the RK01 memory rule.
 
 | Interaction | RK01 rule |
 | --- | --- |
-| Same-module shared state | Direct load/store is allowed; use mutexes/semaphores/sleep queues as needed. |
+| Shared memory | Direct load/store is allowed only where the MPU maps the same RAM into the participating tasks. Use mutexes for shared-memory ownership. |
+| Asynchronous direct message | Transfers message ownership. By-reference messages require memory both sides can access; copied async messages can cross non-shared module boundaries. Pool ceilings apply to this ownership contract. |
+| Synchronous send/receive | Blocking copy rendezvous: the sender waits until the receiver copies the payload. There is no reply and no receiver priority substitution. |
+| Synchronous call/reply | Extended rendezvous: the caller waits for a reply and the server runs at caller effective priority while the call is queued or active. Syscall validation lets copied payloads cross non-shared module boundaries. |
 | Cross-module notification | Task events or copied messages. |
-| Cross-module payload | Message queues, mailboxes, synchronous messages or task-addressed copy messages. |
-| Direct by-reference message | Only when sender and receiver can both access the message pool memory. Same-module is the normal case. |
+| Cross-module payload | Message queues, mailboxes, synchronous send/receive, synchronous call/reply or task-addressed copy messages. |
 | Latest value | MRM is module-local because leases are pointers. Use copied payloads or a small `RK_SHARED_MEM` snapshot across modules. |
 
 RK01 deliberately keeps both shared-state services and message-passing services.
@@ -359,6 +370,7 @@ Use the narrowest public header that fits the code:
 | --- | --- |
 | `kapi_app.h` | Ordinary App tasks, local objects, copied IPC, timers, sleep and logging. |
 | `kapi_module.h` | BOOT code that declares explicit modules, isolated tasks or shared memory. |
+| `kconsole.h` | Privileged console UART service, foreground RX ownership and bounded console writes. |
 | `kapi_diag.h` | Optional diagnostics such as SysMon object naming and trace snapshots. |
 | `kapi_trusted.h` | Privileged service setup and low-level trusted construction. |
 | `kapi.h` | Compatibility umbrella. |

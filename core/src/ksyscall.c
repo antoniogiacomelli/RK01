@@ -30,6 +30,7 @@
 #include <ksharedmem.h>
 #include <ksleepq.h>
 #include <ksynchmesg.h>
+#include <ksysmon.h>
 #include <ktaskevents.h>
 #include <ktimer.h>
 #include <ktrace.h>
@@ -2017,6 +2018,24 @@ static VOID kSyscallDispatchActive_(RK_EXCEPTION_FRAME *const framePtr)
             break;
 #endif
 
+#if (RK_CONF_SYSMON == ON)
+        case RK_SYSCALL_SYSMON_COMMAND:
+            if (arg1 >= (ULONG)RK_CONF_SYSMON_LINE_LEN)
+            {
+                ret = RK_ERR_INVALID_PARAM;
+            }
+            else
+            {
+                ret = kSyscallUserReadRequired_((CHAR const *)(UINTPTR)arg0,
+                                                arg1);
+                if (ret == RK_ERR_SUCCESS)
+                {
+                    ret = kSysMonCommand((CHAR const *)(UINTPTR)arg0, arg1);
+                }
+            }
+            break;
+#endif
+
 #if (RK_CONF_TRACE == ON)
         /* Trace console and snapshot services. */
         case RK_SYSCALL_TRACE_INIT:
@@ -2229,23 +2248,9 @@ static VOID kSyscallDispatchActive_(RK_EXCEPTION_FRAME *const framePtr)
 
         /* Miscellaneous public services. */
         case RK_SYSCALL_CONSOLE_WRITE:
-            if (arg1 == 0UL)
-            {
-                ret = RK_ERR_SUCCESS;
-            }
-            else if (arg1 > RK_CONSOLE_WRITE_MAX_BYTES)
-            {
-                ret = RK_ERR_INVALID_PARAM;
-            }
-            else
-            {
-                ret = kSyscallUserReadRequired_((VOID const *)(UINTPTR)arg0,
-                                                arg1);
-                if (ret == RK_ERR_SUCCESS)
-                {
-                    ret = kConsoleWrite((CHAR const *)(UINTPTR)arg0, arg1);
-                }
-            }
+            ret = kConsoleWriteSyscall(
+                framePtr, (RK_SYNCH_ATTR const *)(UINTPTR)arg0,
+                (RK_TICK)arg1);
             break;
 
         case RK_SYSCALL_GET_VERSION:

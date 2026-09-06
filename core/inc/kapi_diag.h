@@ -23,6 +23,7 @@ extern "C" {
 #if (RK_CONF_SYSMON == ON)
 RK_ERR kSysMonInit(VOID);
 VOID kSysMonPoll(VOID);
+RK_ERR kSysMonCommand(CHAR const *linePtr, ULONG lineBytes);
 RK_ERR kSysMonObjectNameSet(RK_HANDLE const objHandle,
                             CHAR const *const namePtr);
 #else
@@ -35,6 +36,14 @@ static inline RK_ERR kSysMonInit(VOID)
 RK_FORCE_INLINE
 static inline VOID kSysMonPoll(VOID)
 {
+}
+
+RK_FORCE_INLINE
+static inline RK_ERR kSysMonCommand(CHAR const *linePtr, ULONG lineBytes)
+{
+    K_UNUSE(linePtr);
+    K_UNUSE(lineBytes);
+    return (RK_ERR_SUCCESS);
 }
 
 RK_FORCE_INLINE

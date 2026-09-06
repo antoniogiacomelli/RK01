@@ -110,10 +110,72 @@
 #define RK_OBJ_MAX_NAME_LEN RK_CONF_MAX_NAME_LEN
 #endif
 
+#ifndef RK_CONF_MIN_PRIO
+#define RK_CONF_MIN_PRIO 31
+#endif
+
+/***[ KERNEL CONSOLE UART SERVICE ********************************************/
+/*
+ * The console UART is owned by a privileged kernel driver task. The low-level
+ * board path stays available for panic/early output, but normal RX ownership and
+ * synchronous TX requests flow through this service.
+ */
+#ifndef RK_CONF_CONSOLE_SERVICE_STACKSIZE
+#define RK_CONF_CONSOLE_SERVICE_STACKSIZE (128U)
+#endif
+
+#ifndef RK_CONF_CONSOLE_SERVICE_PRIO
+#define RK_CONF_CONSOLE_SERVICE_PRIO RK_CONF_MIN_PRIO
+#endif
+
+#ifndef RK_CONF_CONSOLE_SERVICE_POLL_TICKS
+#define RK_CONF_CONSOLE_SERVICE_POLL_TICKS (1U)
+#endif
+
+/* Maximum printable bytes in one terminal command line, excluding CR/LF/NUL. */
+#ifndef RK_CONF_CONSOLE_LINE_MAX_BYTES
+#define RK_CONF_CONSOLE_LINE_MAX_BYTES (64U)
+#endif
+
+#ifndef RK_CONF_CONSOLE_RX_PENDING_LINES
+#define RK_CONF_CONSOLE_RX_PENDING_LINES (1U)
+#endif
+
+#ifndef RK_CONF_CONSOLE_RX_BUFFER_BYTES
+#define RK_CONF_CONSOLE_RX_BUFFER_BYTES                                      \
+    ((RK_CONF_CONSOLE_LINE_MAX_BYTES + 1U) * RK_CONF_CONSOLE_RX_PENDING_LINES)
+#endif
+
+#ifndef RK_CONF_CONSOLE_WRITE_MAX_BYTES
+#define RK_CONF_CONSOLE_WRITE_MAX_BYTES                                  \
+    (RK_CONF_CONSOLE_LINE_MAX_BYTES + 1UL)
+#endif
+
+#if (RK_CONF_CONSOLE_SERVICE_STACKSIZE < 128U)
+#error "RK_CONF_CONSOLE_SERVICE_STACKSIZE must be at least 128 words"
+#endif
+#if (RK_CONF_CONSOLE_SERVICE_PRIO > RK_CONF_MIN_PRIO)
+#error "RK_CONF_CONSOLE_SERVICE_PRIO must be <= RK_CONF_MIN_PRIO"
+#endif
+#if (RK_CONF_CONSOLE_SERVICE_POLL_TICKS == 0U)
+#error "RK_CONF_CONSOLE_SERVICE_POLL_TICKS must be non-zero"
+#endif
+#if (RK_CONF_CONSOLE_LINE_MAX_BYTES < 8U)
+#error "RK_CONF_CONSOLE_LINE_MAX_BYTES must be at least 8"
+#endif
+#if (RK_CONF_CONSOLE_RX_PENDING_LINES == 0U)
+#error "RK_CONF_CONSOLE_RX_PENDING_LINES must be non-zero"
+#endif
+#if (RK_CONF_CONSOLE_RX_BUFFER_BYTES < (RK_CONF_CONSOLE_LINE_MAX_BYTES + 1U))
+#error "RK_CONF_CONSOLE_RX_BUFFER_BYTES must hold at least one full line"
+#endif
+#if (RK_CONF_CONSOLE_WRITE_MAX_BYTES == 0UL)
+#error "RK_CONF_CONSOLE_WRITE_MAX_BYTES must be non-zero"
+#endif
 
 /***[ SYSTEM MONITOR TERMINAL ************************************************/
 #ifndef RK_CONF_SYSMON
-#define RK_CONF_SYSMON (OFF)
+#define RK_CONF_SYSMON (ON)
 #endif
 
 #if ((RK_CONF_SYSMON != ON) && (RK_CONF_SYSMON != OFF))
@@ -128,13 +190,17 @@
 #define RK_CONF_SYSMON_PRIO (30U)
 #endif
 #ifndef RK_CONF_SYSMON_LINE_LEN
-#define RK_CONF_SYSMON_LINE_LEN (32U)
+#define RK_CONF_SYSMON_LINE_LEN (RK_CONF_CONSOLE_LINE_MAX_BYTES + 1U)
 #endif
 #ifndef RK_CONF_SYSMON_POLL_TICKS
 #define RK_CONF_SYSMON_POLL_TICKS (50U)
 #endif
 #ifndef RK_CONF_SYSMON_SNAPSHOT_MAX
+#if defined(STM32F401xE)
+#define RK_CONF_SYSMON_SNAPSHOT_MAX (8U)
+#else
 #define RK_CONF_SYSMON_SNAPSHOT_MAX (16U)
+#endif
 #endif
 #if (RK_CONF_SYSMON_LINE_LEN < 8U)
 #error "RK_CONF_SYSMON_LINE_LEN must be at least 8"
@@ -144,49 +210,6 @@
 #endif
 #if (RK_CONF_SYSMON_SNAPSHOT_MAX == 0U)
 #error "RK_CONF_SYSMON_SNAPSHOT_MAX must be non-zero"
-#endif
-#endif
-
-/***[ KERNEL TRACE CONSOLE ***************************************************/
-#ifndef RK_CONF_TRACE_SUPPORTED
-#define RK_CONF_TRACE_SUPPORTED (OFF)
-#endif
-
-#ifndef RK_CONF_TRACE
-#define RK_CONF_TRACE (OFF)
-#endif
-
-#if ((RK_CONF_TRACE == ON) && (RK_CONF_TRACE_SUPPORTED == OFF))
-#error "RK_CONF_TRACE is not supported on this target"
-#endif
-
-#if (RK_CONF_TRACE == ON)
-#ifndef RK_CONF_TRACE_STACKSIZE
-#define RK_CONF_TRACE_STACKSIZE (512U)
-#endif
-#ifndef RK_CONF_TRACE_PRIO
-#define RK_CONF_TRACE_PRIO (RK_CONF_MIN_PRIO)
-#endif
-#ifndef RK_CONF_TRACE_MAX_OBJECTS
-#define RK_CONF_TRACE_MAX_OBJECTS (16U)
-#endif
-#ifndef RK_CONF_TRACE_LINE_LEN
-#define RK_CONF_TRACE_LINE_LEN (32U)
-#endif
-#ifndef RK_CONF_TRACE_RECORD_DEPTH
-#define RK_CONF_TRACE_RECORD_DEPTH (10U)
-#endif
-#ifndef RK_CONF_TRACE_OVERFLOW_BACKLOG
-#define RK_CONF_TRACE_OVERFLOW_BACKLOG (8U)
-#endif
-#ifndef RK_CONF_TRACE_FRAME_BUFFER_DEPTH
-#define RK_CONF_TRACE_FRAME_BUFFER_DEPTH (0U)
-#endif
-#ifndef RK_CONF_TRACE_FRAME_STDOUT
-#define RK_CONF_TRACE_FRAME_STDOUT (OFF)
-#endif
-#ifndef RK_CONF_TRACE_TASK_PRIO_HISTORY
-#define RK_CONF_TRACE_TASK_PRIO_HISTORY (ON)
 #endif
 #endif
 

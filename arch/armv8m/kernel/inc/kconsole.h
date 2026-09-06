@@ -17,31 +17,54 @@ extern "C" {
 #endif
 
 #ifndef RK_CONSOLE_WRITE_MAX_BYTES
-#define RK_CONSOLE_WRITE_MAX_BYTES (128UL)
+#define RK_CONSOLE_WRITE_MAX_BYTES RK_CONF_CONSOLE_WRITE_MAX_BYTES
 #endif
 
-typedef VOID (*RK_CONSOLE_RX_ISR_CBK)(BYTE ch);
+typedef VOID (*RK_CONSOLE_RX_CBK)(BYTE ch);
+typedef RK_CONSOLE_RX_CBK RK_CONSOLE_RX_ISR_CBK;
 
 /*
  * Initialise the board console used by the kernel fault/debug path.
  * Current board binding: MPS2 AN505 CMSDK UART0, routed by QEMU to the first
  * serial chardev.
+ * Normal task I/O should use the privileged UART service, not this raw path.
  */
 void kBoardConsoleInit(void);
 
-/* Enable board-console RX IRQ delivery to a byte callback. Privileged only. */
+/* Start the privileged kernel UART driver service. */
+RK_ERR kConsoleServiceInit(VOID);
+
+/*
+ * Claim foreground RX ownership for a non-blocking byte consumer. The callback
+ * runs from the privileged console driver task, not from the UART ISR.
+ */
+RK_ERR kConsoleRxClaim(RK_CONSOLE_RX_CBK cbk);
+
+/*
+ * Release foreground RX ownership. The caller must pass the currently claimed
+ * callback; releasing another owner's callback returns RK_ERR_NOT_OWNER.
+ */
+RK_ERR kConsoleRxRelease(RK_CONSOLE_RX_CBK cbk);
+
+/*
+ * Compatibility wrapper for older code. It now claims foreground RX ownership
+ * through the kernel UART service instead of installing cbk as the ISR owner.
+ */
 void kBoardConsoleRxIsrEnable(RK_CONSOLE_RX_ISR_CBK cbk);
 
-/* Blocking single-byte transmit. Safe for simple kernel diagnostics. */
+/* Blocking single-byte transmit. Enters SVC from unprivileged tasks. */
 void kPutc(char const c);
 
-/* Bounded blocking transmit. Enters SVC when called from unprivileged tasks. */
+/* Bounded call/reply transmit through the privileged UART service. */
 RK_ERR kConsoleWrite(CHAR const *bufPtr, ULONG bytes);
 
 /* Blocking NUL-terminated string transmit. A NULL pointer is ignored. */
 void kPuts(char const *str);
 
-/* Nonblocking single-byte receive. Returns 1 when a byte is copied, else 0. */
+/*
+ * Raw nonblocking board receive. Normal consumers should claim foreground RX
+ * ownership through kConsoleRxClaim(); this fallback is for early/trusted paths.
+ */
 int kConsoleGetc(char *chPtr);
 
 #ifdef __cplusplus

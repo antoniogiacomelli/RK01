@@ -20,6 +20,7 @@ extern "C" {
 
 RK_ERR kSysMonInit(VOID);
 VOID kSysMonPoll(VOID);
+RK_ERR kSysMonCommand(CHAR const *linePtr, ULONG lineBytes);
 RK_ERR kSysMonObjectNameSet(RK_HANDLE const objHandle,
                             CHAR const *const namePtr);
 VOID kSysMonObjectRegister(RK_KOBJ *const objPtr, RK_ID const objID);
@@ -36,6 +37,14 @@ RK_SYSMON_INLINE_ RK_ERR kSysMonInit(VOID)
 
 RK_SYSMON_INLINE_ VOID kSysMonPoll(VOID)
 {
+}
+
+RK_SYSMON_INLINE_ RK_ERR kSysMonCommand(CHAR const *linePtr,
+                                        ULONG lineBytes)
+{
+    K_UNUSE(linePtr);
+    K_UNUSE(lineBytes);
+    return (RK_ERR_SUCCESS);
 }
 
 RK_SYSMON_INLINE_ RK_ERR

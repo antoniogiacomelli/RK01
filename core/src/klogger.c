@@ -439,7 +439,7 @@ static RK_ERR logSubmit_(UINT const level, CHAR const *const textPtr)
     logCopyText_(logPtr->s, sizeof(logPtr->s), textPtr);
     sendPtr = logPtr;
 
-    /* Don't block so the logger task does not get boosted. */
+    /* Do not block while handling a syscall-origin logger write. */
     if (RK_gSyscallThreadModeActive != 0U)
     {
         logSendSlot = sendPtr;

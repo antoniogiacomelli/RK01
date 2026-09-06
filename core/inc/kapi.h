@@ -1494,12 +1494,16 @@ RK_ERR kMesgQueueBroadcastRecv(RK_HANDLE const queueHandle,
  * originating pool with kMesgFree().
  *
  * With the MPU enabled, by-reference direct async messages are valid only when
- * sender and receiver can both access the message pool memory. Same-module use
- * is the normal case. Use kMesgQueueSend() / kMesgQueueRecv() when a queue is
- * the shared rendezvous point and payloads should be copied. Use
+ * sender and receiver can both access the message pool memory. Same-module or
+ * explicitly shared memory is the normal fit. Use kMesgQueueSend() /
+ * kMesgQueueRecv() when a queue is the shared rendezvous point and payloads
+ * should be copied. Use
  * kMesgSendCopy() / kMesgRecvCopy() when the receiver task itself is the
  * endpoint: the kernel allocates an internal RK_MESG block, copies the payload,
  * accounts for delivery, and frees the internal block after receive or cleanup.
+ * Priority ceiling, when configured on the pool, is part of this asynchronous
+ * ownership contract and is separate from mutex priority inheritance and
+ * synchronous call/reply priority substitution.
  */
 /**
  * @brief Initialise a task-backed async direct-message endpoint.
@@ -1743,15 +1747,20 @@ RK_ERR kMesgRecvCopy(RK_TASK_HANDLE const fromTaskHandle,
 /******************************************************************************/
 #if (RK_CONF_SYNCH_MESG == ON)
 /**
- * Synchronous Message is unbuffered message passing between two tasks. The
- * endpoint defines one maximum message size at initialisation. The sender gives
+ * Synchronous Message provides two direct-copy contracts over a task endpoint.
+ * kSynchSendWait()/kSyncRecv() is a plain blocking rendezvous: the sender gives
  * one non-NULL source buffer plus the actual byte count and remains blocked
- * until the receiver copies that payload into receiver-owned storage.
- * Invocation extends the same rendezvous with a server-side accept and a reply
- * copied back to the blocked caller.
- * The contract is the rendezvous and copy lifetime. Queue ordering and any
- * temporary priority adjustment are scheduler policy, not privilege delegation
- * and not the semantic meaning of Synchronous Message.
+ * only until the receiver copies that payload into receiver-owned storage.
+ * kSynchMesgCall()/kSynchMesgAccept()/kSynchMesgReply() is an extended
+ * rendezvous: the caller remains blocked until the server replies.
+ *
+ * This is a direct-message contract, not a shared-memory lock. It may be used
+ * with private or shared memory as long as the syscall boundary can validate
+ * the source and destination ranges. Only the extended call/reply form carries
+ * priority: a server with queued or active callers runs at caller effective
+ * priority until reply, timeout, or cleanup. This is priority substitution, not
+ * privilege delegation.
+ *
  * A task that owns any mutex must not send or receive through Synchronous
  * Message; those operations return RK_ERR_TASK_INVALID_ST.
  */
@@ -1777,7 +1786,8 @@ RK_ERR kSynchMesgInit(RK_TASK_HANDLE const taskHandle,
  * @brief Send a payload directly to a task and block until copied.
  *        Success means the receiver has copied the payload before the sender
  *        was released; it does not mean the receiver has processed it or
- *        produced an answer.
+ *        produced an answer. This plain rendezvous does not substitute receiver
+ *        priority.
  *        A bounded timeout covers both waiting for the receive slot and waiting
  *        for the receiver to copy the message.
  * @param taskHandle Receiver task handle.
@@ -1843,7 +1853,8 @@ RK_ERR kSyncRecv(VOID *const recvPtr,
  * @brief Invoke a server task and wait for its reply.
  *        The request is copied into server storage by kSynchMesgAccept().
  *        The caller remains blocked until kSynchMesgReply() copies a reply
- *        back, or until the timeout expires.
+ *        back, or until the timeout expires. This extended rendezvous carries
+ *        caller effective priority to the server.
  * @param taskHandle Server task handle.
  * @param attrPtr    Non-NULL invocation attributes. reqPtr/replyPtr must be
  *                   non-NULL. reqBytes is the request size. replyMaxBytes is
@@ -1863,8 +1874,9 @@ RK_ERR kSynchMesgCall(RK_TASK_HANDLE const taskHandle,
 /**
  * @brief Accept one pending invocation on the running task.
  *        On success, the request is copied into recvPtr, callPtr is filled
- *        with server-local rendezvous metadata, and the caller remains blocked
- *        until kSynchMesgReply().
+ *        with server-local extended-rendezvous metadata, caller priority is
+ *        latched for the server, and the caller remains blocked until
+ *        kSynchMesgReply().
  */
 RK_ERR kSynchMesgAccept(RK_SYNCH_CALL_DATA *const callPtr,
                         VOID *const recvPtr,
@@ -1874,7 +1886,7 @@ RK_ERR kSynchMesgAccept(RK_SYNCH_CALL_DATA *const callPtr,
 /**
  * @brief Reply to a previously accepted invocation.
  *        If the caller timed out after accept, this completes the abandoned
- *        rendezvous and no reply is copied.
+ *        extended rendezvous and no reply is copied.
  */
 RK_ERR kSynchMesgReply(RK_SYNCH_CALL_DATA const *const callPtr,
                        VOID const *const replyPtr,
@@ -1887,12 +1899,15 @@ RK_ERR kSynchMesgReply(RK_SYNCH_CALL_DATA const *const callPtr,
 /******************************************************************************/
 #if (RK_CONF_SYSMON == ON)
 /**
- * @brief Start the lightweight UART-backed system monitor task.
+ * @brief Start the lightweight console-backed system monitor task.
  *
- *        SysMon prints on-demand snapshots of tasks and registered kernel
- *        objects. It is deliberately smaller than the optional trace recorder:
- *        objects are held in one intrusive linked list per object family, and
- *        commands print bounded point-in-time state rather than histories.
+ *        SysMon uses the privileged console driver service and prints
+ *        on-demand snapshots of tasks and registered kernel objects. If another
+ *        console front-end already owns foreground RX, SysMon starts without
+ *        consuming terminal input. It is
+ *        deliberately smaller than the optional trace recorder: objects are
+ *        held in one intrusive linked list per object family, and commands
+ *        print bounded point-in-time state rather than histories.
  *
  *        The first terminal input enters a diagnosis session. During that
  *        session, normal kLog() console output is muted so command output is
@@ -1916,18 +1931,38 @@ RK_ERR kSynchMesgReply(RK_SYNCH_CALL_DATA const *const callPtr,
  *
  * @return RK_ERR_SUCCESS on success. If SysMon was already started, the call
  *         is idempotent and returns RK_ERR_SUCCESS. Otherwise returns the
- *         kTaskInitPrivileged() error for the monitor task.
+ *         console-service or kTaskInitPrivileged() error for the monitor task.
  */
 RK_ERR kSysMonInit(VOID);
 
 /**
- * @brief Poll the board console and execute complete SysMon commands.
+ * @brief Drain SysMon's console-service input queue and execute commands.
  *
  *        kSysMonInit() creates a privileged task that calls this function.
  *        It remains public for trusted applications that want to call the
  *        monitor from their own privileged service loop.
  */
 VOID kSysMonPoll(VOID);
+
+/**
+ * @brief Submit one complete command line to the SysMon task.
+ *
+ *        This is for applications that own foreground console RX and route
+ *        diagnostic input explicitly, for example after an `RKMONITOR` prefix.
+ *        The submitted line excludes the prefix and CR/LF terminator. When
+ *        called from an unprivileged task, the line range is validated at the
+ *        syscall boundary and copied into SysMon's private input queue. The
+ *        privileged SysMon task later executes the command and prints through
+ *        the console service.
+ *
+ * @param linePtr   Command text without CR/LF.
+ * @param lineBytes Number of command bytes, at most
+ *                  RK_CONF_SYSMON_LINE_LEN - 1.
+ * @return RK_ERR_SUCCESS, RK_ERR_OBJ_NULL, RK_ERR_OBJ_NOT_INIT,
+ *         RK_ERR_INVALID_PARAM, RK_ERR_INVALID_ISR_PRIMITIVE, or
+ *         RK_ERR_BUFFER_FULL.
+ */
+RK_ERR kSysMonCommand(CHAR const *linePtr, ULONG lineBytes);
 
 /**
  * @brief Attach a short display name to a registered kernel object.

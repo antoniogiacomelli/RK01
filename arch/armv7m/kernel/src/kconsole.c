@@ -19,7 +19,10 @@
 #include <kconsole.h>
 #include <kconfig.h>
 #include <kcoredefs.h>
+#include <ksch.h>
 #include <ksyscall.h>
+#include <ksynchmesg.h>
+#include <ktaskevents.h>
 
 #if defined(STM32F401xE)
 #define RK_BOARD_CONSOLE_HAS_USART2 (1U)
@@ -30,7 +33,7 @@
 #define RK_BOARD_CONSOLE_IRQ_LOWEST_PRIO ((1U << RK_CONF_NPRIO_BITS) - 1U)
 #define RK_BOARD_CONSOLE_IRQ_PRIO_SHIFT (8U - RK_CONF_NPRIO_BITS)
 
-static RK_CONSOLE_RX_ISR_CBK kBoardConsoleRxCbk_;
+static RK_BOOL kBoardConsoleRxIrqEnabled_;
 
 static void kBoardConsoleNvicPrioritySet_(ULONG const irqn,
                                           UINT const priority)
@@ -54,6 +57,40 @@ static void kBoardConsoleNvicEnable_(ULONG const irqn)
     *regPtr = 1UL << (irqn & 31UL);
 }
 #endif
+
+#define RK_CONSOLE_SERVICE_RX_EVENT RK_EVENT_1
+#define RK_CONSOLE_CMD_WRITE (1UL)
+
+typedef struct RK_STRUCT_CONSOLE_REQUEST
+{
+    ULONG command;
+    CHAR const *bufPtr;
+    ULONG bytes;
+    ULONG reserved;
+} RK_CONSOLE_REQUEST;
+
+typedef struct RK_STRUCT_CONSOLE_REPLY
+{
+    RK_ERR status;
+    ULONG bytes;
+} RK_CONSOLE_REPLY;
+
+static RK_TASK_HANDLE kConsoleServiceTaskHandle_;
+static RK_STACK kConsoleServiceStack_[RK_CONF_CONSOLE_SERVICE_STACKSIZE]
+    K_ALIGN(8);
+static RK_BOOL kConsoleServiceMesgInit_;
+static RK_CONSOLE_RX_CBK kConsoleRxOwner_;
+static BYTE kConsoleRxBuf_[RK_CONF_CONSOLE_RX_BUFFER_BYTES];
+static volatile ULONG kConsoleRxRead_;
+static volatile ULONG kConsoleRxWrite_;
+static volatile ULONG kConsoleRxCount_;
+static volatile ULONG kConsoleRxDropped_;
+
+static VOID kConsoleServiceTask_(VOID *args);
+static VOID kConsoleRxByteFromIsr_(BYTE ch);
+static VOID kConsoleRawPutc_(CHAR c);
+static INT kConsoleRawGetc_(CHAR *chPtr);
+static VOID kBoardConsoleRxInterruptEnable_(VOID);
 
 #if defined(STM32F401xE)
 /*
@@ -127,6 +164,260 @@ static unsigned long kBoardConsoleUsart2Brr_(void)
 
 #endif
 
+static ULONG kConsoleRingNext_(ULONG const pos, ULONG const capacity)
+{
+    ULONG next = pos + 1UL;
+
+    if (next >= capacity)
+    {
+        next = 0UL;
+    }
+
+    return (next);
+}
+
+static RK_ERR kConsoleRxRingWrite_(BYTE const ch)
+{
+    RK_ERR err = RK_ERR_SUCCESS;
+
+    RK_CR_AREA
+    RK_CR_ENTER
+    if (kConsoleRxCount_ >= (ULONG)sizeof(kConsoleRxBuf_))
+    {
+        kConsoleRxDropped_++;
+        err = RK_ERR_BUFFER_FULL;
+    }
+    else
+    {
+        kConsoleRxBuf_[kConsoleRxWrite_] = ch;
+        kConsoleRxWrite_ =
+            kConsoleRingNext_(kConsoleRxWrite_,
+                              (ULONG)sizeof(kConsoleRxBuf_));
+        kConsoleRxCount_++;
+    }
+    RK_CR_EXIT
+
+    return (err);
+}
+
+static RK_BOOL kConsoleRxRingRead_(BYTE *const chPtr)
+{
+    RK_BOOL copied = RK_FALSE;
+
+    RK_CR_AREA
+    RK_CR_ENTER
+    if ((chPtr != NULL) && (kConsoleRxCount_ > 0UL))
+    {
+        *chPtr = kConsoleRxBuf_[kConsoleRxRead_];
+        kConsoleRxRead_ =
+            kConsoleRingNext_(kConsoleRxRead_,
+                              (ULONG)sizeof(kConsoleRxBuf_));
+        kConsoleRxCount_--;
+        copied = RK_TRUE;
+    }
+    RK_CR_EXIT
+
+    return (copied);
+}
+
+static RK_BOOL kConsoleIrqMasked_(VOID)
+{
+    unsigned primask;
+    unsigned basepri;
+
+    RK_ASM volatile("MRS %0, PRIMASK" : "=r"(primask));
+    RK_ASM volatile("MRS %0, BASEPRI" : "=r"(basepri));
+
+    return (((primask != 0U) || (basepri != 0U)) ? RK_TRUE : RK_FALSE);
+}
+
+static VOID kConsoleServiceSignal_(RK_TASK_EVENT const event)
+{
+    if ((kConsoleServiceTaskHandle_ != NULL) &&
+        (kKernelRunning() == RK_TRUE))
+    {
+        (VOID)kEventSet(kConsoleServiceTaskHandle_, event);
+    }
+}
+
+static RK_BOOL kConsoleServiceCanCallTx_(VOID)
+{
+    if ((kConsoleServiceTaskHandle_ == NULL) ||
+        (kConsoleServiceMesgInit_ != RK_TRUE) ||
+        (kKernelRunning() != RK_TRUE))
+    {
+        return (RK_FALSE);
+    }
+
+    if (kIsISR())
+    {
+        return (RK_FALSE);
+    }
+
+    if ((kIsISR() == RK_FALSE) &&
+        (kTaskGetRunningHandle() == kConsoleServiceTaskHandle_))
+    {
+        return (RK_FALSE);
+    }
+
+    if ((kIsISR() == RK_FALSE) && (kConsoleIrqMasked_() == RK_TRUE))
+    {
+        return (RK_FALSE);
+    }
+
+    return (RK_TRUE);
+}
+
+static RK_ERR kConsoleCallerReadValid_(RK_SYNCH_CALL_DATA const *const callPtr,
+                                       CHAR const *const bufPtr,
+                                       ULONG const bytes)
+{
+    if (bytes == 0UL)
+    {
+        return (RK_ERR_SUCCESS);
+    }
+    if ((callPtr == NULL) || (bufPtr == NULL))
+    {
+        return (RK_ERR_OBJ_NULL);
+    }
+
+    RK_TCB *callerPtr = NULL;
+    RK_ERR const err = kTaskHandleResolve(callPtr->caller, &callerPtr);
+    if (err != RK_ERR_SUCCESS)
+    {
+        return (err);
+    }
+
+    if ((callerPtr->savedControl & 0x1UL) == 0UL)
+    {
+        return (RK_ERR_SUCCESS);
+    }
+
+    return ((kMpuUserReadValid(callerPtr, bufPtr, bytes) == RK_TRUE)
+                ? RK_ERR_SUCCESS
+                : RK_ERR_INVALID_PARAM);
+}
+
+static VOID kConsoleRawWrite_(CHAR const *const bufPtr,
+                              ULONG const bytes)
+{
+    for (ULONG i = 0UL; i < bytes; i++)
+    {
+        kConsoleRawPutc_(bufPtr[i]);
+    }
+}
+
+static RK_ERR kConsoleTxRequestExecute_(
+    RK_SYNCH_CALL_DATA const *const callPtr,
+    RK_CONSOLE_REQUEST const *const reqPtr)
+{
+    RK_ERR err;
+
+    if (reqPtr == NULL)
+    {
+        return (RK_ERR_OBJ_NULL);
+    }
+    if (reqPtr->command != RK_CONSOLE_CMD_WRITE)
+    {
+        return (RK_ERR_INVALID_PARAM);
+    }
+    if (reqPtr->bytes > RK_CONSOLE_WRITE_MAX_BYTES)
+    {
+        return (RK_ERR_INVALID_PARAM);
+    }
+
+    err = kConsoleCallerReadValid_(callPtr, reqPtr->bufPtr, reqPtr->bytes);
+    if (err != RK_ERR_SUCCESS)
+    {
+        return (err);
+    }
+
+    kConsoleRawWrite_(reqPtr->bufPtr, reqPtr->bytes);
+    return (RK_ERR_SUCCESS);
+}
+
+static VOID kConsoleRxDispatch_(BYTE const ch)
+{
+    RK_CONSOLE_RX_CBK cbk;
+
+    RK_CR_AREA
+    RK_CR_ENTER
+    cbk = kConsoleRxOwner_;
+    RK_CR_EXIT
+
+    if (cbk != NULL)
+    {
+        cbk(ch);
+    }
+}
+
+static RK_BOOL kConsoleServiceDrainRx_(VOID)
+{
+    BYTE ch;
+    RK_BOOL didWork = RK_FALSE;
+
+    while (kConsoleRxRingRead_(&ch) == RK_TRUE)
+    {
+        kConsoleRxDispatch_(ch);
+        didWork = RK_TRUE;
+    }
+
+    return (didWork);
+}
+
+static RK_BOOL kConsoleServiceAcceptTx_(RK_TICK const timeout)
+{
+    RK_SYNCH_CALL_DATA call;
+    RK_CONSOLE_REQUEST req;
+    RK_CONSOLE_REPLY reply;
+    ULONG reqBytes = 0UL;
+
+    RK_ERR const err = kSynchMesgAccept(&call, &req, &reqBytes, timeout);
+    if (err != RK_ERR_SUCCESS)
+    {
+        return (RK_FALSE);
+    }
+
+    reply.bytes = 0UL;
+    if (reqBytes != (ULONG)sizeof(req))
+    {
+        reply.status = RK_ERR_INVALID_MSG_SIZE;
+    }
+    else
+    {
+        reply.status = kConsoleTxRequestExecute_(&call, &req);
+        if (reply.status == RK_ERR_SUCCESS)
+        {
+            reply.bytes = req.bytes;
+        }
+    }
+
+    (VOID)kSynchMesgReply(&call, &reply, (ULONG)sizeof(reply));
+    return (RK_TRUE);
+}
+
+static VOID kConsoleServiceTask_(VOID *args)
+{
+    K_UNUSE(args);
+
+    while (1)
+    {
+        (VOID)kConsoleServiceDrainRx_();
+        (VOID)kEventGet(RK_CONSOLE_SERVICE_RX_EVENT, RK_OPT_EVENT_ANY,
+                        NULL, RK_NO_WAIT);
+        (VOID)kConsoleServiceAcceptTx_(
+            RK_CONF_CONSOLE_SERVICE_POLL_TICKS);
+    }
+}
+
+static VOID kConsoleRxByteFromIsr_(BYTE const ch)
+{
+    if (kConsoleRxRingWrite_(ch) == RK_ERR_SUCCESS)
+    {
+        kConsoleServiceSignal_(RK_CONSOLE_SERVICE_RX_EVENT);
+    }
+}
+
 void kBoardConsoleInit(void)
 {
     static unsigned char initDone;
@@ -149,29 +440,167 @@ void kBoardConsoleInit(void)
     initDone = 1U;
 }
 
-void kBoardConsoleRxIsrEnable(RK_CONSOLE_RX_ISR_CBK const cbk)
+static VOID kBoardConsoleRxInterruptEnable_(VOID)
 {
     kBoardConsoleInit();
 
 #if defined(RK_BOARD_CONSOLE_HAS_USART2)
-    kBoardConsoleRxCbk_ = cbk;
+    if (kBoardConsoleRxIrqEnabled_ == RK_TRUE)
+    {
+        return;
+    }
+
     kBoardConsoleNvicPrioritySet_(K_F401RE_USART2_IRQN,
                                   RK_BOARD_CONSOLE_IRQ_LOWEST_PRIO);
     K_F401RE_USART2_CR1 |= K_F401RE_USART2_CR1_RXNEIE;
     kBoardConsoleNvicEnable_(K_F401RE_USART2_IRQN);
-#else
-    (void)cbk;
+
+    kBoardConsoleRxIrqEnabled_ = RK_TRUE;
 #endif
 }
 
-void kPutc(char const c)
+RK_ERR kConsoleServiceInit(VOID)
 {
     if (kSyscallRequired() == RK_TRUE)
     {
-        (VOID)kConsoleWrite(&c, 1UL);
-        return;
+        return (RK_ERR_INVALID_PHASE);
     }
 
+    if (kIsISR())
+    {
+        return (RK_ERR_INVALID_ISR_PRIMITIVE);
+    }
+
+    kBoardConsoleInit();
+
+    if (kConsoleServiceTaskHandle_ == NULL)
+    {
+        RK_ERR const err = kTaskInitPrivileged(
+            &kConsoleServiceTaskHandle_, kConsoleServiceTask_, RK_NO_ARGS,
+            "Console", kConsoleServiceStack_,
+            RK_CONF_CONSOLE_SERVICE_STACKSIZE,
+            RK_CONF_CONSOLE_SERVICE_PRIO, RK_PREEMPT);
+        if (err != RK_ERR_SUCCESS)
+        {
+            return (err);
+        }
+    }
+
+    if (kConsoleServiceMesgInit_ != RK_TRUE)
+    {
+        RK_ERR const err =
+            kSynchMesgInit(kConsoleServiceTaskHandle_,
+                           (ULONG)sizeof(RK_CONSOLE_REQUEST));
+        if ((err != RK_ERR_SUCCESS) && (err != RK_ERR_HAS_OWNER))
+        {
+            return (err);
+        }
+        kConsoleServiceMesgInit_ = RK_TRUE;
+    }
+
+    kBoardConsoleRxInterruptEnable_();
+    return (RK_ERR_SUCCESS);
+}
+
+RK_ERR kConsoleRxClaim(RK_CONSOLE_RX_CBK const cbk)
+{
+    RK_ERR err = RK_ERR_SUCCESS;
+    RK_CONSOLE_RX_CBK oldOwner;
+
+    if (kSyscallRequired() == RK_TRUE)
+    {
+        return (RK_ERR_INVALID_PHASE);
+    }
+
+    if (kIsISR())
+    {
+        return (RK_ERR_INVALID_ISR_PRIMITIVE);
+    }
+
+    if (cbk == NULL)
+    {
+        return (RK_ERR_OBJ_NULL);
+    }
+
+    oldOwner = NULL;
+
+    RK_CR_AREA
+    RK_CR_ENTER
+    if ((kConsoleRxOwner_ == NULL) || (kConsoleRxOwner_ == cbk))
+    {
+        oldOwner = kConsoleRxOwner_;
+        kConsoleRxOwner_ = cbk;
+    }
+    else
+    {
+        err = RK_ERR_CHANNEL_BUSY;
+    }
+    RK_CR_EXIT
+
+    if (err != RK_ERR_SUCCESS)
+    {
+        return (err);
+    }
+
+    err = kConsoleServiceInit();
+    if (err != RK_ERR_SUCCESS)
+    {
+        RK_CR_ENTER
+        if ((oldOwner == NULL) && (kConsoleRxOwner_ == cbk))
+        {
+            kConsoleRxOwner_ = NULL;
+        }
+        RK_CR_EXIT
+    }
+
+    return (err);
+}
+
+RK_ERR kConsoleRxRelease(RK_CONSOLE_RX_CBK const cbk)
+{
+    RK_ERR err = RK_ERR_SUCCESS;
+
+    if (kSyscallRequired() == RK_TRUE)
+    {
+        return (RK_ERR_INVALID_PHASE);
+    }
+
+    if (kIsISR())
+    {
+        return (RK_ERR_INVALID_ISR_PRIMITIVE);
+    }
+
+    if (cbk == NULL)
+    {
+        return (RK_ERR_OBJ_NULL);
+    }
+
+    RK_CR_AREA
+    RK_CR_ENTER
+    if (kConsoleRxOwner_ == cbk)
+    {
+        kConsoleRxOwner_ = NULL;
+    }
+    else if (kConsoleRxOwner_ == NULL)
+    {
+        err = RK_ERR_CHANNEL_NOT_ACTIVE;
+    }
+    else
+    {
+        err = RK_ERR_NOT_OWNER;
+    }
+    RK_CR_EXIT
+
+    return (err);
+}
+
+void kBoardConsoleRxIsrEnable(RK_CONSOLE_RX_ISR_CBK const cbk)
+{
+    (VOID)kConsoleRxClaim(cbk);
+}
+
+static VOID kConsoleRawPutc_(CHAR const c)
+{
     kBoardConsoleInit();
 
 #if defined(RK_BOARD_CONSOLE_HAS_USART2)
@@ -185,8 +614,78 @@ void kPutc(char const c)
 #endif
 }
 
+static VOID kConsoleWriteAttrInit_(RK_CONSOLE_REQUEST *const reqPtr,
+                                   RK_CONSOLE_REPLY *const replyPtr,
+                                   RK_SYNCH_ATTR *const attrPtr,
+                                   ULONG *const replyBytesPtr,
+                                   CHAR const *const bufPtr,
+                                   ULONG const bytes)
+{
+    reqPtr->command = RK_CONSOLE_CMD_WRITE;
+    reqPtr->bufPtr = bufPtr;
+    reqPtr->bytes = bytes;
+    reqPtr->reserved = 0UL;
+
+    replyPtr->status = RK_ERR_ERROR;
+    replyPtr->bytes = 0UL;
+    *replyBytesPtr = 0UL;
+
+    attrPtr->reqPtr = reqPtr;
+    attrPtr->reqBytes = (ULONG)sizeof(*reqPtr);
+    attrPtr->replyPtr = replyPtr;
+    attrPtr->replyMaxBytes = (ULONG)sizeof(*replyPtr);
+    attrPtr->replyBytesPtr = replyBytesPtr;
+}
+
+static RK_ERR kConsoleWriteReplyStatus_(RK_ERR const callErr,
+                                        RK_CONSOLE_REPLY const *const replyPtr,
+                                        ULONG const replyBytes)
+{
+    if (callErr != RK_ERR_SUCCESS)
+    {
+        return (callErr);
+    }
+    if ((replyPtr == NULL) || (replyBytes != (ULONG)sizeof(*replyPtr)))
+    {
+        return (RK_ERR_INVALID_MSG_SIZE);
+    }
+
+    return (replyPtr->status);
+}
+
+static RK_ERR kConsoleWriteViaService_(CHAR const *const bufPtr,
+                                       ULONG const bytes)
+{
+    RK_CONSOLE_REQUEST req;
+    RK_CONSOLE_REPLY reply;
+    RK_SYNCH_ATTR attr;
+    ULONG replyBytes;
+
+    kConsoleWriteAttrInit_(&req, &reply, &attr, &replyBytes, bufPtr, bytes);
+
+    RK_ERR const err =
+        kSynchMesgCall(kConsoleServiceTaskHandle_, &attr, RK_WAIT_FOREVER);
+    return (kConsoleWriteReplyStatus_(err, &reply, replyBytes));
+}
+
+void kPutc(char const c)
+{
+    if (kSyscallRequired() == RK_TRUE)
+    {
+        (VOID)kConsoleWrite(&c, 1UL);
+        return;
+    }
+
+    kConsoleRawPutc_(c);
+}
+
 RK_ERR kConsoleWrite(CHAR const *bufPtr, ULONG bytes)
 {
+    RK_CONSOLE_REQUEST req;
+    RK_CONSOLE_REPLY reply;
+    RK_SYNCH_ATTR attr;
+    ULONG replyBytes;
+
     if (bytes == 0UL)
     {
         return (RK_ERR_SUCCESS);
@@ -202,17 +701,36 @@ RK_ERR kConsoleWrite(CHAR const *bufPtr, ULONG bytes)
 
     if (kSyscallRequired() == RK_TRUE)
     {
-        return ((RK_ERR)kSyscallInvoke4(
-            RK_SYSCALL_CONSOLE_WRITE, (ULONG)(UINTPTR)bufPtr, bytes,
-            0UL, 0UL));
+        kConsoleWriteAttrInit_(&req, &reply, &attr, &replyBytes, bufPtr,
+                               bytes);
+        RK_ERR const err = (RK_ERR)kSyscallInvoke4(
+            RK_SYSCALL_CONSOLE_WRITE, (ULONG)(UINTPTR)&attr,
+            (ULONG)RK_WAIT_FOREVER, 0UL, 0UL);
+        return (kConsoleWriteReplyStatus_(err, &reply, replyBytes));
     }
 
-    for (ULONG i = 0UL; i < bytes; i++)
+    if (kConsoleServiceCanCallTx_() == RK_TRUE)
     {
-        kPutc(bufPtr[i]);
+        return (kConsoleWriteViaService_(bufPtr, bytes));
     }
 
+    kConsoleRawWrite_(bufPtr, bytes);
     return (RK_ERR_SUCCESS);
+}
+
+RK_ERR kConsoleWriteSyscall(RK_EXCEPTION_FRAME *const framePtr,
+                            RK_SYNCH_ATTR const *const attrPtr,
+                            RK_TICK const timeout)
+{
+    if ((kConsoleServiceTaskHandle_ == NULL) ||
+        (kConsoleServiceMesgInit_ != RK_TRUE))
+    {
+        kSyscallTaskClear(RK_gRunPtr);
+        return (RK_ERR_OBJ_NOT_INIT);
+    }
+
+    return (kSynchMesgCallSyscall(framePtr, kConsoleServiceTaskHandle_,
+                                  attrPtr, timeout));
 }
 
 void kPuts(char const *str)
@@ -224,12 +742,24 @@ void kPuts(char const *str)
 
     while (*str != '\0')
     {
-        kPutc(*str);
-        str++;
+        ULONG bytes = 0UL;
+
+        while ((str[bytes] != '\0') &&
+               (bytes < RK_CONSOLE_WRITE_MAX_BYTES))
+        {
+            bytes++;
+        }
+
+        if (kConsoleWrite(str, bytes) != RK_ERR_SUCCESS)
+        {
+            return;
+        }
+
+        str += bytes;
     }
 }
 
-int kConsoleGetc(char *chPtr)
+static INT kConsoleRawGetc_(CHAR *const chPtr)
 {
     if (chPtr == (char *)0)
     {
@@ -251,6 +781,11 @@ int kConsoleGetc(char *chPtr)
 #endif
 }
 
+int kConsoleGetc(char *chPtr)
+{
+    return (kConsoleRawGetc_(chPtr));
+}
+
 #if defined(RK_BOARD_CONSOLE_HAS_USART2)
 void USART2_IRQHandler(void)
 {
@@ -258,10 +793,7 @@ void USART2_IRQHandler(void)
     {
         BYTE const ch = (BYTE)(K_F401RE_USART2_DR & 0xFFUL);
 
-        if (kBoardConsoleRxCbk_ != NULL)
-        {
-            kBoardConsoleRxCbk_(ch);
-        }
+        kConsoleRxByteFromIsr_(ch);
     }
 }
 #endif
@@ -272,12 +804,27 @@ int _write(int file, char const *ptr, int len)
 
     /*
      * newlib calls _write() for printf-family output. Route all file
-     * descriptors to the board console because RK01 has no filesystem.
+     * descriptors to the kernel console service because RK01 has no
+     * filesystem; the service falls back to raw UART when the scheduler is not
+     * available.
      */
-    for (int i = 0; i < len; i++)
+    int written = 0;
+    while (written < len)
     {
-        kPutc(ptr[i]);
+        ULONG chunk = (ULONG)(len - written);
+
+        if (chunk > RK_CONSOLE_WRITE_MAX_BYTES)
+        {
+            chunk = RK_CONSOLE_WRITE_MAX_BYTES;
+        }
+
+        if (kConsoleWrite(&ptr[written], chunk) != RK_ERR_SUCCESS)
+        {
+            break;
+        }
+
+        written += (int)chunk;
     }
 
-    return (len);
+    return (written);
 }

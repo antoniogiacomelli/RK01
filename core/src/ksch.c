@@ -719,25 +719,36 @@ static RK_PRIO kTaskOwnedMutexPipPrio_(RK_TCB *const ownerTcb,
 #endif
 
 #if (RK_CONF_SYNCH_MESG == ON)
-static RK_PRIO kTaskSynchMesgPrio_(RK_TCB *const taskPtr,
+/*
+ * Synchronous call/reply priority contract.
+ *
+ * Plain kSynchSendWait()/kSyncRecv() is only a blocking copy rendezvous: the
+ * sender waits until the receiver copies the payload, but that does not make the
+ * receiver run at sender priority.
+ *
+ * kSynchMesgCall()/kSynchMesgAccept()/kSynchMesgReply() is the extended
+ * rendezvous. ksynchmesg.c exposes queued callers through synchMesgCallers and
+ * snapshots an accepted caller's effective priority in
+ * synchMesgActiveCallerPrio. The server uses caller priority as the scheduling
+ * base until reply, timeout, or cleanup clears the call. Lower numeric RK_PRIO
+ * values are more urgent. Because this is substitution rather than
+ * "min(nominal, caller)", the task can become less urgent than its nominal
+ * priority while handling less-urgent call work. If several callers exist, the
+ * most urgent caller wins.
+ */
+static RK_PRIO kTaskSynchCallPrio_(RK_TCB *const taskPtr,
                                    RK_PRIO const currentPrio)
 {
     RK_PRIO newPrio = currentPrio;
+    RK_BOOL hasCaller = RK_FALSE;
+    RK_PRIO callerPrio = currentPrio;
     RK_TCB const *const activeCallerPtr = taskPtr->synchMesgActiveCallerPtr;
 
     if ((activeCallerPtr != NULL) &&
         (activeCallerPtr->synchMesgCallState == RK_SYNCH_CALL_ACTIVE))
     {
-        newPrio = kTaskMinPrio_(newPrio, taskPtr->synchMesgActiveCallerPrio);
-    }
-
-    if (taskPtr->synchMesgSenders.size > 0UL)
-    {
-        RK_TCB *senderPtr = kTCBQPeek(&taskPtr->synchMesgSenders);
-        if (senderPtr != NULL)
-        {
-            newPrio = kTaskMinPrio_(newPrio, senderPtr->priority);
-        }
+        callerPrio = taskPtr->synchMesgActiveCallerPrio;
+        hasCaller = RK_TRUE;
     }
 
     if (taskPtr->synchMesgCallers.size > 0UL)
@@ -745,8 +756,16 @@ static RK_PRIO kTaskSynchMesgPrio_(RK_TCB *const taskPtr,
         RK_TCB *callerPtr = kTCBQPeek(&taskPtr->synchMesgCallers);
         if (callerPtr != NULL)
         {
-            newPrio = kTaskMinPrio_(newPrio, callerPtr->priority);
+            callerPrio = (hasCaller == RK_TRUE)
+                             ? kTaskMinPrio_(callerPrio, callerPtr->priority)
+                             : callerPtr->priority;
+            hasCaller = RK_TRUE;
         }
+    }
+
+    if (hasCaller == RK_TRUE)
+    {
+        newPrio = callerPrio;
     }
 
     return (newPrio);
@@ -787,9 +806,10 @@ static RK_PRIO kTaskAsynchMesgCeilingPrio_(RK_TCB *const taskPtr,
 #endif
 
 /*
- * !!!!!!!!
- * Effective priority is the highest scheduling priority required by every
- * active protocol affecting this task.
+ * Effective priority starts from the task's nominal priority unless a
+ * call/reply caller is pending/active; in that case the caller priority becomes
+ * the base. Other independent protocols can still impose stricter urgency
+ * afterward.
  * E.g.: 1) asynch ceiling raises Task A
  *       2) Task A is blocked on mutex owned by Task B
  *       3) Task B may inherit Task A's raised priority
@@ -800,14 +820,18 @@ static RK_PRIO kTaskCalcEffectivePrio_(RK_TCB *const taskPtr)
 {
     RK_PRIO newPrio = taskPtr->prioNominal;
 
+#if (RK_CONF_SYNCH_MESG == ON)
+    /*
+     * Only the call/reply extended rendezvous substitutes server priority.
+     * Plain synchronous send/receive does not alter receiver priority.
+     * Mutex PI and async ceilings are separate contracts folded in below.
+     */
+    newPrio = kTaskSynchCallPrio_(taskPtr, newPrio);
+#endif
+
 #if (RK_CONF_MUTEX == ON)
     /* Mutex priority inheritance can raise an owner to its highest waiter. */
     newPrio = kTaskOwnedMutexPipPrio_(taskPtr, newPrio);
-#endif
-
-#if (RK_CONF_SYNCH_MESG == ON)
-    /* Synchronous message waits/calls can also impose caller/sender priority. */
-    newPrio = kTaskSynchMesgPrio_(taskPtr, newPrio);
 #endif
 
 #if ((RK_CONF_ASYNCH_MESG == ON) && (RK_CONF_MESG_QUEUE == ON))

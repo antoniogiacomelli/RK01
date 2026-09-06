@@ -7,12 +7,10 @@
 /*                                                                            */
 /******************************************************************************/
 
-/*
- * File intent:
- *   Optional trace console and snapshot service. It records bounded task,
- *   object and priority histories without making trace output part of kernel
- *   correctness.
- */
+/**
+* @warning NO TRACE is available for RK01 yet.
+*
+*/
 
 #define RK_SOURCE_CODE
 
@@ -23,7 +21,7 @@
 #include <stdio.h>
 
 #if (RK_CONF_TRACE == ON)
-
+#define RK_CONF_TRACE (OFF)
 #define RK_TRACE_RX_EVENT RK_EVENT_32
 #define RK_TRACE_OVERFLOW_EVENT RK_EVENT_31
 

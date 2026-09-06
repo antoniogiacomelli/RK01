@@ -515,7 +515,26 @@ package "Trace and system monitor\ncore/inc/ktrace.h, ksysmon.h" as TraceSysmon 
         +kTraceRecordSnapshot(...) : UINT
     }
 
-    class RK_SYSMON_SERVICE <<module>> {
+    class RK_CONSOLE_SERVICE <<kernel-service>> {
+        +kConsoleServiceInit() : RK_ERR
+        +kConsoleRxClaim(...) : RK_ERR
+        +kConsoleRxRelease(...) : RK_ERR
+        +kConsoleWrite(...) : RK_ERR
+        +kConsoleWriteSyscall(...) : RK_ERR
+    }
+
+    class RK_CONSOLE_REQUEST <<struct>> {
+        +command : ULONG
+        +bufPtr : CHAR const*
+        +bytes : ULONG
+    }
+
+    class RK_CONSOLE_REPLY <<struct>> {
+        +status : RK_ERR
+        +bytes : ULONG
+    }
+
+    class RK_SYSMON_SERVICE <<kernel-service>> {
         +kSysMonInit() : RK_ERR
         +kSysMonPoll() : VOID
         +kSysMonObjectRegister(...) : VOID
@@ -625,7 +644,6 @@ package "Default application\napp/src/application.c" as DefaultApp {
         +bytes[APP_LINE_RING_BYTES] : volatile BYTE
     }
 
-    class ConsoleRxISR <<handler>>
     class EchoTask <<task>>
     class RecordTask <<task>>
 }
@@ -693,6 +711,7 @@ RK_MPU_SERVICE ..> RK_MPU_FAULT_INFO
 RK_SYSCALL_DISPATCH ..> RK_EXCEPTION_FRAME
 RK_SYSCALL_DISPATCH ..> RK_TCB
 RK_SYSCALL_DISPATCH ..> RK_MPU_SERVICE : validates user pointers
+RK_SYSCALL_DISPATCH ..> RK_CONSOLE_SERVICE : console write SVC
 RK_TASK_INIT_SYSCALL_ARGS --> RK_TASK_HANDLE
 RK_TASK_INIT_SYSCALL_ARGS --> RK_MODULE
 RK_TASK_PROTECTED_INIT_SYSCALL_ARGS --> RK_TCB
@@ -728,13 +747,18 @@ RK_TRACE_SERVICE ..> RK_TRACE_OBJECT_INFO
 RK_TRACE_SERVICE ..> RK_TRACE_SYNC_INFO
 RK_TRACE_SERVICE ..> RK_TRACE_TIMER_INFO
 RK_SYSMON_SERVICE ..> RK_KOBJ : registers names
+RK_SYSMON_SERVICE ..> RK_CONSOLE_SERVICE : claims RX when idle
+RK_CONSOLE_SERVICE ..> RK_SYNCH_ATTR : TX call/reply
+RK_CONSOLE_SERVICE ..> RK_SYNCH_CALL_DATA : accepts caller
+RK_CONSOLE_SERVICE ..> RK_CONSOLE_REQUEST : command/data
+RK_CONSOLE_SERVICE ..> RK_CONSOLE_REPLY : reply status
 
 ' RKFS service task and LittleFS backing memory
 RKFS_REQUEST --> RKFS_COMMAND : command
 RKFS_REPLY --> RKFS_STATUS : status
 RKFS_RAM *-- lfs_t
 RKFS_RAM *-- lfs_config
-RKFS_CLIENT ..> RKFS_REQUEST : sends copied sync call
+RKFS_CLIENT ..> RKFS_REQUEST : sends copied call/reply
 RKFS_CLIENT ..> RKFS_REPLY : receives reply
 RKFS_CLIENT ..> RK_TASK_HANDLE : serverHandle
 RKFS_SERVER_TASK ..> RKFS_REQUEST
@@ -747,8 +771,9 @@ RecordRequest *-- RECORD
 RecordReply *-- RECORD
 RecordSlot *-- RECORD
 RecordState *-- "RECORD_SLOT_COUNT" RecordSlot
-ConsoleRxISR --> AppLineRing : writes bytes
+RK_CONSOLE_SERVICE --> AppLineRing : owner callback writes bytes
 EchoTask --> AppLineRing : reads lines
+EchoTask ..> RK_CONSOLE_SERVICE : SVC + sync write
 EchoTask ..> RecordRequest : builds
 EchoTask ..> RecordReply : reads
 EchoTask ..> RecordTask : kSynchMesgCall()
@@ -758,7 +783,7 @@ RecordTask ..> RecordReply : replies
 RecordTask ..> RKFS_CLIENT : persists on F401RE
 EchoTask ..> KAPI_MODULE : module task
 RecordTask ..> KAPI_MODULE : module task
-ConsoleRxISR ..> KAPI_APP : semaphore post path
+RK_CONSOLE_SERVICE ..> KAPI_APP : callback post path
 
 note top of RK_MPU_REGION
   ARMv7-M stores rbar + rasr.

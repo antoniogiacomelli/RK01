@@ -9,9 +9,9 @@
 
 /*
  * File intent:
- *   Lightweight UART command monitor. It keeps one intrusive list per named
- *   kernel-object type and prints bounded snapshots on request. It is not an
- *   event trace recorder.
+ *   Lightweight console command monitor. It keeps one intrusive list per named
+ *   kernel-object type and prints bounded snapshots on request. UART ownership
+ *   stays in the privileged console driver service.
  */
 
 #define RK_SOURCE_CODE
@@ -80,21 +80,126 @@ typedef struct
     ULONG value4;
 } RK_SYSMON_OBJECT_ROW_;
 
+#define RK_SYSMON_RX_EVENT RK_EVENT_1
+
 static RK_LIST sysMonObjectLists[RK_SYSMON_FAMILY_COUNT];
 static RK_BOOL sysMonObjectListsInit;
 static RK_TASK_HANDLE sysMonTaskHandle;
 static RK_STACK sysMonStack[RK_CONF_SYSMON_STACKSIZE]
     RK_PRIVILEGED_TASK_STACK_ATTR(RK_CONF_SYSMON_STACKSIZE);
 static CHAR sysMonLine[RK_CONF_SYSMON_LINE_LEN];
+static BYTE sysMonRxBuf_[RK_CONF_SYSMON_LINE_LEN];
 static UINT sysMonLineLen;
 static RK_BOOL sysMonDropLf;
 static RK_BOOL sysMonDiagnosisActive;
 static RK_BOOL sysMonSavedLogNormalOutput;
+static volatile ULONG sysMonRxRead_;
+static volatile ULONG sysMonRxWrite_;
+static volatile ULONG sysMonRxCount_;
+static volatile ULONG sysMonRxDropped_;
 static RK_SYSMON_TASK_ROW_ sysMonTaskRow;
 static RK_SYSMON_OBJECT_ROW_
     sysMonObjectRows[RK_CONF_SYSMON_SNAPSHOT_MAX];
 
 static VOID kSysMonTask_(VOID *args);
+static VOID kSysMonConsoleRx_(BYTE ch);
+
+static ULONG kSysMonRxNext_(ULONG const pos)
+{
+    ULONG next = pos + 1UL;
+
+    if (next >= (ULONG)sizeof(sysMonRxBuf_))
+    {
+        next = 0UL;
+    }
+
+    return (next);
+}
+
+static RK_ERR kSysMonRxWrite_(BYTE const ch)
+{
+    RK_ERR err = RK_ERR_SUCCESS;
+
+    RK_CR_AREA
+    RK_CR_ENTER
+    if (sysMonRxCount_ >= (ULONG)sizeof(sysMonRxBuf_))
+    {
+        sysMonRxDropped_++;
+        err = RK_ERR_BUFFER_FULL;
+    }
+    else
+    {
+        sysMonRxBuf_[sysMonRxWrite_] = ch;
+        sysMonRxWrite_ = kSysMonRxNext_(sysMonRxWrite_);
+        sysMonRxCount_++;
+    }
+    RK_CR_EXIT
+
+    return (err);
+}
+
+static RK_BOOL kSysMonRxRead_(CHAR *const chPtr)
+{
+    RK_BOOL copied = RK_FALSE;
+
+    RK_CR_AREA
+    RK_CR_ENTER
+    if ((chPtr != NULL) && (sysMonRxCount_ > 0UL))
+    {
+        *chPtr = (CHAR)sysMonRxBuf_[sysMonRxRead_];
+        sysMonRxRead_ = kSysMonRxNext_(sysMonRxRead_);
+        sysMonRxCount_--;
+        copied = RK_TRUE;
+    }
+    RK_CR_EXIT
+
+    return (copied);
+}
+
+static RK_ERR kSysMonRxWriteCommand_(CHAR const *const linePtr,
+                                     ULONG const lineBytes)
+{
+    ULONG const bytesRequired = lineBytes + 1UL;
+
+    if (lineBytes >= (ULONG)sizeof(sysMonRxBuf_))
+    {
+        return (RK_ERR_INVALID_PARAM);
+    }
+
+    RK_CR_AREA
+    RK_CR_ENTER
+    if (((ULONG)sizeof(sysMonRxBuf_) - sysMonRxCount_) < bytesRequired)
+    {
+        sysMonRxDropped_ += bytesRequired;
+        RK_CR_EXIT
+        return (RK_ERR_BUFFER_FULL);
+    }
+
+    for (ULONG i = 0UL; i < lineBytes; i++)
+    {
+        sysMonRxBuf_[sysMonRxWrite_] = (BYTE)linePtr[i];
+        sysMonRxWrite_ = kSysMonRxNext_(sysMonRxWrite_);
+        sysMonRxCount_++;
+    }
+
+    sysMonRxBuf_[sysMonRxWrite_] = (BYTE)'\r';
+    sysMonRxWrite_ = kSysMonRxNext_(sysMonRxWrite_);
+    sysMonRxCount_++;
+    RK_CR_EXIT
+
+    return (RK_ERR_SUCCESS);
+}
+
+static VOID kSysMonConsoleRx_(BYTE const ch)
+{
+    if (kSysMonRxWrite_(ch) == RK_ERR_SUCCESS)
+    {
+        if ((sysMonTaskHandle != NULL) && (kKernelRunning() == RK_TRUE))
+        {
+            (VOID)kEventSet(sysMonTaskHandle, RK_SYSMON_RX_EVENT);
+        }
+    }
+}
 
 static VOID kSysMonNameCopy_(CHAR *const dstPtr,
                              ULONG const dstBytes,
@@ -1116,7 +1221,7 @@ static VOID kSysMonExec_(CHAR const *linePtr)
 
 static VOID kSysMonPrompt_(VOID)
 {
-    printf("\r\nrk> ");
+    kPuts("\r\nrk> ");
 }
 
 static VOID kSysMonEnterDiagnosis_(VOID)
@@ -1148,7 +1253,7 @@ VOID kSysMonPoll(VOID)
 {
     CHAR ch;
 
-    while (kConsoleGetc(&ch) > 0)
+    while (kSysMonRxRead_(&ch) == RK_TRUE)
     {
         if (sysMonDiagnosisActive == RK_FALSE)
         {
@@ -1201,6 +1306,41 @@ VOID kSysMonPoll(VOID)
     }
 }
 
+RK_ERR kSysMonCommand(CHAR const *const linePtr, ULONG const lineBytes)
+{
+    if (kSyscallRequired() == RK_TRUE)
+    {
+        return ((RK_ERR)kSyscallInvoke4(RK_SYSCALL_SYSMON_COMMAND,
+                                        (ULONG)(UINTPTR)linePtr, lineBytes,
+                                        0UL, 0UL));
+    }
+
+    if (kIsISR())
+    {
+        return (RK_ERR_INVALID_ISR_PRIMITIVE);
+    }
+    if (sysMonTaskHandle == NULL)
+    {
+        return (RK_ERR_OBJ_NOT_INIT);
+    }
+    if (linePtr == NULL)
+    {
+        return (RK_ERR_OBJ_NULL);
+    }
+    if (lineBytes >= (ULONG)RK_CONF_SYSMON_LINE_LEN)
+    {
+        return (RK_ERR_INVALID_PARAM);
+    }
+
+    RK_ERR const err = kSysMonRxWriteCommand_(linePtr, lineBytes);
+    if (err == RK_ERR_SUCCESS)
+    {
+        (VOID)kEventSet(sysMonTaskHandle, RK_SYSMON_RX_EVENT);
+    }
+
+    return (err);
+}
+
 static VOID kSysMonTask_(VOID *args)
 {
     K_UNUSE(args);
@@ -1208,7 +1348,8 @@ static VOID kSysMonTask_(VOID *args)
     while (1)
     {
         kSysMonPoll();
-        (VOID)kSleepDelay((RK_TICK)RK_CONF_SYSMON_POLL_TICKS);
+        (VOID)kEventGet(RK_SYSMON_RX_EVENT, RK_OPT_EVENT_ANY, NULL,
+                        (RK_TICK)RK_CONF_SYSMON_POLL_TICKS);
     }
 }
 
@@ -1225,7 +1366,20 @@ RK_ERR kSysMonInit(VOID)
     }
 
     kSysMonObjectListsEnsure_();
-    kBoardConsoleInit();
+    RK_ERR const consoleErr = kConsoleRxClaim(kSysMonConsoleRx_);
+    if (consoleErr != RK_ERR_SUCCESS)
+    {
+        if (consoleErr != RK_ERR_CHANNEL_BUSY)
+        {
+            return (consoleErr);
+        }
+
+        RK_ERR const initErr = kConsoleServiceInit();
+        if (initErr != RK_ERR_SUCCESS)
+        {
+            return (initErr);
+        }
+    }
 
     return (kTaskInitPrivileged(&sysMonTaskHandle, kSysMonTask_, RK_NO_ARGS,
                                 "SysMon", sysMonStack,
