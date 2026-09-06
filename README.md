@@ -1,28 +1,27 @@
-# RK01
+# RK01 - Version 0.1.0
 
 RK01 is the RK0 kernel line with a Cortex-M MPU and an explicit kernel/user
 boundary.
 
-RK0 remains the mature flat real-time executive. It has the broader wiki and
-DocBook material, and it is still the simpler choice when all firmware code is
-trusted and shared memory is intentional. RK01 keeps the RK0 real-time model,
-but changes what happens when ordinary task code is wrong: task code runs
-unprivileged, kernel services are reached through SVC, and domain-owned
-writable state is enforced by the MPU.
+RK0 remains a flat real-time executive. Not a flaw. 
 
-This repository is the first public RK01 source drop. The README is deliberately
-larger than the RK0 README because RK01 does not yet have the same external
-manual/wiki set. Treat this as a working kernel snapshot, not a polished product
-release.
+RK01 keeps the RK0 real-time model, but changes what happens when ordinary task code is wrong: task code runs
+unprivileged, kernel services are reached _through a system call, and domain-owned
+writable state is enforced by the MPU._
 
+This adds substantial complexity to the design and to the analysis. The gain is with bounded memory regions a
+fault can be confined. Still, recovering from that fault is application-specific.
+
+This repository is the first public RK01 source drop. 
 Current version: 0.1.0.
 
 ## What RK01 Adds To RK0
 
-RK01 is not a rewrite into a process operating system. It is still one
-statically linked firmware image for a microcontroller. The kernel, startup
+RK01 is not a better RK0; neither an embedded RTOS trying to be a GPOS. I
+t is still one statically linked firmware image for a microcontroller. The kernel, startup
 code, board port, privileged service tasks and build are trusted. Ordinary
-application tasks are treated as possibly defective after dispatch.
+application tasks are treated as possibly defective after dispatch -- and if it fails, 
+it will be confined and then handled the best it can. 
 
 Immediate differences from RK0:
 
@@ -38,18 +37,14 @@ Immediate differences from RK0:
 | Fault handling | Serious task faults usually become system faults. | Unprivileged MemManage faults can be contained, marked `FAULT_PENDING` and cleaned by PostProc. |
 | Documentation state | Mature RK0 docs exist outside the source tree. | First public drop uses this README as the primary public guide. |
 
-The short rule is: `RK0` is flat trusted real-time firmware; `RK01` is
-RK0-style real-time firmware with MPU-backed containment.
-
+The short rule is: `RK0` is flat trusted real-time firmware; 
+`RK01` is RK0-style real-time with user space/kernel space.
 ## Architecture Sketch
 
 ![RK01 containment sketch](docs/readme_architecture_sketch.svg)
 
 ## Containment Scope
-
-RK01 targets embedded firmware that is still built as one statically linked
-image, but needs MPU-backed damage containment after task dispatch. Its
-protection boundary is practical and local:
+Its protection boundary is practical and local:
 
 - ordinary tasks run unprivileged and enter kernel services through SVC;
 - kernel RAM, object pools, registries and privileged stacks remain
