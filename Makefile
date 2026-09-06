@@ -33,8 +33,9 @@ ifeq ($(origin APP_SRCS), undefined)
 ifeq ($(APP_EXAMPLE),tiny)
 APP_SRCS := \
     $(APP_DIR)/src/application.c \
+    $(APP_DIR)/src/record_domain.c \
+    $(APP_DIR)/src/record_server.c \
     $(APP_DIR)/src/tiny_console.c \
-    $(APP_DIR)/src/tiny_record.c \
     $(APP_DIR)/src/tiny_support.c
 else ifeq ($(APP_EXAMPLE),01-fleet)
 APP_SRCS := $(APP_DIR)/examples/01_fleet_domains.c
@@ -57,6 +58,15 @@ $(error Unsupported APP_EXAMPLE '$(APP_EXAMPLE)': use tiny, 01-fleet, 02-isolate
 endif
 endif
 
+ifeq ($(origin DOMAIN_IMPL_SRCS), undefined)
+DOMAIN_IMPL_SRCS :=
+ifeq ($(APP_EXAMPLE),tiny)
+DOMAIN_IMPL_SRCS += \
+    $(APP_DIR)/src/record_domain.c \
+    $(APP_DIR)/src/record_server.c
+endif
+endif
+
 BUILD_APP ?= $(TARGET)-$(APP_EXAMPLE)
 BUILD_DIR ?= $(BUILD_ROOT)/$(ARCH)/$(PLATFORM)/$(BUILD_PROFILE)/$(BUILD_APP)
 CONFIG_STAMP := $(BUILD_DIR)/.config.stamp
@@ -64,6 +74,7 @@ CONFIG_STAMP := $(BUILD_DIR)/.config.stamp
 TOOLCHAIN ?= arm-none-eabi
 CC := $(TOOLCHAIN)-gcc
 OBJCOPY := $(TOOLCHAIN)-objcopy
+OBJDUMP := $(TOOLCHAIN)-objdump
 SIZE := $(TOOLCHAIN)-size
 
 LINKER_SCRIPT ?= $(ARCH_DIR)/linker.ld
@@ -170,6 +181,8 @@ OBJS := \
     $(patsubst %.c,$(BUILD_DIR)/%.o,$(C_SRCS)) \
     $(patsubst %.S,$(BUILD_DIR)/%.o,$(ASM_SRCS))
 
+DOMAIN_IMPL_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(DOMAIN_IMPL_SRCS))
+
 DEPS := $(OBJS:.o=.d)
 
 OPT ?= -O2
@@ -214,9 +227,13 @@ LDFLAGS += \
 
 LDLIBS ?= -lc
 
-.PHONY: all help clean size objects flash qemu-m33 qemu-m33-debug qemu-m33-debug-start qemu-m33-debug-stop run-qemu-m33 run-qemu-m33-debug run-qemu-m33-debug-start run-qemu-m33-debug-stop board-run FORCE
+.PHONY: all help clean size objects audit-domain-writable flash qemu-m33 qemu-m33-debug qemu-m33-debug-start qemu-m33-debug-stop run-qemu-m33 run-qemu-m33-debug run-qemu-m33-debug-start run-qemu-m33-debug-stop board-run FORCE
 
 all: $(ELF) $(BIN) $(HEX) size
+
+ifneq ($(AUDIT_DOMAIN_WRITABLE),OFF)
+all: audit-domain-writable
+endif
 
 help:
 	@printf '%s\n' \
@@ -225,6 +242,7 @@ help:
 	    'Targets:' \
 	    '  make                         Build ELF/BIN/HEX for the current platform.' \
 	    '  make objects                 Compile objects only.' \
+	    '  make audit-domain-writable   Warn on writable globals in DOMAIN_IMPL_SRCS.' \
 	    '  make size                    Print section sizes for the ELF.' \
 	    '  make flash                   Flash the current STM32 board build.' \
 	    '  make qemu-m33                Build and run the Cortex-M33 MPS2 AN505 QEMU target.' \
@@ -245,6 +263,8 @@ help:
 	    '  FPU=ON|OFF                   Enable F401 M4F hard-float context support. Default: OFF.' \
 	    '  BUILD_ROOT=dir               Root output directory. Default: build.' \
 	    '  APP_SRCS=files               Override application source list.' \
+	    '  DOMAIN_IMPL_SRCS=files       Domain bundle sources audited for writable globals.' \
+	    '  AUDIT_DOMAIN_WRITABLE=OFF    Disable the domain writable-state audit.' \
 	    '  EXTRA_DEFINES=defs           Append compiler defines.' \
 	    '  OPT=-O0|-Og|-O2              Optimisation level. Default: -O2.' \
 	    '  FLASH_TOOL=tool              st-flash, openocd, stm32programmer, jlink.' \
@@ -288,6 +308,11 @@ help:
 	    '  make board-run SERIAL_PORT=/dev/cu.usbmodemXXXX'
 
 objects: $(OBJS)
+
+audit-domain-writable: $(DOMAIN_IMPL_OBJS)
+	@if [ -n "$(strip $(DOMAIN_IMPL_OBJS))" ]; then \
+	    OBJDUMP="$(OBJDUMP)" sh tools/audit_domain_writable.sh $(DOMAIN_IMPL_OBJS) || true; \
+	fi
 
 qemu-m33:
 	$(MAKE) ARCH=armv8m PLATFORM=mps2-an505 BUILD_ROOT=$(BUILD_ROOT) APP_EXAMPLE='$(APP_EXAMPLE)' EXTRA_DEFINES='$(EXTRA_DEFINES)' EXTRA_DEFS='$(EXTRA_DEFS)' run-qemu-m33

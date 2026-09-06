@@ -67,11 +67,11 @@ RK_ERR kSharedMemGet(RK_SHARED_MEM_HANDLE const sharedMemHandle,
 
 #ifndef RK_ISOLATED_TASK_STACK_ATTR
 #define RK_ISOLATED_TASK_STACK_ATTR(NWORDS)                                   \
-    RK_STACK_ALIGN(NWORDS) RK_SECTION_DOMAIN_BSS
+    RK_STACK_ALIGN(NWORDS) RK_SECTION_DOMAIN_RAM
 #endif
 
 #ifndef RK_DOMAIN_RAM_ATTR
-#define RK_DOMAIN_RAM_ATTR(NBYTES) K_ALIGN(NBYTES) RK_SECTION_DOMAIN_BSS
+#define RK_DOMAIN_RAM_ATTR(NBYTES) K_ALIGN(NBYTES) RK_SECTION_DOMAIN_RAM
 #endif
 
 #ifndef RK_KERNEL_RAM_ATTR
@@ -86,6 +86,48 @@ RK_ERR kSharedMemGet(RK_SHARED_MEM_HANDLE const sharedMemHandle,
 #define RK_DECLARE_DOMAIN(DOMAIN, RAMBUF, NBYTES)                             \
     BYTE RAMBUF[NBYTES] RK_DOMAIN_RAM_ATTR(NBYTES);                           \
     RK_DOMAIN DOMAIN RK_DOMAIN_DESC_ATTR;
+#endif
+
+#ifndef RK_DOMAIN_WINDOW_STATIC_ASSERT_
+#define RK_DOMAIN_WINDOW_STATIC_ASSERT_(RAM_LAYOUT, NBYTES)                   \
+    _Static_assert(sizeof(RAM_LAYOUT) <= (NBYTES),                            \
+                   "domain RAM layout must fit its MPU window");             \
+    _Static_assert((NBYTES) >= 32U,                                           \
+                   "domain RAM window must be at least 32 bytes");           \
+    _Static_assert(((NBYTES) & ((NBYTES) - 1U)) == 0U,                        \
+                   "domain RAM window must be a power of two");              \
+    _Static_assert(_Alignof(RAM_LAYOUT) <= (NBYTES),                          \
+                   "domain RAM layout alignment must fit its MPU window")
+#endif
+
+#ifndef RK_DECLARE_TYPED_DOMAIN
+#define RK_DECLARE_TYPED_DOMAIN(DOMAIN, RAMBUF, RAM_LAYOUT, NBYTES)           \
+    RK_DOMAIN_WINDOW_STATIC_ASSERT_(RAM_LAYOUT, NBYTES);                      \
+    typedef union                                                             \
+    {                                                                         \
+        BYTE bytes[NBYTES];                                                   \
+        RAM_LAYOUT typed;                                                     \
+    } RAMBUF##_RK_DOMAIN_WINDOW;                                              \
+    RAMBUF##_RK_DOMAIN_WINDOW RAMBUF RK_DOMAIN_RAM_ATTR(NBYTES);              \
+    RK_DOMAIN DOMAIN RK_DOMAIN_DESC_ATTR;
+#endif
+
+#ifndef RK_DOMAIN_WINDOW_BASE
+#define RK_DOMAIN_WINDOW_BASE(RAMBUF) ((BYTE *)(VOID *)&(RAMBUF))
+#endif
+
+#ifndef RK_DOMAIN_WINDOW_BYTES
+#define RK_DOMAIN_WINDOW_BYTES(RAMBUF) ((ULONG)sizeof(RAMBUF))
+#endif
+
+#ifndef RK_DOMAIN_STATE
+#define RK_DOMAIN_STATE(RAMBUF) (&((RAMBUF).typed))
+#endif
+
+#ifndef RK_DOMAIN_INIT_TYPED
+#define RK_DOMAIN_INIT_TYPED(DOMAINPTR, RAMBUF, NAME)                        \
+    kDomainInit((DOMAINPTR), RK_DOMAIN_WINDOW_BASE(RAMBUF),                  \
+                RK_DOMAIN_WINDOW_BYTES(RAMBUF), (NAME))
 #endif
 
 #ifndef RK_DECLARE_DOMAIN_TASK

@@ -79,8 +79,8 @@ extern uint32_t _ebss;       /* End address of the .bss section */
 extern uint32_t __rk_app_domain_data_load;
 extern uint32_t __rk_app_domain_data_begin;
 extern uint32_t __rk_app_domain_data_end;
-extern uint32_t __rk_domain_bss_begin;
-extern uint32_t __rk_domain_bss_end;
+extern uint32_t __rk_domain_ram_begin;
+extern uint32_t __rk_domain_ram_end;
 extern uint32_t __rk_app_domain_bss_begin;
 extern uint32_t __rk_app_domain_bss_end;
 extern uint32_t __rk_shared_bss_begin;
@@ -324,14 +324,14 @@ void Reset_Handler(void)
         *pDest = 0;
     }
 
-    /* Zero user/domain and shared BSS sections that are deliberately NOLOAD. */
+    /* Zero user, explicit-domain and shared RAM sections that are NOLOAD. */
     for (pDest = &__rk_app_domain_bss_begin;
          pDest < &__rk_app_domain_bss_end; pDest++)
     {
         *pDest = 0;
     }
 
-    for (pDest = &__rk_domain_bss_begin; pDest < &__rk_domain_bss_end; pDest++)
+    for (pDest = &__rk_domain_ram_begin; pDest < &__rk_domain_ram_end; pDest++)
     {
         *pDest = 0;
     }

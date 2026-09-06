@@ -8,12 +8,13 @@
 /******************************************************************************/
 
 /*
- * Record service for the tiny example.
+ * Record domain server for the tiny example.
  *
  * RecordTask is the only owner of RecordState. Console clients send bounded
  * call/reply messages and receive a copied reply.
  */
 
+#include "record_domain_internal.h"
 #include "tiny_app.h"
 
 #if defined(RK_MCU_F401RE)
@@ -339,7 +340,9 @@ static VOID RecordHandleRead_(RecordState const *const statePtr,
 
 VOID RecordTask(VOID *args)
 {
-    RecordState *const statePtr = (RecordState *)args;
+    RECORD_DOMAIN_RAM *const ramPtr = (RECORD_DOMAIN_RAM *)args;
+    RecordState *const statePtr =
+        (ramPtr != NULL) ? &ramPtr->recordState : NULL;
 
     K_ASSERT(statePtr != NULL);
     if (statePtr == NULL)

@@ -58,8 +58,8 @@ extern "C"
 #define RK_SECTION_APP_RAM __attribute__((section(".rk_app_ram")))
 #endif
 
-#ifndef RK_SECTION_DOMAIN_BSS
-#define RK_SECTION_DOMAIN_BSS __attribute__((section(".rk_domain_bss")))
+#ifndef RK_SECTION_DOMAIN_RAM
+#define RK_SECTION_DOMAIN_RAM __attribute__((section(".rk_domain_ram")))
 #endif
 
 #ifndef RK_SECTION_SHARED_BSS
@@ -75,7 +75,7 @@ extern "C"
 #endif
 
 #ifndef RK_SECTION_TASK_RAM
-#define RK_SECTION_TASK_RAM RK_SECTION_DOMAIN_BSS
+#define RK_SECTION_TASK_RAM RK_SECTION_DOMAIN_RAM
 #endif
 
 #ifndef RK_SECTION_SHARED_RAM

@@ -86,17 +86,15 @@ SECTIONS
     __rk_task_stack_end = __rk_app_domain_bss_end;
   } > TASK_RAM
 
-  .rk_domain_bss (NOLOAD) :
+  .rk_domain_ram (NOLOAD) :
   {
     . = ALIGN(8);
-    __rk_domain_bss_begin = .;
+    __rk_domain_ram_begin = .;
 
-    INCLUDE app/linker-domains.ld
-
-    *(.rk_domain_bss*)
+    KEEP(*(.rk_domain_ram*))
     *(.rk_task_ram*)
     . = ALIGN(8);
-    __rk_domain_bss_end = .;
+    __rk_domain_ram_end = .;
   } > TASK_RAM
 
   .rk_task_noinit (NOLOAD) :

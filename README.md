@@ -85,9 +85,8 @@ not as proof that multi-domain isolation is practical on every MCU.
 | Path | Purpose |
 | --- | --- |
 | `Makefile` | Firmware build, flash and run entry point. |
-| `app/src/application.c`, `app/src/tiny_*.c` | Default public record-console example. |
+| `app/src/application.c`, `app/src/record_domain.*`, `app/src/tiny_*.c` | Default public record-console example with Record as a source-bundled domain. |
 | `app/examples/` | Selectable `APP_EXAMPLE` profiles. |
-| `app/linker-domains.ld` | Linker hook reserved for ThreadX-style domain image layout; V0.1.0 still uses C-declared domain RAM. |
 | `arch/armv7m/` | STM32F401RE Cortex-M4 port. |
 | `arch/armv8m/` | MPS2 AN505 Cortex-M33 port. |
 | `core/inc/` | Public and internal kernel headers. |
@@ -95,6 +94,7 @@ not as proof that multi-domain isolation is practical on every MCU.
 | `middleware/inc/rkfs.h` | RKFS public interface. |
 | `middleware/src/rkfs.c` | RKFS facade over LittleFS on F401. |
 | `middleware/littlefs/` | Vendored LittleFS source subset. |
+| `tools/audit_domain_writable.sh` | Optional build audit for unexpected writable globals in explicitly declared domain implementation sources. |
 | `tools/board_harness.sh` | Build, flash and serial capture helper. |
 
 The public repo intentionally leaves out local build products, board logs,
@@ -175,7 +175,10 @@ On STM32F401RE:
 - `EchoTask` parses commands such as `SET A 123` and `READ A`.
 - In the default mixed console, `RKMONITOR` enters SysMon diagnostics. Commands
   such as `ps` are then accepted directly until `exit` or `quit`.
-- `RecordTask` runs unprivileged in an explicit `Rec` domain.
+- The Record service is a source-bundled `Rec` domain:
+  `record_domain.h` exposes copied request/reply types and
+  `RecordDomainBoot()`, while `record_domain_internal.h` keeps the private RAM
+  layout.
 - Echo calls Record through copied call/reply messages.
 - A privileged `FS` service task owns RKFS/LittleFS, reserved flash and the
   STM32 flash controller.
@@ -347,14 +350,59 @@ kDomainTaskInit(&controlDomain, &controlHandle, ControlTask, RK_NO_ARGS,
                 "Control", 256U, CONTROL_PRIO, RK_PREEMPT);
 ```
 
-The intended image direction is ThreadX-inspired: a domain may later become a
-linker-described unit with a bounded text/rodata range, domain-owned data/BSS,
-entry metadata and a syscall veneer rather than an ad hoc collection of global
-objects. V0.1.0 has the writable-domain and SVC side of that model, while
-`app/linker-domains.ld` remains the reserved hook for describing domain images
-in the linker script. Until that lands, public examples use `RK_DECLARE_DOMAIN()`
-to declare naturally aligned domain RAM in C and create domain tasks during
-BOOT.
+For service-style domains, prefer a source bundle:
+
+| File | Role |
+| --- | --- |
+| `record_domain.h` | Public request/reply types and `RecordDomainBoot()` exports. |
+| `record_domain_internal.h` | Private typed RAM layout and member task declarations. |
+| `record_domain.c` | `RK_DECLARE_TYPED_DOMAIN()` storage, descriptor and BOOT construction. |
+| `record_server.c` | One Record member task using the private RAM layout. |
+
+The typed declaration creates an exact MPU-sized writable window while giving
+the domain implementation a normal C struct view:
+
+```c
+typedef struct
+{
+    _Alignas(8) RK_STACK serverStack[256U];
+    RecordState recordState;
+    RK_TASK_HANDLE serverHandle;
+} RECORD_DOMAIN_RAM;
+
+RK_DECLARE_TYPED_DOMAIN(recordDomain, recordDomainRam,
+                        RECORD_DOMAIN_RAM, 2048U)
+
+RK_ERR RecordDomainBoot(RECORD_DOMAIN_EXPORTS *exportsPtr)
+{
+    RECORD_DOMAIN_RAM *const ramPtr = RK_DOMAIN_STATE(recordDomainRam);
+    RK_ERR err;
+
+    err = RK_DOMAIN_INIT_TYPED(&recordDomain, recordDomainRam, "Rec");
+    if (err != RK_ERR_SUCCESS)
+    {
+        return err;
+    }
+
+    err = kTaskInitDomain(&ramPtr->serverHandle, RecordTask, ramPtr, "Record",
+                          ramPtr->serverStack, 256U, RECORD_TASK_PRIO,
+                          RK_PREEMPT, &recordDomain);
+    if (err != RK_ERR_SUCCESS)
+    {
+        return err;
+    }
+
+    exportsPtr->serviceHandle = ramPtr->serverHandle;
+    return RK_ERR_SUCCESS;
+}
+```
+
+The linker generically collects `KEEP(*(.rk_domain_ram*))` into
+`.rk_domain_ram`; it does not enumerate domain object files. BOOT validation
+still enforces TASK_RAM placement, power-of-two size, natural alignment,
+overlap checks, stack containment and topology finalisation before dispatch.
+`DOMAIN_IMPL_SRCS` declares sources that should be audited for unexpected
+writable globals; `make audit-domain-writable` runs the warning-only check.
 
 Cross-domain payload transfer should normally use copied IPC.
 
