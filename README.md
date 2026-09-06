@@ -24,21 +24,18 @@ it will be confined and then handled the best it can.
 
 Immediate differences from RK0:
 
-| Area | RK0 | RK01 |
-| --- | --- | --- |
-| Firmware model | One trusted firmware image. | V0.1.0 still builds one firmware image. Future linker-described domain images are ThreadX-inspired, but no standalone loader is shipped yet. |
-| Kernel boundary | Kernel and application code share privileged address space. | Ordinary tasks run unprivileged on PSP and enter SVC for kernel services. |
+
+| Kernel boundary | Kernel and application code share privileged address space. | Ordinary tasks run with no privilege at all. Kernel services are 'supervisor calls' -- software interrupts. |
 | Memory protection | Cooperative discipline. | Cortex-M MPU regions protect kernel RAM, domain RAM and shared apertures. |
 | Application grouping | Tasks can directly share C globals. | Tasks share memory only inside their domain, global shared RAM or explicit shared memory. |
-| Kernel objects | Raw/static objects are natural; pool-backed creation is optional. | Runtime objects are fixed-capacity kernel pool entries addressed by opaque handles. |
+| Kernel objects | Raw/static objects are natural; pool-backed creation is optional. | Runtime objects are fixed-capacity kernel pool entries _encoded_ by opaque handles. That is, you cannot dereference a handle because it is not an address. |
 | IPC rule | Pointer transfer is fine when firmware agrees. | By-reference direct messages are same-domain only; cross-domain data should be copied. |
 | Bad syscall pointers | A bad pointer can become a privileged fault if unchecked. | SVC validates user read/write/function ranges before privileged code dereferences them. |
 | Fault handling | Serious task faults usually become system faults. | Unprivileged MemManage faults can be contained, marked `FAULT_PENDING` and cleaned by PostProc. |
-| Performance | System calls, data validation, etc., are costy.  | Number up to know indicate RK01 is 3.7 times slower than RK0. Determinism is not importantly affected. | The user shall keep in mind the that every system call although bounded, is a way more work than a simple function call.
-| Documentation state | Mature RK0 docs exist outside the source tree. | First public drop uses this README as the primary public guide. |
 
-The short rule is: `RK0` is flat trusted real-time firmware; 
-`RK01` is RK0-style real-time with user space/kernel space.
+
+-`RK0` is flat trusted real-time firmware; 
+- `RK01` is RK0-style real-time with user space/kernel space.
 
 ## Architecture Sketch
 
@@ -61,21 +58,18 @@ The trusted base remains the kernel, startup code, board port, privileged
 service tasks, build, DMA setup, debug access and physical device access. 
 
 RK01 focuses on preventing defective unprivileged task code from corrupting kernel
-RAM and another domain's writable state or privileged service state through
-ordinary bad-pointer mistakes.
+RAM and another domain's writable state or privileged service state.
 
 ## Delivered Supported Targets
 
-This repo delivers a build environment to run on Nucleo STM32F401RE M4F, and a QEMU environment for MPS2 Cortex-M33. RK01 does not use the _Trusted Environment_ from ARMv8M but this was the QEMU system of choice, and a means to test portability to _ARMv8M_.
+RK0 sweet spot are Cortex M0, M3. M4F when FPU work is intense. M7 is probably too much.
 
-| Target | Role | Status |
-| --- | --- | --- |
-| `ARCH=armv7m PLATFORM=stm32f401re` | STM32F401RE board path. | Main hardware path for timing, UART, flash and MPU behaviour. |
-| `ARCH=armv8m PLATFORM=mps2-an505` | QEMU MPS2 AN505 Cortex-M33. | Fast functional smoke path for SVC and MPU mechanics. |
+RK01 sweet spot is M4F and M7 chips with MPU. ARMv8M chips are supported but would be underused.
 
-RK01 does not currently ship an ARMv6-M port. A future Cortex-M0+ MPU board can
-still be useful, but it should be treated as a smaller single-domain profile,
-not as proof that multi-domain isolation is practical on every MCU.
+This repo delivers a build environment to run on Nucleo STM32F401RE M4F, and a QEMU environment for MPS2 Cortex-M33. RK01 does not use the _Trusted Environment_ .
+
+Although Cortex-M0+ chips have MPUs, RK01 does not support ARMv6M. 
+
 
 ## Repository Layout
 
@@ -95,25 +89,15 @@ not as proof that multi-domain isolation is practical on every MCU.
 
 ## Build Requirements
 
-- Unlike RK0, which conservatively stays aligned with C99, RK01 requires a C11
-  compiler.
-
+- Unlike RK0, which old-fashioned, stays aligned with C99, RK01 requires at least C11.C11 introduces useful memory-alignment features that would otherwise be cumbersome or infeasible in C99.
+- 
 Required for firmware builds:
 
-- GNU Make
+- GNU Make (C11/GNU11)
 - `arm-none-eabi-gcc`
 - `arm-none-eabi-objcopy`
 - `arm-none-eabi-size`
-
-Optional:
-
-- `qemu-system-arm` for the Cortex-M33 smoke target
-- OpenOCD, `st-flash`, STM32 Programmer CLI or J-Link for STM32F401RE flashing
-- a serial terminal, or `make board-run`, for board UART output
-
-The Makefile defaults are `ARCH=armv7m`, `PLATFORM=stm32f401re`,
-`APP_EXAMPLE=tiny`, `TARGET=rk01_demo` and `FPU=OFF`.
-
+- 
 ## Quick Start
 
 Build the default STM32F401RE image:
@@ -220,7 +204,7 @@ kDomainTaskInit(&controlDomain, &controlHandle, ControlTask, RK_NO_ARGS,
                 "Control", 256U, CONTROL_PRIO, RK_PREEMPT);
 ```
 
-And for each domain create its .c and .h:
+And for each domain create its .c and .h, like in the provided example:
 
 
 | File | Role |
@@ -283,12 +267,12 @@ COMMON
 ```
 It catches this kind of mistake:
 ```c
-/* bad in a domain implementation file */
-static ULONG counter;
+/* linker cant know where to place this: */
+static ULONG counter; // bang
 ```
 
 ```c
-/* correct form */
+/* you must speak up: */
 RK_DECLARE_DOMAIN_RAM(RECORD_DOMAIN_RAM,
     RK_DOMAIN_RAM_MEMBER(ULONG, counter)
     RK_DOMAIN_RAM_STACK(serverStack, RECORD_TASK_STACK_WORDS)
@@ -314,13 +298,12 @@ dispatcher validates:
 ![User API call through SVC](docs/readme_svc_call.svg)
 
 Kernel objects representation and usage is probably the most radical change when compared to RK0.
-RK0 tried to keep objects creation and access the less opaque as possible. In RK1 objects are fully
-opaque -- they are indeed a _number_ the kernel resolves. Every kernel object is a `RK_HANDLE` 'sub-class'.
-
-Another difference is that objects are dynamic -- allocated/deallocated -- from object pools which maximum number is
-declared on configuration.
+RK0 tried to keep objects creation and access the less opaque the less indirect possible. In RK01 objects are fully
+opaque -- they are indeed a _number_ the kernel resolves. Every kernel object is a `RK_HANDLE` 'sub-class'; objects
+slots are allocated and deallocated from pools which maximum size is declared on compile time.
 
 ```c
+/* ready sema is visible for every task in this domain */
 RK_DECLARE_LOCAL_SEMAPHORE(readySema)
 
 kSemaphoreCreate(&readySema, "Ready", 0U, 1U);
