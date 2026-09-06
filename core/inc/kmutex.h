@@ -23,8 +23,8 @@ extern "C" {
 RK_ERR kMutexInit(RK_MUTEX *const, UINT);
 RK_ERR kMutexCreate(RK_MUTEX_HANDLE *const, RK_STRING, UINT);
 RK_ERR kMutexCreateGlobalScope(RK_MUTEX_HANDLE *const, RK_STRING, UINT);
-RK_ERR kMutexCreateModuleScope(RK_MUTEX_HANDLE *const, RK_STRING, UINT,
-                               RK_MODULE *const);
+RK_ERR kMutexCreateDomainScope(RK_MUTEX_HANDLE *const, RK_STRING, UINT,
+                               RK_DOMAIN *const);
 RK_ERR kMutexDestroy(RK_MUTEX_HANDLE *const);
 RK_ERR kMutexLock(RK_MUTEX_HANDLE const, RK_TICK const);
 RK_ERR kMutexUnlock(RK_MUTEX_HANDLE const);

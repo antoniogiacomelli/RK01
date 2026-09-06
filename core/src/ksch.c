@@ -53,8 +53,8 @@ volatile UINT RK_gSchLock = 0;
 volatile UINT RK_gStartupSvcArmed = 0U;
 volatile UINT RK_gKernelPhase = RK_KERNEL_PHASE_BOOT;
 volatile UINT RK_gKernelConstructionDepth = 0U;
-extern BYTE __rk_app_module_begin;
-extern BYTE __rk_app_module_end;
+extern BYTE __rk_app_domain_begin;
+extern BYTE __rk_app_domain_end;
 /* local globals  */
 static RK_TCB const *RK_gKernelConstructionOwnerPtr = NULL;
 static volatile UINT RK_gKernelConstructionSchedLocks = 0U;
@@ -66,8 +66,8 @@ static RK_PRIO const readyBitmaskPrioLimit = sizeof(ULONG) * 8U;
 static RK_TID pPid = 0; /* number of active tasks */
 static RK_BOOL RK_gTaskPoolInit = RK_FALSE;
 static RK_BOOL RK_gSystemTasksInit = RK_FALSE;
-static RK_BOOL RK_gApplicationModuleInit = RK_FALSE;
-static RK_MODULE RK_gApplicationModule;
+static RK_BOOL RK_gApplicationDomainInit = RK_FALSE;
+static RK_DOMAIN RK_gApplicationDomain;
 static RK_MEM_PARTITION RK_gTaskPool;
 static RK_MEM_PARTITION *RK_gTaskDynStackPartByPid[RK_NTHREADS];
 static USHORT RK_gTaskHandleGenerationByPid[RK_NTHREADS];
@@ -1035,15 +1035,15 @@ static inline VOID kWriteName_(RK_STRING dstPtr, CHAR const *const name)
     dstPtr[RK_OBJ_MAX_NAME_LEN - 1U] = '\0';
 }
 
-RK_MODULE *kApplicationModuleGet(VOID)
+RK_DOMAIN *kApplicationDomainGet(VOID)
 {
-    return ((RK_gApplicationModuleInit == RK_TRUE) ? &RK_gApplicationModule
+    return ((RK_gApplicationDomainInit == RK_TRUE) ? &RK_gApplicationDomain
                                                    : NULL);
 }
 
-RK_ERR kApplicationModuleEnsureInit(VOID)
+RK_ERR kApplicationDomainEnsureInit(VOID)
 {
-    if (RK_gApplicationModuleInit == RK_TRUE)
+    if (RK_gApplicationDomainInit == RK_TRUE)
     {
         return (RK_ERR_SUCCESS);
     }
@@ -1056,8 +1056,8 @@ RK_ERR kApplicationModuleEnsureInit(VOID)
         return (RK_ERR_INVALID_PHASE);
     }
 
-    UINTPTR const regionBegin = (UINTPTR)&__rk_app_module_begin;
-    UINTPTR const regionEnd = (UINTPTR)&__rk_app_module_end;
+    UINTPTR const regionBegin = (UINTPTR)&__rk_app_domain_begin;
+    UINTPTR const regionEnd = (UINTPTR)&__rk_app_domain_end;
     if ((regionEnd <= regionBegin) ||
         ((regionEnd - regionBegin) > (UINTPTR)RK_ULONG_MAX))
     {
@@ -1067,21 +1067,21 @@ RK_ERR kApplicationModuleEnsureInit(VOID)
         return (RK_ERR_INVALID_PARAM);
     }
 
-    RK_MEMSET(&RK_gApplicationModule, 0, sizeof(RK_gApplicationModule));
-    kWriteName_(RK_gApplicationModule.moduleName, "App");
-    RK_gApplicationModule.regionBasePtr = &__rk_app_module_begin;
-    RK_gApplicationModule.regionBytes = (ULONG)(regionEnd - regionBegin);
-    RK_gApplicationModule.init = RK_FALSE;
+    RK_MEMSET(&RK_gApplicationDomain, 0, sizeof(RK_gApplicationDomain));
+    kWriteName_(RK_gApplicationDomain.domainName, "App");
+    RK_gApplicationDomain.regionBasePtr = &__rk_app_domain_begin;
+    RK_gApplicationDomain.regionBytes = (ULONG)(regionEnd - regionBegin);
+    RK_gApplicationDomain.init = RK_FALSE;
 
-    RK_ERR const err = kMpuModuleMemoryReserve(&RK_gApplicationModule);
+    RK_ERR const err = kMpuDomainMemoryReserve(&RK_gApplicationDomain);
     if (err != RK_ERR_SUCCESS)
     {
-        RK_MEMSET(&RK_gApplicationModule, 0, sizeof(RK_gApplicationModule));
+        RK_MEMSET(&RK_gApplicationDomain, 0, sizeof(RK_gApplicationDomain));
         return (err);
     }
 
-    RK_gApplicationModule.init = RK_TRUE;
-    RK_gApplicationModuleInit = RK_TRUE;
+    RK_gApplicationDomain.init = RK_TRUE;
+    RK_gApplicationDomainInit = RK_TRUE;
     return (RK_ERR_SUCCESS);
 }
 
@@ -1839,22 +1839,22 @@ RK_ERR kTaskFaultCleanup(RK_TID const tid)
     return (RK_ERR_SUCCESS);
 }
 
-RK_ERR kModuleInit(RK_MODULE *const modulePtr,
+RK_ERR kDomainInit(RK_DOMAIN *const domainPtr,
                    BYTE *const regionBasePtr,
                    ULONG const regionBytes,
-                   RK_STRING moduleName)
+                   RK_STRING domainName)
 {
     if (kSyscallRequired() == RK_TRUE)
     {
-        return ((RK_ERR)kSyscallInvoke4(RK_SYSCALL_MODULE_INIT,
-                                        (ULONG)(UINTPTR)modulePtr,
+        return ((RK_ERR)kSyscallInvoke4(RK_SYSCALL_DOMAIN_INIT,
+                                        (ULONG)(UINTPTR)domainPtr,
                                         (ULONG)(UINTPTR)regionBasePtr,
                                         regionBytes,
-                                        (ULONG)(UINTPTR)moduleName));
+                                        (ULONG)(UINTPTR)domainName));
     }
 
-    if ((modulePtr == NULL) || (regionBasePtr == NULL) ||
-        (moduleName == NULL))
+    if ((domainPtr == NULL) || (regionBasePtr == NULL) ||
+        (domainName == NULL))
     {
 #if (RK_CONF_ERR_CHECK == ON)
         kErrHandler(RK_FAULT_OBJ_NULL);
@@ -1878,7 +1878,7 @@ RK_ERR kModuleInit(RK_MODULE *const modulePtr,
         return (RK_ERR_INVALID_PHASE);
     }
 
-    if (modulePtr->init == RK_TRUE)
+    if (domainPtr->init == RK_TRUE)
     {
 #if (RK_CONF_ERR_CHECK == ON)
         kErrHandler(RK_FAULT_OBJ_DOUBLE_INIT);
@@ -1886,25 +1886,25 @@ RK_ERR kModuleInit(RK_MODULE *const modulePtr,
         return (RK_ERR_OBJ_DOUBLE_INIT);
     }
 
-    RK_MEMSET(modulePtr, 0, sizeof(RK_MODULE));
-    kWriteName_(modulePtr->moduleName, moduleName);
-    modulePtr->regionBasePtr = regionBasePtr;
-    modulePtr->regionBytes = regionBytes;
-    modulePtr->init = RK_FALSE;
+    RK_MEMSET(domainPtr, 0, sizeof(RK_DOMAIN));
+    kWriteName_(domainPtr->domainName, domainName);
+    domainPtr->regionBasePtr = regionBasePtr;
+    domainPtr->regionBytes = regionBytes;
+    domainPtr->init = RK_FALSE;
 
-    RK_ERR const err = kMpuModuleMemoryReserve(modulePtr);
+    RK_ERR const err = kMpuDomainMemoryReserve(domainPtr);
     if (err != RK_ERR_SUCCESS)
     {
-        modulePtr->regionBasePtr = NULL;
-        modulePtr->regionBytes = 0UL;
+        domainPtr->regionBasePtr = NULL;
+        domainPtr->regionBytes = 0UL;
         return (err);
     }
 
-    modulePtr->init = RK_TRUE;
+    domainPtr->init = RK_TRUE;
     return (RK_ERR_SUCCESS);
 }
 
-static RK_BOOL kModuleAllocAlignValid_(ULONG const alignBytes)
+static RK_BOOL kDomainAllocAlignValid_(ULONG const alignBytes)
 {
     return (((alignBytes != 0UL) &&
              ((alignBytes & (alignBytes - 1UL)) == 0UL)) ?
@@ -1912,7 +1912,7 @@ static RK_BOOL kModuleAllocAlignValid_(ULONG const alignBytes)
                 RK_FALSE);
 }
 
-VOID *kModuleAlloc(RK_MODULE *const modulePtr,
+VOID *kDomainAlloc(RK_DOMAIN *const domainPtr,
                    ULONG const nBytes,
                    ULONG const alignBytes)
 {
@@ -1928,7 +1928,7 @@ VOID *kModuleAlloc(RK_MODULE *const modulePtr,
         return (NULL);
     }
 
-    if ((modulePtr == NULL) || (modulePtr->regionBasePtr == NULL))
+    if ((domainPtr == NULL) || (domainPtr->regionBasePtr == NULL))
     {
 #if (RK_CONF_ERR_CHECK == ON)
         kErrHandler(RK_FAULT_OBJ_NULL);
@@ -1944,7 +1944,7 @@ VOID *kModuleAlloc(RK_MODULE *const modulePtr,
         return (NULL);
     }
 
-    if (modulePtr->init != RK_TRUE)
+    if (domainPtr->init != RK_TRUE)
     {
 #if (RK_CONF_ERR_CHECK == ON)
         kErrHandler(RK_FAULT_OBJ_NOT_INIT);
@@ -1961,7 +1961,7 @@ VOID *kModuleAlloc(RK_MODULE *const modulePtr,
     }
 
     if ((nBytes == 0UL) ||
-        (kModuleAllocAlignValid_(alignBytes) == RK_FALSE))
+        (kDomainAllocAlignValid_(alignBytes) == RK_FALSE))
     {
 #if (RK_CONF_ERR_CHECK == ON)
         kErrHandler(RK_FAULT_INVALID_PARAM);
@@ -1969,7 +1969,7 @@ VOID *kModuleAlloc(RK_MODULE *const modulePtr,
         return (NULL);
     }
 
-    if (modulePtr->allocBytes > (RK_ULONG_MAX - alignMask))
+    if (domainPtr->allocBytes > (RK_ULONG_MAX - alignMask))
     {
 #if (RK_CONF_ERR_CHECK == ON)
         kErrHandler(RK_FAULT_INVALID_PARAM);
@@ -1977,9 +1977,9 @@ VOID *kModuleAlloc(RK_MODULE *const modulePtr,
         return (NULL);
     }
 
-    alignedOffset = (modulePtr->allocBytes + alignMask) & ~alignMask;
-    if ((alignedOffset > modulePtr->regionBytes) ||
-        (nBytes > (modulePtr->regionBytes - alignedOffset)))
+    alignedOffset = (domainPtr->allocBytes + alignMask) & ~alignMask;
+    if ((alignedOffset > domainPtr->regionBytes) ||
+        (nBytes > (domainPtr->regionBytes - alignedOffset)))
     {
 #if (RK_CONF_ERR_CHECK == ON)
         kErrHandler(RK_FAULT_INVALID_PARAM);
@@ -1988,7 +1988,7 @@ VOID *kModuleAlloc(RK_MODULE *const modulePtr,
     }
 
     nextOffset = alignedOffset + nBytes;
-    if ((nextOffset < alignedOffset) || (nextOffset > modulePtr->regionBytes))
+    if ((nextOffset < alignedOffset) || (nextOffset > domainPtr->regionBytes))
     {
 #if (RK_CONF_ERR_CHECK == ON)
         kErrHandler(RK_FAULT_INVALID_PARAM);
@@ -1996,11 +1996,11 @@ VOID *kModuleAlloc(RK_MODULE *const modulePtr,
         return (NULL);
     }
 
-    modulePtr->allocBytes = nextOffset;
-    return ((VOID *)&modulePtr->regionBasePtr[alignedOffset]);
+    domainPtr->allocBytes = nextOffset;
+    return ((VOID *)&domainPtr->regionBasePtr[alignedOffset]);
 }
 
-RK_STACK *kModuleStackAlloc(RK_MODULE *const modulePtr,
+RK_STACK *kDomainStackAlloc(RK_DOMAIN *const domainPtr,
                             ULONG const stackWords)
 {
     if ((stackWords < RK_MIN_STACKSIZE) ||
@@ -2013,12 +2013,12 @@ RK_STACK *kModuleStackAlloc(RK_MODULE *const modulePtr,
         return (NULL);
     }
 
-    return ((RK_STACK *)kModuleAlloc(modulePtr,
+    return ((RK_STACK *)kDomainAlloc(domainPtr,
                                     stackWords * (ULONG)sizeof(RK_STACK),
                                     8UL));
 }
 
-RK_ERR kModuleTaskInit(RK_MODULE *const modulePtr,
+RK_ERR kDomainTaskInit(RK_DOMAIN *const domainPtr,
                        RK_TASK_HANDLE *taskHandlePtr,
                        const RK_TASKENTRY taskFunc,
                        VOID *argsPtr,
@@ -2038,7 +2038,7 @@ RK_ERR kModuleTaskInit(RK_MODULE *const modulePtr,
         return (RK_ERR_INVALID_PHASE);
     }
 
-    if ((modulePtr == NULL) || (taskHandlePtr == NULL) ||
+    if ((domainPtr == NULL) || (taskHandlePtr == NULL) ||
         (taskFunc == NULL) || (taskName == NULL))
     {
 #if (RK_CONF_ERR_CHECK == ON)
@@ -2055,7 +2055,7 @@ RK_ERR kModuleTaskInit(RK_MODULE *const modulePtr,
         return (RK_ERR_INVALID_ISR_PRIMITIVE);
     }
 
-    if (modulePtr->init != RK_TRUE)
+    if (domainPtr->init != RK_TRUE)
     {
 #if (RK_CONF_ERR_CHECK == ON)
         kErrHandler(RK_FAULT_OBJ_NOT_INIT);
@@ -2089,19 +2089,19 @@ RK_ERR kModuleTaskInit(RK_MODULE *const modulePtr,
         return (RK_ERR_INVALID_PRIO);
     }
 
-    allocMark = modulePtr->allocBytes;
-    stackPtr = kModuleStackAlloc(modulePtr, stackWords);
+    allocMark = domainPtr->allocBytes;
+    stackPtr = kDomainStackAlloc(domainPtr, stackWords);
     if (stackPtr == NULL)
     {
         return (RK_ERR_INVALID_PARAM);
     }
 
-    RK_ERR const err = kTaskInitModule(taskHandlePtr, taskFunc, argsPtr,
+    RK_ERR const err = kTaskInitDomain(taskHandlePtr, taskFunc, argsPtr,
                                        taskName, stackPtr, stackWords,
-                                       priority, preempt, modulePtr);
+                                       priority, preempt, domainPtr);
     if (err != RK_ERR_SUCCESS)
     {
-        modulePtr->allocBytes = allocMark;
+        domainPtr->allocBytes = allocMark;
     }
 
     return (err);
@@ -2168,17 +2168,17 @@ RK_ERR kSharedRegionInit(RK_SHARED_REGION *const regionPtr,
     return (RK_ERR_SUCCESS);
 }
 
-RK_ERR kModuleMapSharedRegion(RK_MODULE *const modulePtr,
+RK_ERR kDomainMapSharedRegion(RK_DOMAIN *const domainPtr,
                               RK_SHARED_REGION *const regionPtr)
 {
     if (kSyscallRequired() == RK_TRUE)
     {
         return ((RK_ERR)kSyscallInvoke4(
-            RK_SYSCALL_MODULE_MAP_SHARED_REGION, (ULONG)(UINTPTR)modulePtr,
+            RK_SYSCALL_DOMAIN_MAP_SHARED_REGION, (ULONG)(UINTPTR)domainPtr,
             (ULONG)(UINTPTR)regionPtr, 0UL, 0UL));
     }
 
-    if ((modulePtr == NULL) || (regionPtr == NULL))
+    if ((domainPtr == NULL) || (regionPtr == NULL))
     {
 #if (RK_CONF_ERR_CHECK == ON)
         kErrHandler(RK_FAULT_OBJ_NULL);
@@ -2202,7 +2202,7 @@ RK_ERR kModuleMapSharedRegion(RK_MODULE *const modulePtr,
         return (RK_ERR_INVALID_PHASE);
     }
 
-    if ((modulePtr->init != RK_TRUE) || (regionPtr->init != RK_TRUE))
+    if ((domainPtr->init != RK_TRUE) || (regionPtr->init != RK_TRUE))
     {
 #if (RK_CONF_ERR_CHECK == ON)
         kErrHandler(RK_FAULT_OBJ_NOT_INIT);
@@ -2210,7 +2210,7 @@ RK_ERR kModuleMapSharedRegion(RK_MODULE *const modulePtr,
         return (RK_ERR_OBJ_NOT_INIT);
     }
 
-    if (modulePtr->taskCount != 0UL)
+    if (domainPtr->taskCount != 0UL)
     {
 #if (RK_CONF_ERR_CHECK == ON)
         kErrHandler(RK_FAULT_INVALID_OBJ);
@@ -2218,9 +2218,9 @@ RK_ERR kModuleMapSharedRegion(RK_MODULE *const modulePtr,
         return (RK_ERR_INVALID_OBJ);
     }
 
-    for (UINT idx = 0U; idx < RK_CONF_MODULE_SHARED_REGIONS; idx++)
+    for (UINT idx = 0U; idx < RK_CONF_DOMAIN_SHARED_REGIONS; idx++)
     {
-        if (modulePtr->sharedRegionPtr[idx] == regionPtr)
+        if (domainPtr->sharedRegionPtr[idx] == regionPtr)
         {
 #if (RK_CONF_ERR_CHECK == ON)
             kErrHandler(RK_FAULT_OBJ_DOUBLE_INIT);
@@ -2229,11 +2229,11 @@ RK_ERR kModuleMapSharedRegion(RK_MODULE *const modulePtr,
         }
     }
 
-    for (UINT idx = 0U; idx < RK_CONF_MODULE_SHARED_REGIONS; idx++)
+    for (UINT idx = 0U; idx < RK_CONF_DOMAIN_SHARED_REGIONS; idx++)
     {
-        if (modulePtr->sharedRegionPtr[idx] == NULL)
+        if (domainPtr->sharedRegionPtr[idx] == NULL)
         {
-            modulePtr->sharedRegionPtr[idx] = regionPtr;
+            domainPtr->sharedRegionPtr[idx] = regionPtr;
             return (RK_ERR_SUCCESS);
         }
     }
@@ -2261,7 +2261,7 @@ RK_ERR kTaskInit(RK_TASK_HANDLE *taskHandlePtr, const RK_TASKENTRY taskFunc,
         syscallArgs.stackSize = stackSize;
         syscallArgs.priority = priority;
         syscallArgs.preempt = preempt;
-        syscallArgs.modulePtr = NULL;
+        syscallArgs.domainPtr = NULL;
 
         return ((RK_ERR)kSyscallInvoke4(RK_SYSCALL_TASK_INIT,
                                         (ULONG)(UINTPTR)&syscallArgs,
@@ -2311,17 +2311,17 @@ RK_ERR kTaskInit(RK_TASK_HANDLE *taskHandlePtr, const RK_TASKENTRY taskFunc,
         return (RK_ERR_INVALID_PARAM);
     }
 
-    RK_ERR err = kApplicationModuleEnsureInit();
+    RK_ERR err = kApplicationDomainEnsureInit();
     if (err != RK_ERR_SUCCESS)
     {
         return (err);
     }
 
-    defaultTaskMemory.regionBasePtr = RK_gApplicationModule.regionBasePtr;
-    defaultTaskMemory.regionBytes = RK_gApplicationModule.regionBytes;
+    defaultTaskMemory.regionBasePtr = RK_gApplicationDomain.regionBasePtr;
+    defaultTaskMemory.regionBytes = RK_gApplicationDomain.regionBytes;
     defaultTaskMemory.stackBasePtr = stackBufPtr;
     defaultTaskMemory.stackWords = stackSize;
-    defaultTaskMemory.modulePtr = &RK_gApplicationModule;
+    defaultTaskMemory.domainPtr = &RK_gApplicationDomain;
     protectedTask = RK_TRUE;
     savedControl = RK_CONTROL_PSP_UNPRIVILEGED;
 
@@ -2413,7 +2413,7 @@ RK_ERR kTaskInitIsolated(RK_TASK_HANDLE *taskHandlePtr,
     isolatedTaskMemory.regionBytes = stackSize * (ULONG)sizeof(RK_STACK);
     isolatedTaskMemory.stackBasePtr = stackBufPtr;
     isolatedTaskMemory.stackWords = stackSize;
-    isolatedTaskMemory.modulePtr = NULL;
+    isolatedTaskMemory.domainPtr = NULL;
 
     RK_CR_AREA
     RK_CR_ENTER
@@ -2441,7 +2441,7 @@ RK_ERR kTaskInitIsolated(RK_TASK_HANDLE *taskHandlePtr,
     return (err);
 }
 
-RK_ERR kTaskInitModule(RK_TASK_HANDLE *taskHandlePtr,
+RK_ERR kTaskInitDomain(RK_TASK_HANDLE *taskHandlePtr,
                        const RK_TASKENTRY taskFunc,
                        VOID *argsPtr,
                        RK_STRING taskName,
@@ -2449,7 +2449,7 @@ RK_ERR kTaskInitModule(RK_TASK_HANDLE *taskHandlePtr,
                        const ULONG stackSize,
                        const RK_PRIO priority,
                        const RK_OPTION preempt,
-                       RK_MODULE *const modulePtr)
+                       RK_DOMAIN *const domainPtr)
 {
     if (kSyscallRequired() == RK_TRUE)
     {
@@ -2463,17 +2463,17 @@ RK_ERR kTaskInitModule(RK_TASK_HANDLE *taskHandlePtr,
         syscallArgs.stackSize = stackSize;
         syscallArgs.priority = priority;
         syscallArgs.preempt = preempt;
-        syscallArgs.modulePtr = modulePtr;
+        syscallArgs.domainPtr = domainPtr;
 
-        return ((RK_ERR)kSyscallInvoke4(RK_SYSCALL_TASK_INIT_MODULE,
+        return ((RK_ERR)kSyscallInvoke4(RK_SYSCALL_TASK_INIT_DOMAIN,
                                         (ULONG)(UINTPTR)&syscallArgs,
                                         0UL, 0UL, 0UL));
     }
 
-    RK_TASK_MEMORY moduleTaskMemory;
+    RK_TASK_MEMORY domainTaskMemory;
 
     if ((taskHandlePtr == NULL) || (taskFunc == NULL) || (taskName == NULL) ||
-        (stackBufPtr == NULL) || (modulePtr == NULL))
+        (stackBufPtr == NULL) || (domainPtr == NULL))
     {
 #if (RK_CONF_ERR_CHECK == ON)
         kErrHandler(RK_FAULT_OBJ_NULL);
@@ -2489,7 +2489,7 @@ RK_ERR kTaskInitModule(RK_TASK_HANDLE *taskHandlePtr,
         return (RK_ERR_INVALID_ISR_PRIMITIVE);
     }
 
-    if (modulePtr->init != RK_TRUE)
+    if (domainPtr->init != RK_TRUE)
     {
 #if (RK_CONF_ERR_CHECK == ON)
         kErrHandler(RK_FAULT_OBJ_NOT_INIT);
@@ -2513,11 +2513,11 @@ RK_ERR kTaskInitModule(RK_TASK_HANDLE *taskHandlePtr,
         return (RK_ERR_INVALID_PRIO);
     }
 
-    moduleTaskMemory.regionBasePtr = modulePtr->regionBasePtr;
-    moduleTaskMemory.regionBytes = modulePtr->regionBytes;
-    moduleTaskMemory.stackBasePtr = stackBufPtr;
-    moduleTaskMemory.stackWords = stackSize;
-    moduleTaskMemory.modulePtr = modulePtr;
+    domainTaskMemory.regionBasePtr = domainPtr->regionBasePtr;
+    domainTaskMemory.regionBytes = domainPtr->regionBytes;
+    domainTaskMemory.stackBasePtr = stackBufPtr;
+    domainTaskMemory.stackWords = stackSize;
+    domainTaskMemory.domainPtr = domainPtr;
 
     if (kTaskStackGeometryValid_(stackBufPtr, stackSize) == RK_FALSE)
     {
@@ -2525,17 +2525,17 @@ RK_ERR kTaskInitModule(RK_TASK_HANDLE *taskHandlePtr,
         return (RK_ERR_INVALID_PARAM);
     }
 
-    if (kMpuTaskMemoryValid(&moduleTaskMemory) == RK_FALSE)
+    if (kMpuTaskMemoryValid(&domainTaskMemory) == RK_FALSE)
     {
 #if (RK_CONF_FAULT_PRINT_STDERR == ON)
-        printf("TASK INIT INVALID MEMORY: task=%s module=%s stack=0x%08lx "
+        printf("TASK INIT INVALID MEMORY: task=%s domain=%s stack=0x%08lx "
                "words=%lu region=0x%08lx bytes=%lu\r\n",
                taskName,
-               modulePtr->moduleName,
+               domainPtr->domainName,
                (ULONG)stackBufPtr,
                stackSize,
-               (ULONG)modulePtr->regionBasePtr,
-               modulePtr->regionBytes);
+               (ULONG)domainPtr->regionBasePtr,
+               domainPtr->regionBytes);
 #endif
 #if (RK_CONF_ERR_CHECK == ON)
         kErrHandler(RK_FAULT_INVALID_PARAM);
@@ -2564,7 +2564,7 @@ RK_ERR kTaskInitModule(RK_TASK_HANDLE *taskHandlePtr,
                                stackBufPtr, stackSize,
                                priority, preempt, (RK_TID)RK_NTHREADS,
                                RK_CONTROL_PSP_UNPRIVILEGED, RK_TRUE,
-                               &moduleTaskMemory);
+                               &domainTaskMemory);
     RK_CR_EXIT
     return (err);
 }
@@ -2881,27 +2881,27 @@ RK_ERR kTaskSpawn(RK_DYNAMIC_TASK_ATTR const *taskAttrPtr,
         return (RK_ERR_INVALID_OBJ);
     }
 
-    RK_MODULE *modulePtr = taskAttrPtr->modulePtr;
-    if (modulePtr == NULL)
+    RK_DOMAIN *domainPtr = taskAttrPtr->domainPtr;
+    if (domainPtr == NULL)
     {
         if (RK_gRunPtr != NULL)
         {
-            modulePtr = RK_gRunPtr->modulePtr;
+            domainPtr = RK_gRunPtr->domainPtr;
         }
         else
         {
-            RK_ERR const appModuleErr = kApplicationModuleEnsureInit();
-            if (appModuleErr != RK_ERR_SUCCESS)
+            RK_ERR const appDomainErr = kApplicationDomainEnsureInit();
+            if (appDomainErr != RK_ERR_SUCCESS)
             {
-                return (appModuleErr);
+                return (appDomainErr);
             }
-            modulePtr = &RK_gApplicationModule;
+            domainPtr = &RK_gApplicationDomain;
         }
     }
 
-    if (modulePtr != NULL)
+    if (domainPtr != NULL)
     {
-        if (modulePtr->init != RK_TRUE)
+        if (domainPtr->init != RK_TRUE)
         {
 #if (RK_CONF_ERR_CHECK == ON)
             kErrHandler(RK_FAULT_OBJ_NOT_INIT);
@@ -2909,7 +2909,7 @@ RK_ERR kTaskSpawn(RK_DYNAMIC_TASK_ATTR const *taskAttrPtr,
             return (RK_ERR_OBJ_NOT_INIT);
         }
 
-        if (kMpuModuleMemoryValid(modulePtr) == RK_FALSE)
+        if (kMpuDomainMemoryValid(domainPtr) == RK_FALSE)
         {
 #if (RK_CONF_ERR_CHECK == ON)
             kErrHandler(RK_FAULT_INVALID_PARAM);
@@ -2942,13 +2942,13 @@ RK_ERR kTaskSpawn(RK_DYNAMIC_TASK_ATTR const *taskAttrPtr,
 
     *taskHandlePtr = NULL;
     RK_ERR err;
-    if (modulePtr != NULL)
+    if (domainPtr != NULL)
     {
-        err = kTaskInitModule(taskHandlePtr, taskAttrPtr->taskFunc,
+        err = kTaskInitDomain(taskHandlePtr, taskAttrPtr->taskFunc,
                               taskAttrPtr->argsPtr, taskAttrPtr->taskName,
                               stackBufPtr, stackSize,
                               taskAttrPtr->priority, taskAttrPtr->preempt,
-                              modulePtr);
+                              domainPtr);
     }
     else
     {

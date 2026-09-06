@@ -267,8 +267,8 @@ static RK_ERR kTimerReadyErr_(RK_TIMER const *const kobj)
         return (readyErr);
     }
 
-    return (kObjHeaderModuleLocalAccessErr(
-        &kobj->header, (RK_gRunPtr != NULL) ? RK_gRunPtr->modulePtr : NULL));
+    return (kObjHeaderDomainLocalAccessErr(
+        &kobj->header, (RK_gRunPtr != NULL) ? RK_gRunPtr->domainPtr : NULL));
 }
 
 /******************************************************************************
@@ -353,8 +353,8 @@ RK_ERR kTimerInit(RK_TIMER *const kobj, RK_TICK const phase,
         kobj->init = RK_TRUE;
         kobj->objID = RK_TIMER_KOBJ_ID;
         kobj->objName[0] = '\0';
-        kObjHeaderOwnerModuleSet(&kobj->header,
-                                 (RK_gRunPtr != NULL) ? RK_gRunPtr->modulePtr
+        kObjHeaderOwnerDomainSet(&kobj->header,
+                                 (RK_gRunPtr != NULL) ? RK_gRunPtr->domainPtr
                                                       : NULL);
         kTraceRegisterObject(kobj, RK_TIMER_KOBJ_ID);
     }

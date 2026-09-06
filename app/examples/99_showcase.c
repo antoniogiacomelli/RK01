@@ -12,11 +12,11 @@
 RK01 APPLICATION DEMONSTRATION
 
 The default shape is now the RK0-shaped one: tasks created with kTaskInit()
-join the implicit App module. They share App-module RAM and can use ordinary
-module-local synchronisers without declaring an RK_MODULE by hand.
+join the implicit App domain. They share App-domain RAM and can use ordinary
+domain-local synchronisers without declaring an RK_DOMAIN by hand.
 
 +------------------------------------------------------------------------------+
-| Implicit App module                                                          |
+| Implicit App domain                                                          |
 |                                                                              |
 |  DebugHeartbeatTask (when no HAL watchdog is available)                      |
 |                                                                              |
@@ -34,19 +34,19 @@ module-local synchronisers without declaring an RK_MODULE by hand.
 
 +--------------------+       copied msg       +--------------------+
 | IsoAlphaTask       | ---------------------> | IsoBetaTask        |
-| isolated module    | <--------------------- | isolated module    |
+| isolated domain    | <--------------------- | isolated domain    |
 +--------------------+       copied reply     +--------------------+
           |
           | copied msg / copied reply
           v
 +--------------------+
 | IsoGammaTask       |
-| isolated module    |
+| isolated domain    |
 +--------------------+
 
 +----------------------------+        copied queue        +----------------------------+
-| Fleet Control Module       | -------------------------> | Fleet Comms Module         |
-| fleetControlModule         |       FleetOrder           | fleetCommsModule           |
+| Fleet Control Domain       | -------------------------> | Fleet Comms Domain         |
+| fleetControlDomain         |       FleetOrder           | fleetCommsDomain           |
 |                            |                            |                            |
 | FleetPlannerTask           |                            | FleetLinkTxTask            |
 | owns desired control state |                            | owns transmitted status    |
@@ -62,44 +62,44 @@ Logs once per second on targets without a HAL watchdog so a run proves the
 scheduler and logger are alive. STM32F401RE uses the hardware watchdog instead.
 
 o PlantSensorTask
-Runs in the implicit App module. It generates a synthetic sensor sample every
+Runs in the implicit App domain. It generates a synthetic sensor sample every
 500 ms and sends that sample by copied direct async message to
 PlantControllerTask.
 
 o PlantControllerTask
-Runs in the same App module. It receives copied samples, locks the module-local
+Runs in the same App domain. It receives copied samples, locks the domain-local
 plantStateMutex, updates plantState, computes a command, unlocks the mutex and
 posts plantActuatorSema.
 
 o PlantActuatorTask
-Runs in the same App module. It blocks on plantActuatorSema, reads the latest
+Runs in the same App domain. It blocks on plantActuatorSema, reads the latest
 command from plantState while holding plantStateMutex, then logs the command.
 The semaphore is the scheduling event; the task does not poll.
 
 o IsoAlphaTask
-Is created with kTaskInitIsolated(), so it has a private one-task module. It
+Is created with kTaskInitIsolated(), so it has a private one-task domain. It
 sends copied requests to IsoBetaTask and IsoGammaTask, then waits for copied
-replies. No writable state crosses the module boundary.
+replies. No writable state crosses the domain boundary.
 
 o IsoBetaTask and IsoGammaTask
-Each responder is also an isolated one-task module. It keeps private counters on
+Each responder is also an isolated one-task domain. It keeps private counters on
 its own stack, receives copied requests and replies with copied payloads.
 
 o FleetPlannerTask
-Runs in fleetControlModule. It owns the desired fleet state and sends each order
-to fleetCommsModule through a copied message queue.
+Runs in fleetControlDomain. It owns the desired fleet state and sends each order
+to fleetCommsDomain through a copied message queue.
 
 o FleetLinkTxTask
-Runs in fleetCommsModule. It receives copied orders, validates them and updates
-module-local comms state under fleetCommsMutex.
+Runs in fleetCommsDomain. It receives copied orders, validates them and updates
+domain-local comms state under fleetCommsMutex.
 
 o FleetSupervisorTask
-Runs in fleetCommsModule. It is a synchronous call/reply server: it accepts a
+Runs in fleetCommsDomain. It is a synchronous call/reply server: it accepts a
 copied status request, snapshots comms state under fleetCommsMutex and replies
 with a copied FleetStatusReply.
 
 o FleetTelemetryTask
-Runs in fleetControlModule. It periodically makes a copied call/reply request to
+Runs in fleetControlDomain. It periodically makes a copied call/reply request to
 FleetSupervisorTask and logs the copied reply.
 
 ***************************************************************************************/
@@ -125,7 +125,7 @@ FleetSupervisorTask and logs the copied reply.
 #define ISO_BETA_MAGIC (0xB20B20B2UL)
 #define ISO_GAMMA_MAGIC (0xC30C30C3UL)
 
-#define FLEET_MODULE_BYTES (4096U)
+#define FLEET_DOMAIN_BYTES (4096U)
 #define FLEET_STACK_WORDS (256U)
 #define FLEET_ORDER_QUEUE_DEPTH (4U)
 
@@ -217,7 +217,7 @@ typedef struct
     ULONG status;
 } FleetStatusReply;
 
-/* APP MODULE: default kTaskInit() tasks share the implicit App module. */
+/* APP DOMAIN: default kTaskInit() tasks share the implicit App domain. */
 #if (K_HAL_HAS_WATCHDOG == 0U)
 RK_DECLARE_TASK(debugHeartbeatHandle, DebugHeartbeatTask, debugHeartbeatStack,
                 DEBUG_STACK_WORDS)
@@ -233,13 +233,13 @@ static PlantState plantState;
 static RK_DECLARE_MUTEX(plantStateMutex)
 static RK_DECLARE_SEMAPHORE(plantActuatorSema)
 
-/* FLEET: two explicit multi-task modules backed by raw byte MPU windows. */
-RK_DECLARE_MODULE(fleetControlModule, fleetControlRam, FLEET_MODULE_BYTES)
-RK_DECLARE_MODULE(fleetCommsModule, fleetCommsRam, FLEET_MODULE_BYTES)
-RK_DECLARE_MODULE_TASK(fleetPlannerHandle, FleetPlannerTask)
-RK_DECLARE_MODULE_TASK(fleetTelemetryHandle, FleetTelemetryTask)
-RK_DECLARE_MODULE_TASK(fleetLinkTxHandle, FleetLinkTxTask)
-RK_DECLARE_MODULE_TASK(fleetSupervisorHandle, FleetSupervisorTask)
+/* FLEET: two explicit multi-task domains backed by raw byte MPU windows. */
+RK_DECLARE_DOMAIN(fleetControlDomain, fleetControlRam, FLEET_DOMAIN_BYTES)
+RK_DECLARE_DOMAIN(fleetCommsDomain, fleetCommsRam, FLEET_DOMAIN_BYTES)
+RK_DECLARE_DOMAIN_TASK(fleetPlannerHandle, FleetPlannerTask)
+RK_DECLARE_DOMAIN_TASK(fleetTelemetryHandle, FleetTelemetryTask)
+RK_DECLARE_DOMAIN_TASK(fleetLinkTxHandle, FleetLinkTxTask)
+RK_DECLARE_DOMAIN_TASK(fleetSupervisorHandle, FleetSupervisorTask)
 
 static FleetControlState *fleetControlState;
 static FleetCommsState *fleetCommsState;
@@ -249,7 +249,7 @@ static RK_DECLARE_MESG_QUEUE_HANDLE(fleetOrderQueueHandle)
 static RK_DECLARE_MESG_QUEUE_BUF(fleetOrderQueueBuf, FleetOrder,
                                  FLEET_ORDER_QUEUE_DEPTH)
 
-/* ISO: each task opts into a private one-task module. */
+/* ISO: each task opts into a private one-task domain. */
 RK_DECLARE_ISOLATED_TASK(isoAlphaHandle, IsoAlphaTask, isoAlphaStack,
                          ISO_STACK_WORDS)
 RK_DECLARE_ISOLATED_TASK(isoBetaHandle, IsoBetaTask, isoBetaStack,
@@ -308,22 +308,22 @@ static VOID AppConfigureWatchdog_(VOID)
 #endif
 }
 
-static VOID AppCreateModules_(VOID)
+static VOID AppCreateDomains_(VOID)
 {
     RK_MEMSET(&plantState, 0, sizeof(plantState));
     RK_MEMSET(fleetControlRam, 0, sizeof(fleetControlRam));
     RK_MEMSET(fleetCommsRam, 0, sizeof(fleetCommsRam));
 
-    AppCheck_(kModuleInit(&fleetControlModule,
+    AppCheck_(kDomainInit(&fleetControlDomain,
                           fleetControlRam, sizeof(fleetControlRam), "FleetC"));
-    AppCheck_(kModuleInit(&fleetCommsModule,
+    AppCheck_(kDomainInit(&fleetCommsDomain,
                           fleetCommsRam, sizeof(fleetCommsRam), "FleetM"));
 
     fleetControlState =
-        AppCheckPtr_(RK_MODULE_ALLOC(&fleetControlModule, FleetControlState));
+        AppCheckPtr_(RK_DOMAIN_ALLOC(&fleetControlDomain, FleetControlState));
 
     fleetCommsState =
-        AppCheckPtr_(RK_MODULE_ALLOC(&fleetCommsModule, FleetCommsState));
+        AppCheckPtr_(RK_DOMAIN_ALLOC(&fleetCommsDomain, FleetCommsState));
 }
 
 static VOID AppCreateObjects_(VOID)
@@ -331,8 +331,8 @@ static VOID AppCreateObjects_(VOID)
     AppCheck_(kMutexCreate(&plantStateMutex, "PlantM", RK_PRIO_INHERITANCE));
     AppCheck_(kSemaphoreCreate(&plantActuatorSema, "PlantS", 0U, 1U));
 
-    AppCheck_(kMutexCreateModuleScope(&fleetCommsMutex, "FleetM",
-                                      RK_PRIO_INHERITANCE, &fleetCommsModule));
+    AppCheck_(kMutexCreateDomainScope(&fleetCommsMutex, "FleetM",
+                                      RK_PRIO_INHERITANCE, &fleetCommsDomain));
     AppCheck_(kMesgQueueCreateGlobalScope(&fleetOrderQueueHandle, "FleetQ",
                                           fleetOrderQueueBuf,
                                           RK_MESGQ_MESG_SIZE(FleetOrder),
@@ -376,19 +376,19 @@ static VOID AppCreateTasks_(VOID)
     AppCheck_(kMesgCopyEndpointInit(isoBetaHandle));
     AppCheck_(kMesgCopyEndpointInit(isoGammaHandle));
 
-    AppCheck_(kModuleTaskInit(&fleetControlModule, &fleetPlannerHandle,
+    AppCheck_(kDomainTaskInit(&fleetControlDomain, &fleetPlannerHandle,
                               FleetPlannerTask, fleetControlState,
                               "FltPlan", FLEET_STACK_WORDS,
                               PRIO_FLEET_PLANNER, RK_PREEMPT));
-    AppCheck_(kModuleTaskInit(&fleetControlModule, &fleetTelemetryHandle,
+    AppCheck_(kDomainTaskInit(&fleetControlDomain, &fleetTelemetryHandle,
                               FleetTelemetryTask, fleetControlState,
                               "FltTel", FLEET_STACK_WORDS,
                               PRIO_FLEET_TELEMETRY, RK_PREEMPT));
-    AppCheck_(kModuleTaskInit(&fleetCommsModule, &fleetLinkTxHandle,
+    AppCheck_(kDomainTaskInit(&fleetCommsDomain, &fleetLinkTxHandle,
                               FleetLinkTxTask, fleetCommsState,
                               "FltTx", FLEET_STACK_WORDS,
                               PRIO_FLEET_LINK, RK_PREEMPT));
-    AppCheck_(kModuleTaskInit(&fleetCommsModule, &fleetSupervisorHandle,
+    AppCheck_(kDomainTaskInit(&fleetCommsDomain, &fleetSupervisorHandle,
                               FleetSupervisorTask, fleetCommsState,
                               "FltSup", FLEET_STACK_WORDS,
                               PRIO_FLEET_SUPERVISOR, RK_PREEMPT));
@@ -410,7 +410,7 @@ int main(void)
 
 VOID kApplicationInit(VOID)
 {
-    AppCreateModules_();
+    AppCreateDomains_();
     AppCreateObjects_();
     kLogInit(APP_LOG_PRIO);
     AppConfigureWatchdog_();
@@ -443,7 +443,7 @@ VOID DebugHeartbeatTask(VOID *args)
 #endif
 
 /******************************************************************************
- * PLANT: one module with several tasks
+ * PLANT: one domain with several tasks
  ******************************************************************************/
 
 VOID PlantSensorTask(VOID *args)
@@ -454,7 +454,7 @@ VOID PlantSensorTask(VOID *args)
     RK_UNUSEARGS
 
     plantState.setpoint = 48UL;
-    kLog("APP module ready: plant tasks share state through the implicit module");
+    kLog("APP domain ready: plant tasks share state through the implicit domain");
 
     while (1)
     {
@@ -532,7 +532,7 @@ VOID PlantActuatorTask(VOID *args)
 }
 
 /******************************************************************************
- * ISO: several isolated one-task modules
+ * ISO: several isolated one-task domains
  ******************************************************************************/
 
 VOID IsoAlphaTask(VOID *args)
@@ -624,7 +624,7 @@ VOID IsoGammaTask(VOID *args)
 }
 
 /******************************************************************************
- * FLEET: several modules with several tasks
+ * FLEET: several domains with several tasks
  ******************************************************************************/
 
 VOID FleetPlannerTask(VOID *args)
@@ -634,7 +634,7 @@ VOID FleetPlannerTask(VOID *args)
 
     K_ASSERT(controlPtr != NULL);
 
-    kLog("FLEET modules ready: planner queues orders to comms module");
+    kLog("FLEET domains ready: planner queues orders to comms domain");
 
     while (1)
     {

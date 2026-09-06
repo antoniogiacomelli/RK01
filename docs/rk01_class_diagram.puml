@@ -26,7 +26,7 @@ endlegend
 package "Public type aliases\ncore/inc/kcommondefs.h" as CommonDefs {
     enum RK_OBJ_SCOPE {
         RK_SCOPE_UNASSIGNED
-        RK_SCOPE_MODULE_LOCAL
+        RK_SCOPE_DOMAIN_LOCAL
         RK_SCOPE_KERNEL_GLOBAL
     }
 
@@ -54,7 +54,7 @@ package "Public type aliases\ncore/inc/kcommondefs.h" as CommonDefs {
     class RK_TASK_HANDLE <<opaque-token>>
     class RK_OBJ_ATTR <<struct>> {
         +scope : RK_OBJ_SCOPE
-        +modulePtr : RK_MODULE*
+        +domainPtr : RK_DOMAIN*
     }
 
     class RK_TASK_MEMORY <<struct>> {
@@ -62,7 +62,7 @@ package "Public type aliases\ncore/inc/kcommondefs.h" as CommonDefs {
         +regionBytes : ULONG
         +stackBasePtr : RK_STACK*
         +stackWords : ULONG
-        +modulePtr : RK_MODULE*
+        +domainPtr : RK_DOMAIN*
     }
 }
 
@@ -103,7 +103,7 @@ package "Core object model\ncore/inc/kobjs.h" as CoreObjects {
         +objName[RK_NAME_SIZE] : CHAR
         +init : RK_BOOL
         +scope : RK_OBJ_SCOPE
-        +ownerModulePtr : RK_MODULE*
+        +ownerDomainPtr : RK_DOMAIN*
     }
 
     class RK_SHARED_REGION <<struct>> {
@@ -114,16 +114,16 @@ package "Core object model\ncore/inc/kobjs.h" as CoreObjects {
 
     class RK_SHARED_MEM <<struct>> {
         +region : RK_SHARED_REGION
-        +attachedModulePtr[RK_NTHREADS] : RK_MODULE*
+        +attachedDomainPtr[RK_NTHREADS] : RK_DOMAIN*
         +attachCount : ULONG
     }
 
-    class RK_MODULE <<struct>> {
-        +moduleName[RK_NAME_SIZE] : CHAR
+    class RK_DOMAIN <<struct>> {
+        +domainName[RK_NAME_SIZE] : CHAR
         +regionBasePtr : BYTE*
         +regionBytes : ULONG
         +allocBytes : ULONG
-        +sharedRegionPtr[RK_CONF_MODULE_SHARED_REGIONS] : RK_SHARED_REGION*
+        +sharedRegionPtr[RK_CONF_DOMAIN_SHARED_REGIONS] : RK_SHARED_REGION*
         +taskCount : ULONG
         +init : RK_BOOL
     }
@@ -135,7 +135,7 @@ package "Core object model\ncore/inc/kobjs.h" as CoreObjects {
         +priority : RK_PRIO
         +preempt : RK_OPTION
         +stackMemPtr : RK_MEM_PARTITION*
-        +modulePtr : RK_MODULE*
+        +domainPtr : RK_DOMAIN*
     }
 
     class RK_TCB <<struct>> {
@@ -157,8 +157,8 @@ package "Core object model\ncore/inc/kobjs.h" as CoreObjects {
         +savedControl : ULONG
         +taskMemoryBasePtr : BYTE*
         +taskMemoryBytes : ULONG
-        +modulePtr : RK_MODULE*
-        +privateModule : RK_MODULE
+        +domainPtr : RK_DOMAIN*
+        +privateDomain : RK_DOMAIN
         +mpuRegion[RK_MPU_N_REGIONS] : RK_MPU_REGION
         +syscallFramePtr : RK_EXCEPTION_FRAME*
         +syscallNumber : ULONG
@@ -303,7 +303,7 @@ package "MPU and exception boundary\narch/armv*m/kernel/inc/kmpu.h" as MpuBounda
         +frameValid : ULONG
     }
 
-    class RK_MPU_SERVICE <<module>> {
+    class RK_MPU_SERVICE <<domain>> {
         +kMpuInit() : VOID
         +kMpuLoadRunTask() : VOID
         +kMpuBuildRegion(...) : RK_ERR
@@ -317,7 +317,7 @@ package "MPU and exception boundary\narch/armv*m/kernel/inc/kmpu.h" as MpuBounda
 }
 
 package "Syscall layer\ncore/inc/ksyscall.h" as Syscalls {
-    class RK_SYSCALL_DISPATCH <<module>> {
+    class RK_SYSCALL_DISPATCH <<domain>> {
         +kSyscallRequired() : RK_BOOL
         +kSyscallDispatch(...) : VOID
         +kSyscallTaskSuspend(...) : VOID
@@ -335,7 +335,7 @@ package "Syscall layer\ncore/inc/ksyscall.h" as Syscalls {
         +stackSize : ULONG
         +priority : RK_PRIO
         +preempt : RK_OPTION
-        +modulePtr : RK_MODULE*
+        +domainPtr : RK_DOMAIN*
     }
 
     class RK_TASK_PROTECTED_INIT_SYSCALL_ARGS <<struct>> {
@@ -396,13 +396,13 @@ package "Public C API facades\ncore/inc/kapi*.h" as PublicApis {
         +kMRMCreate(...) : RK_ERR
     }
 
-    class KAPI_MODULE <<facade>> {
-        +kApplicationModuleGet() : RK_MODULE*
-        +kModuleInit(...) : RK_ERR
-        +kModuleAlloc(...) : VOID*
-        +kModuleStackAlloc(...) : RK_STACK*
-        +kModuleTaskInit(...) : RK_ERR
-        +kTaskInitModule(...) : RK_ERR
+    class KAPI_DOMAIN <<facade>> {
+        +kApplicationDomainGet() : RK_DOMAIN*
+        +kDomainInit(...) : RK_ERR
+        +kDomainAlloc(...) : VOID*
+        +kDomainStackAlloc(...) : RK_STACK*
+        +kDomainTaskInit(...) : RK_ERR
+        +kTaskInitDomain(...) : RK_ERR
         +kTaskInitIsolated(...) : RK_ERR
         +kSharedMemCreate(...) : RK_ERR
         +kSharedMemAttach(...) : RK_ERR
@@ -413,11 +413,11 @@ package "Public C API facades\ncore/inc/kapi*.h" as PublicApis {
         +kTaskInitPrivileged(...) : RK_ERR
         +kTaskInitProtected(...) : RK_ERR
         +kSharedRegionInit(...) : RK_ERR
-        +kModuleMapSharedRegion(...) : RK_ERR
+        +kDomainMapSharedRegion(...) : RK_ERR
         +kTraceRecordObject(...) : VOID
     }
 
-    class RK_DYN_OBJ_REGISTRY <<module>> {
+    class RK_DYN_OBJ_REGISTRY <<domain>> {
         +kObjPartitionsInit() : RK_ERR
         +kDynObjPublishHandle(...) : RK_ERR
         +kDynObjResolveHandle(...) : RK_ERR
@@ -504,7 +504,7 @@ package "Trace and system monitor\ncore/inc/ktrace.h, ksysmon.h" as TraceSysmon 
         +dropped : ULONG
     }
 
-    class RK_TRACE_SERVICE <<module>> {
+    class RK_TRACE_SERVICE <<domain>> {
         +kTraceInit() : RK_ERR
         +kTracePoll() : VOID
         +kTraceObjectNameSet(...) : RK_ERR
@@ -650,10 +650,10 @@ package "Default application\napp/src/application.c" as DefaultApp {
 
 ' Common object header ownership and scope
 RK_KOBJ --> RK_OBJ_SCOPE : scope
-RK_KOBJ --> RK_MODULE : ownerModulePtr
+RK_KOBJ --> RK_DOMAIN : ownerDomainPtr
 RK_OBJ_ATTR --> RK_OBJ_SCOPE
-RK_OBJ_ATTR --> RK_MODULE : modulePtr
-RK_TASK_MEMORY --> RK_MODULE : modulePtr
+RK_OBJ_ATTR --> RK_DOMAIN : domainPtr
+RK_TASK_MEMORY --> RK_DOMAIN : domainPtr
 
 ' Embedded header pattern for kernel objects
 RK_KOBJ <|-- RK_SHARED_MEM : RK_KOBJ_HEADER
@@ -669,11 +669,11 @@ RK_KOBJ <|-- RK_MRM : RK_OBJ_HEADER
 RK_LIST *-- RK_LIST_NODE : listDummy
 RK_TIMEOUT_NODE --> RK_LIST : waitingQueuePtr
 RK_SHARED_MEM *-- RK_SHARED_REGION : region
-RK_SHARED_MEM --> "0..RK_NTHREADS" RK_MODULE : attachedModulePtr
-RK_MODULE --> "0..RK_CONF_MODULE_SHARED_REGIONS" RK_SHARED_REGION : sharedRegionPtr
-RK_MODULE "1" o-- "0..*" RK_TCB : module members
-RK_TCB --> RK_MODULE : modulePtr
-RK_TCB *-- RK_MODULE : privateModule
+RK_SHARED_MEM --> "0..RK_NTHREADS" RK_DOMAIN : attachedDomainPtr
+RK_DOMAIN --> "0..RK_CONF_DOMAIN_SHARED_REGIONS" RK_SHARED_REGION : sharedRegionPtr
+RK_DOMAIN "1" o-- "0..*" RK_TCB : domain members
+RK_TCB --> RK_DOMAIN : domainPtr
+RK_TCB *-- RK_DOMAIN : privateDomain
 RK_TCB *-- "RK_MPU_N_REGIONS" RK_MPU_REGION : mpuRegion
 RK_TCB --> RK_EXCEPTION_FRAME : syscallFramePtr
 RK_TCB *-- RK_TIMEOUT_NODE : timeoutNode
@@ -713,7 +713,7 @@ RK_SYSCALL_DISPATCH ..> RK_TCB
 RK_SYSCALL_DISPATCH ..> RK_MPU_SERVICE : validates user pointers
 RK_SYSCALL_DISPATCH ..> RK_CONSOLE_SERVICE : console write SVC
 RK_TASK_INIT_SYSCALL_ARGS --> RK_TASK_HANDLE
-RK_TASK_INIT_SYSCALL_ARGS --> RK_MODULE
+RK_TASK_INIT_SYSCALL_ARGS --> RK_DOMAIN
 RK_TASK_PROTECTED_INIT_SYSCALL_ARGS --> RK_TCB
 RK_TASK_PROTECTED_INIT_SYSCALL_ARGS --> RK_TASK_MEMORY
 RK_TIMER_CREATE_SYSCALL_ARGS --> RK_HANDLE : timerHandlePtr
@@ -725,9 +725,9 @@ RK_MESG_RECV_COPY_SYSCALL_ARGS --> RK_TASK_HANDLE
 KAPI_APP ..> RK_SYSCALL_DISPATCH : SVC when unprivileged
 KAPI_APP ..> RK_HANDLE : object handles
 KAPI_APP ..> RK_TASK_HANDLE : task handles
-KAPI_MODULE ..> RK_MODULE
-KAPI_MODULE ..> RK_SHARED_MEM
-KAPI_MODULE ..> RK_TASK_MEMORY
+KAPI_DOMAIN ..> RK_DOMAIN
+KAPI_DOMAIN ..> RK_SHARED_MEM
+KAPI_DOMAIN ..> RK_TASK_MEMORY
 KAPI_TRUSTED ..> RK_TCB
 KAPI_TRUSTED ..> RK_SHARED_REGION
 KAPI_TRUSTED ..> RK_TRACE_SERVICE
@@ -763,7 +763,7 @@ RKFS_CLIENT ..> RKFS_REPLY : receives reply
 RKFS_CLIENT ..> RK_TASK_HANDLE : serverHandle
 RKFS_SERVER_TASK ..> RKFS_REQUEST
 RKFS_SERVER_TASK ..> RKFS_REPLY
-RKFS_SERVER_TASK *-- RKFS_RAM : module RAM
+RKFS_SERVER_TASK *-- RKFS_RAM : domain RAM
 RKFS_SERVER_TASK ..> KAPI_APP : synch message APIs
 
 ' Default application data flow
@@ -781,8 +781,8 @@ RecordTask *-- RecordState : owns
 RecordTask ..> RecordRequest : accepts
 RecordTask ..> RecordReply : replies
 RecordTask ..> RKFS_CLIENT : persists on F401RE
-EchoTask ..> KAPI_MODULE : module task
-RecordTask ..> KAPI_MODULE : module task
+EchoTask ..> KAPI_DOMAIN : domain task
+RecordTask ..> KAPI_DOMAIN : domain task
 RK_CONSOLE_SERVICE ..> KAPI_APP : callback post path
 
 note top of RK_MPU_REGION
@@ -802,10 +802,11 @@ note bottom of RK_TCB
   timeout node, and optional mutex ownership state.
 end note
 
-note right of RK_MODULE
-  A module is the RK01 task RAM protection domain.
-  Tasks in the same module share module RAM; cross-module
-  sharing requires global shared RAM or RK_SHARED_MEM.
+note right of RK_DOMAIN
+  An RK01 domain is a statically declared
+  writable-authority boundary. Tasks remain
+  independently scheduled; cross-domain sharing
+  requires global shared RAM or RK_SHARED_MEM.
 end note
 
 @enduml

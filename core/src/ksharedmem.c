@@ -9,18 +9,18 @@
 
 /*
  * File intent:
- *   Handle-addressed inter-module shared memory. This service wraps the
+ *   Handle-addressed inter-domain shared memory. This service wraps the
  *   low-level shared-region MPU primitive with object lifetime, attachment
  *   accounting and runtime access checks.
  *
  * Contracts/invariants:
  *   - A shared-memory segment maps to one MPU shared region.
  *   - Mapping changes happen only before MPU layout finalisation and before
- *     the target module has tasks.
- *   - Attachment is module-scoped. All tasks in an attached module see the
- *     same address; tasks in the same module do not need this service.
- *   - Runtime get succeeds only for attached modules and only after at least
- *     two modules have attached the segment.
+ *     the target domain has tasks.
+ *   - Attachment is domain-scoped. All tasks in an attached domain see the
+ *     same address; tasks in the same domain do not need this service.
+ *   - Runtime get succeeds only for attached domains and only after at least
+ *     two domains have attached the segment.
  */
 
 #define RK_SOURCE_CODE
@@ -100,17 +100,17 @@ static RK_ERR kSharedMemReportErr_(RK_ERR const err)
 }
 
 static RK_BOOL kSharedMemAttachedIndex_(RK_SHARED_MEM const *const sharedMemPtr,
-                                        RK_MODULE const *const modulePtr,
+                                        RK_DOMAIN const *const domainPtr,
                                         UINT *const idxPtr)
 {
-    if ((sharedMemPtr == NULL) || (modulePtr == NULL))
+    if ((sharedMemPtr == NULL) || (domainPtr == NULL))
     {
         return (RK_FALSE);
     }
 
     for (UINT idx = 0U; idx < RK_NTHREADS; idx++)
     {
-        if (sharedMemPtr->attachedModulePtr[idx] == modulePtr)
+        if (sharedMemPtr->attachedDomainPtr[idx] == domainPtr)
         {
             if (idxPtr != NULL)
             {
@@ -133,7 +133,7 @@ static RK_BOOL kSharedMemFreeAttachSlot_(RK_SHARED_MEM const *const sharedMemPtr
 
     for (UINT idx = 0U; idx < RK_NTHREADS; idx++)
     {
-        if (sharedMemPtr->attachedModulePtr[idx] == NULL)
+        if (sharedMemPtr->attachedDomainPtr[idx] == NULL)
         {
             *idxPtr = idx;
             return (RK_TRUE);
@@ -143,24 +143,24 @@ static RK_BOOL kSharedMemFreeAttachSlot_(RK_SHARED_MEM const *const sharedMemPtr
     return (RK_FALSE);
 }
 
-static RK_ERR kSharedMemModuleUnmap_(RK_MODULE *const modulePtr,
+static RK_ERR kSharedMemDomainUnmap_(RK_DOMAIN *const domainPtr,
                                      RK_SHARED_REGION const *const regionPtr)
 {
-    if ((modulePtr == NULL) || (regionPtr == NULL))
+    if ((domainPtr == NULL) || (regionPtr == NULL))
     {
         return (RK_ERR_OBJ_NULL);
     }
 
-    if (modulePtr->taskCount != 0UL)
+    if (domainPtr->taskCount != 0UL)
     {
         return (RK_ERR_INVALID_OBJ);
     }
 
-    for (UINT idx = 0U; idx < RK_CONF_MODULE_SHARED_REGIONS; idx++)
+    for (UINT idx = 0U; idx < RK_CONF_DOMAIN_SHARED_REGIONS; idx++)
     {
-        if (modulePtr->sharedRegionPtr[idx] == regionPtr)
+        if (domainPtr->sharedRegionPtr[idx] == regionPtr)
         {
-            modulePtr->sharedRegionPtr[idx] = NULL;
+            domainPtr->sharedRegionPtr[idx] = NULL;
             return (RK_ERR_SUCCESS);
         }
     }
@@ -224,16 +224,16 @@ RK_ERR kSharedMemInit(RK_SHARED_MEM *const sharedMemPtr,
 }
 
 RK_ERR kSharedMemAttach(RK_SHARED_MEM_HANDLE const sharedMemHandle,
-                        RK_MODULE *const modulePtr)
+                        RK_DOMAIN *const domainPtr)
 {
     if (kSyscallRequired() == RK_TRUE)
     {
         return ((RK_ERR)kSyscallInvoke4(
             RK_SYSCALL_SHARED_MEM_ATTACH, (ULONG)sharedMemHandle,
-            (ULONG)(UINTPTR)modulePtr, 0UL, 0UL));
+            (ULONG)(UINTPTR)domainPtr, 0UL, 0UL));
     }
 
-    if ((sharedMemHandle == RK_NULL_HANDLE) || (modulePtr == NULL))
+    if ((sharedMemHandle == RK_NULL_HANDLE) || (domainPtr == NULL))
     {
         return (kSharedMemReportErr_(RK_ERR_OBJ_NULL));
     }
@@ -261,12 +261,12 @@ RK_ERR kSharedMemAttach(RK_SHARED_MEM_HANDLE const sharedMemHandle,
         return (kSharedMemReportErr_(err));
     }
 
-    if (modulePtr->init != RK_TRUE)
+    if (domainPtr->init != RK_TRUE)
     {
         return (kSharedMemReportErr_(RK_ERR_OBJ_NOT_INIT));
     }
 
-    if (kSharedMemAttachedIndex_(sharedMemPtr, modulePtr, NULL) == RK_TRUE)
+    if (kSharedMemAttachedIndex_(sharedMemPtr, domainPtr, NULL) == RK_TRUE)
     {
         return (kSharedMemReportErr_(RK_ERR_OBJ_DOUBLE_INIT));
     }
@@ -277,13 +277,13 @@ RK_ERR kSharedMemAttach(RK_SHARED_MEM_HANDLE const sharedMemHandle,
         return (RK_ERR_BUFFER_FULL);
     }
 
-    err = kModuleMapSharedRegion(modulePtr, &sharedMemPtr->region);
+    err = kDomainMapSharedRegion(domainPtr, &sharedMemPtr->region);
     if (err != RK_ERR_SUCCESS)
     {
         return (kSharedMemReportErr_(err));
     }
 
-    sharedMemPtr->attachedModulePtr[attachIdx] = modulePtr;
+    sharedMemPtr->attachedDomainPtr[attachIdx] = domainPtr;
     sharedMemPtr->attachCount++;
     kTraceRecordObject(sharedMemPtr, RK_TRACE_OP_ALLOC, RK_ERR_SUCCESS,
                        sharedMemPtr->attachCount);
@@ -291,16 +291,16 @@ RK_ERR kSharedMemAttach(RK_SHARED_MEM_HANDLE const sharedMemHandle,
 }
 
 RK_ERR kSharedMemDetach(RK_SHARED_MEM_HANDLE const sharedMemHandle,
-                        RK_MODULE *const modulePtr)
+                        RK_DOMAIN *const domainPtr)
 {
     if (kSyscallRequired() == RK_TRUE)
     {
         return ((RK_ERR)kSyscallInvoke4(
             RK_SYSCALL_SHARED_MEM_DETACH, (ULONG)sharedMemHandle,
-            (ULONG)(UINTPTR)modulePtr, 0UL, 0UL));
+            (ULONG)(UINTPTR)domainPtr, 0UL, 0UL));
     }
 
-    if ((sharedMemHandle == RK_NULL_HANDLE) || (modulePtr == NULL))
+    if ((sharedMemHandle == RK_NULL_HANDLE) || (domainPtr == NULL))
     {
         return (kSharedMemReportErr_(RK_ERR_OBJ_NULL));
     }
@@ -329,19 +329,19 @@ RK_ERR kSharedMemDetach(RK_SHARED_MEM_HANDLE const sharedMemHandle,
     }
 
     UINT attachIdx = 0U;
-    if (kSharedMemAttachedIndex_(sharedMemPtr, modulePtr,
+    if (kSharedMemAttachedIndex_(sharedMemPtr, domainPtr,
                                  &attachIdx) != RK_TRUE)
     {
         return (kSharedMemReportErr_(RK_ERR_INVALID_PARAM));
     }
 
-    err = kSharedMemModuleUnmap_(modulePtr, &sharedMemPtr->region);
+    err = kSharedMemDomainUnmap_(domainPtr, &sharedMemPtr->region);
     if (err != RK_ERR_SUCCESS)
     {
         return (kSharedMemReportErr_(err));
     }
 
-    sharedMemPtr->attachedModulePtr[attachIdx] = NULL;
+    sharedMemPtr->attachedDomainPtr[attachIdx] = NULL;
     if (sharedMemPtr->attachCount > 0UL)
     {
         sharedMemPtr->attachCount--;
@@ -393,7 +393,7 @@ RK_ERR kSharedMemGet(RK_SHARED_MEM_HANDLE const sharedMemHandle,
     }
 
     if ((RK_gRunPtr != NULL) &&
-        (kSharedMemAttachedIndex_(sharedMemPtr, RK_gRunPtr->modulePtr,
+        (kSharedMemAttachedIndex_(sharedMemPtr, RK_gRunPtr->domainPtr,
                                   NULL) != RK_TRUE))
     {
         return (kSharedMemReportErr_(RK_ERR_INVALID_PARAM));

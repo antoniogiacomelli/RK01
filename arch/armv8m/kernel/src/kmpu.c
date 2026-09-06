@@ -9,13 +9,13 @@
 
 /*
  * File intent:
- *   ARMv8-M MPU policy and validation. This code builds module/shared-region
+ *   ARMv8-M MPU policy and validation. This code builds domain/shared-region
  *   maps, loads per-task MPU regions and validates user pointers at the SVC
  *   boundary before privileged code dereferences them.
  *
  * Contracts/invariants:
  *   - User ranges are validated as overflow-safe half-open intervals.
- *   - Module/shared reservations cannot overlap except by explicit mapping.
+ *   - Domain/shared reservations cannot overlap except by explicit mapping.
  *   - Context switch loads only prevalidated RBAR/RLAR values from the TCB.
  *   - MemManage recovery never trusts stacked PC/LR when the frame is invalid.
  */
@@ -32,12 +32,12 @@
  * RK01 uses a small, explicit user map for unprivileged tasks:
  *
  * - Region 0 is executable/readable FLASH and is installed once in kMpuInit().
- * - Region 1 is the currently running task's module RAM. A private one-task
- *   module is used only for explicit isolated tasks and low-level callers.
+ * - Region 1 is the currently running task's domain RAM. A private one-task
+ *   domain is used only for explicit isolated tasks and low-level callers.
  * - Region 2 is the shared RAM window used for cross-task handles and other
  *   deliberately shared application state.
  * - Regions 3..7 are optional explicit shared regions mapped only into the
- *   modules that opt into them.
+ *   domains that opt into them.
  *
  * Privileged code runs with MPU_CTRL.PRIVDEFENA set, so kernel handlers and
  * privileged system tasks can still use the default privileged memory map.
@@ -53,12 +53,12 @@ extern BYTE __rk_task_ram_end;
 extern BYTE __rk_shared_ram_begin;
 extern BYTE __rk_shared_ram_end;
 
-typedef struct RK_STRUCT_MPU_MODULE_RESERVATION
+typedef struct RK_STRUCT_MPU_DOMAIN_RESERVATION
 {
-    RK_MODULE *modulePtr;
+    RK_DOMAIN *domainPtr;
     BYTE *regionBasePtr;
     ULONG regionBytes;
-} RK_MPU_MODULE_RESERVATION;
+} RK_MPU_DOMAIN_RESERVATION;
 
 typedef struct RK_STRUCT_MPU_SHARED_RESERVATION
 {
@@ -69,11 +69,11 @@ typedef struct RK_STRUCT_MPU_SHARED_RESERVATION
 
 static RK_TCB *RK_gMpuActiveTaskPtr;
 static volatile RK_BOOL RK_gMpuLayoutFinalized = RK_FALSE;
-static RK_MPU_MODULE_RESERVATION RK_gMpuModuleReservation[RK_NTHREADS];
+static RK_MPU_DOMAIN_RESERVATION RK_gMpuDomainReservation[RK_NTHREADS];
 static RK_MPU_SHARED_RESERVATION RK_gMpuSharedReservation[RK_NTHREADS];
 
 /*
- * RK01 keeps power-of-two module geometry even though ARMv8-M MPU regions are
+ * RK01 keeps power-of-two domain geometry even though ARMv8-M MPU regions are
  * limit based. That preserves the current API contract and avoids target-
  * dependent widening when the same application is built for v7-M and v8-M.
  */
@@ -250,8 +250,8 @@ RK_BOOL kMpuTaskMemoryValid(RK_TASK_MEMORY const *const memoryPtr)
     UINTPTR sharedEnd;
     UINTPTR stackBegin;
     UINTPTR stackEnd;
-    RK_BOOL const moduleTask =
-        ((memoryPtr != NULL) && (memoryPtr->modulePtr != NULL)) ?
+    RK_BOOL const domainTask =
+        ((memoryPtr != NULL) && (memoryPtr->domainPtr != NULL)) ?
         RK_TRUE : RK_FALSE;
 
     if (memoryPtr == NULL)
@@ -260,19 +260,19 @@ RK_BOOL kMpuTaskMemoryValid(RK_TASK_MEMORY const *const memoryPtr)
     }
 
     /* A protected task gets one task-RAM MPU region. Low-level callers with no
-     * explicit module create the private module used by kTaskInitIsolated(). */
+     * explicit domain create the private domain used by kTaskInitIsolated(). */
     if ((memoryPtr->regionBasePtr == NULL) ||
         (memoryPtr->stackBasePtr == NULL))
     {
         return (RK_FALSE);
     }
 
-    if (moduleTask == RK_TRUE)
+    if (domainTask == RK_TRUE)
     {
-        if ((memoryPtr->modulePtr->init != RK_TRUE) ||
-            (memoryPtr->regionBasePtr != memoryPtr->modulePtr->regionBasePtr) ||
-            (memoryPtr->regionBytes != memoryPtr->modulePtr->regionBytes) ||
-            (kMpuModuleMemoryValid(memoryPtr->modulePtr) == RK_FALSE))
+        if ((memoryPtr->domainPtr->init != RK_TRUE) ||
+            (memoryPtr->regionBasePtr != memoryPtr->domainPtr->regionBasePtr) ||
+            (memoryPtr->regionBytes != memoryPtr->domainPtr->regionBytes) ||
+            (kMpuDomainMemoryValid(memoryPtr->domainPtr) == RK_FALSE))
         {
             return (RK_FALSE);
         }
@@ -321,8 +321,8 @@ RK_BOOL kMpuTaskMemoryValid(RK_TASK_MEMORY const *const memoryPtr)
     sharedBegin = (UINTPTR)&__rk_shared_ram_begin;
     sharedEnd = (UINTPTR)&__rk_shared_ram_end;
 
-    /* Shared RAM is exposed through its own MPU region. Module RAM must not
-     * overlap it, otherwise the module region would widen access. */
+    /* Shared RAM is exposed through its own MPU region. Domain RAM must not
+     * overlap it, otherwise the domain region would widen access. */
     if ((sharedEnd > sharedBegin) &&
         (regionBegin < sharedEnd) &&
         (regionEnd > sharedBegin))
@@ -342,9 +342,9 @@ RK_BOOL kMpuTaskMemoryValid(RK_TASK_MEMORY const *const memoryPtr)
 
     stackEnd = stackBegin + (UINTPTR)stackBytes;
 
-    /* Private task arenas keep the stack at the region top. Module tasks can
+    /* Private task arenas keep the stack at the region top. Domain tasks can
      * have several stacks inside one shared address space. */
-    if ((moduleTask != RK_TRUE) && (stackEnd != regionEnd))
+    if ((domainTask != RK_TRUE) && (stackEnd != regionEnd))
     {
         return (RK_FALSE);
     }
@@ -352,7 +352,7 @@ RK_BOOL kMpuTaskMemoryValid(RK_TASK_MEMORY const *const memoryPtr)
     return (RK_TRUE);
 }
 
-RK_BOOL kMpuModuleMemoryValid(RK_MODULE const *const modulePtr)
+RK_BOOL kMpuDomainMemoryValid(RK_DOMAIN const *const domainPtr)
 {
     UINTPTR poolBegin;
     UINTPTR poolEnd;
@@ -361,22 +361,22 @@ RK_BOOL kMpuModuleMemoryValid(RK_MODULE const *const modulePtr)
     UINTPTR sharedBegin;
     UINTPTR sharedEnd;
 
-    if ((modulePtr == NULL) || (modulePtr->regionBasePtr == NULL))
+    if ((domainPtr == NULL) || (domainPtr->regionBasePtr == NULL))
     {
         return (RK_FALSE);
     }
 
-    if ((modulePtr->regionBytes < 32UL) ||
-        (kMpuIsPowerOfTwo_(modulePtr->regionBytes) == RK_FALSE))
+    if ((domainPtr->regionBytes < 32UL) ||
+        (kMpuIsPowerOfTwo_(domainPtr->regionBytes) == RK_FALSE))
     {
         return (RK_FALSE);
     }
 
     poolBegin = (UINTPTR)&__rk_task_ram_begin;
     poolEnd = (UINTPTR)&__rk_task_ram_end;
-    regionBegin = (UINTPTR)modulePtr->regionBasePtr;
+    regionBegin = (UINTPTR)domainPtr->regionBasePtr;
 
-    if ((regionBegin & ((UINTPTR)modulePtr->regionBytes - 1U)) != 0U)
+    if ((regionBegin & ((UINTPTR)domainPtr->regionBytes - 1U)) != 0U)
     {
         return (RK_FALSE);
     }
@@ -386,12 +386,12 @@ RK_BOOL kMpuModuleMemoryValid(RK_MODULE const *const modulePtr)
         return (RK_FALSE);
     }
 
-    if ((UINTPTR)modulePtr->regionBytes > (poolEnd - regionBegin))
+    if ((UINTPTR)domainPtr->regionBytes > (poolEnd - regionBegin))
     {
         return (RK_FALSE);
     }
 
-    regionEnd = regionBegin + (UINTPTR)modulePtr->regionBytes;
+    regionEnd = regionBegin + (UINTPTR)domainPtr->regionBytes;
     sharedBegin = (UINTPTR)&__rk_shared_ram_begin;
     sharedEnd = (UINTPTR)&__rk_shared_ram_end;
 
@@ -458,7 +458,7 @@ RK_BOOL kMpuSharedRegionMemoryValid(RK_SHARED_REGION const *const regionPtr)
     return (RK_TRUE);
 }
 
-static RK_BOOL kMpuModuleReservationOverlaps_(RK_MODULE const *const modulePtr,
+static RK_BOOL kMpuDomainReservationOverlaps_(RK_DOMAIN const *const domainPtr,
                                               BYTE const *const basePtr,
                                               ULONG const bytes)
 {
@@ -467,16 +467,16 @@ static RK_BOOL kMpuModuleReservationOverlaps_(RK_MODULE const *const modulePtr,
 
     for (UINT idx = 0U; idx < RK_NTHREADS; idx++)
     {
-        RK_MPU_MODULE_RESERVATION const *const resPtr =
-            &RK_gMpuModuleReservation[idx];
+        RK_MPU_DOMAIN_RESERVATION const *const resPtr =
+            &RK_gMpuDomainReservation[idx];
 
-        if ((resPtr->modulePtr == NULL) || (resPtr->regionBasePtr == NULL) ||
+        if ((resPtr->domainPtr == NULL) || (resPtr->regionBasePtr == NULL) ||
             (resPtr->regionBytes == 0UL))
         {
             continue;
         }
 
-        if (resPtr->modulePtr == modulePtr)
+        if (resPtr->domainPtr == domainPtr)
         {
             return (RK_TRUE);
         }
@@ -596,7 +596,7 @@ static RK_BOOL kMpuRangeWithin_(UINTPTR const begin,
                                 ULONG const regionBytes)
 {
     /*
-     * Half-open range containment helper shared by module RAM, global shared
+     * Half-open range containment helper shared by domain RAM, global shared
      * RAM and explicit shared-region checks.
      */
     UINTPTR regionBegin;
@@ -625,7 +625,7 @@ static RK_BOOL kMpuRangesOverlap_(BYTE const *const firstBasePtr,
 {
     /*
      * Layout validation is fail-closed: NULL, zero-sized and overflowing ranges
-     * are reported as overlapping so invalid module/shared declarations cannot
+     * are reported as overlapping so invalid domain/shared declarations cannot
      * pass by looking empty.
      */
     UINTPTR const firstBegin = (UINTPTR)firstBasePtr;
@@ -677,15 +677,15 @@ static RK_BOOL kMpuTaskDataRangeValid_(RK_TCB const *const taskPtr,
         return (RK_TRUE);
     }
 
-    if (taskPtr->modulePtr == NULL)
+    if (taskPtr->domainPtr == NULL)
     {
         return (RK_FALSE);
     }
 
-    for (UINT idx = 0U; idx < RK_CONF_MODULE_SHARED_REGIONS; idx++)
+    for (UINT idx = 0U; idx < RK_CONF_DOMAIN_SHARED_REGIONS; idx++)
     {
         RK_SHARED_REGION const *const regionPtr =
-            taskPtr->modulePtr->sharedRegionPtr[idx];
+            taskPtr->domainPtr->sharedRegionPtr[idx];
 
         if ((regionPtr == NULL) || (regionPtr->init != RK_TRUE))
         {
@@ -774,19 +774,19 @@ RK_BOOL kMpuUserFunctionValid(VOID const *const funPtr)
     return (kMpuFlashRangeValid_(addr, addr + 2U));
 }
 
-static RK_BOOL kMpuModuleReserved_(RK_MODULE const *const modulePtr)
+static RK_BOOL kMpuDomainReserved_(RK_DOMAIN const *const domainPtr)
 {
-    if (modulePtr == NULL)
+    if (domainPtr == NULL)
     {
         return (RK_FALSE);
     }
 
     for (UINT idx = 0U; idx < RK_NTHREADS; idx++)
     {
-        RK_MPU_MODULE_RESERVATION const *const resPtr =
-            &RK_gMpuModuleReservation[idx];
+        RK_MPU_DOMAIN_RESERVATION const *const resPtr =
+            &RK_gMpuDomainReservation[idx];
 
-        if (resPtr->modulePtr == modulePtr)
+        if (resPtr->domainPtr == domainPtr)
         {
             return (RK_TRUE);
         }
@@ -796,7 +796,7 @@ static RK_BOOL kMpuModuleReserved_(RK_MODULE const *const modulePtr)
 }
 
 static RK_BOOL kMpuTaskStackOverlapsLive_(RK_TCB const *const skipTaskPtr,
-                                          RK_MODULE const *const modulePtr,
+                                          RK_DOMAIN const *const domainPtr,
                                           RK_STACK const *const stackBasePtr,
                                           ULONG const stackWords)
 {
@@ -804,7 +804,7 @@ static RK_BOOL kMpuTaskStackOverlapsLive_(RK_TCB const *const skipTaskPtr,
     UINTPTR const stackBytes = (UINTPTR)stackWords * sizeof(RK_STACK);
     UINTPTR const stackEnd = stackBegin + stackBytes;
 
-    if ((modulePtr == NULL) || (stackBasePtr == NULL) ||
+    if ((domainPtr == NULL) || (stackBasePtr == NULL) ||
         (stackWords > (RK_ULONG_MAX / (ULONG)sizeof(RK_STACK))) ||
         (stackEnd < stackBegin))
     {
@@ -816,7 +816,7 @@ static RK_BOOL kMpuTaskStackOverlapsLive_(RK_TCB const *const skipTaskPtr,
         RK_TCB const *const taskPtr = RK_gTaskHandleByPid[idx];
 
         if ((taskPtr == NULL) || (taskPtr == skipTaskPtr) ||
-            (taskPtr->init != RK_TRUE) || (taskPtr->modulePtr != modulePtr) ||
+            (taskPtr->init != RK_TRUE) || (taskPtr->domainPtr != domainPtr) ||
             (taskPtr->stackBufPtr == NULL) || (taskPtr->stackSize == 0UL))
         {
             continue;
@@ -837,11 +837,11 @@ static RK_BOOL kMpuTaskStackOverlapsLive_(RK_TCB const *const skipTaskPtr,
     return (RK_FALSE);
 }
 
-static ULONG kMpuLiveTaskCountForModule_(RK_MODULE const *const modulePtr)
+static ULONG kMpuLiveTaskCountForDomain_(RK_DOMAIN const *const domainPtr)
 {
     ULONG count = 0UL;
 
-    if (modulePtr == NULL)
+    if (domainPtr == NULL)
     {
         return (0UL);
     }
@@ -851,7 +851,7 @@ static ULONG kMpuLiveTaskCountForModule_(RK_MODULE const *const modulePtr)
         RK_TCB const *const taskPtr = RK_gTaskHandleByPid[idx];
 
         if ((taskPtr != NULL) && (taskPtr->init == RK_TRUE) &&
-            (taskPtr->modulePtr == modulePtr))
+            (taskPtr->domainPtr == domainPtr))
         {
             count++;
         }
@@ -860,17 +860,17 @@ static ULONG kMpuLiveTaskCountForModule_(RK_MODULE const *const modulePtr)
     return (count);
 }
 
-static RK_BOOL kMpuModuleSharedMappingsValid_(RK_MODULE const *const modulePtr)
+static RK_BOOL kMpuDomainSharedMappingsValid_(RK_DOMAIN const *const domainPtr)
 {
-    if ((modulePtr == NULL) || (modulePtr->init != RK_TRUE))
+    if ((domainPtr == NULL) || (domainPtr->init != RK_TRUE))
     {
         return (RK_FALSE);
     }
 
-    for (UINT idx = 0U; idx < RK_CONF_MODULE_SHARED_REGIONS; idx++)
+    for (UINT idx = 0U; idx < RK_CONF_DOMAIN_SHARED_REGIONS; idx++)
     {
         RK_SHARED_REGION const *const regionPtr =
-            modulePtr->sharedRegionPtr[idx];
+            domainPtr->sharedRegionPtr[idx];
 
         if (regionPtr == NULL)
         {
@@ -885,10 +885,10 @@ static RK_BOOL kMpuModuleSharedMappingsValid_(RK_MODULE const *const modulePtr)
         }
 
         for (UINT nextIdx = idx + 1U;
-             nextIdx < RK_CONF_MODULE_SHARED_REGIONS;
+             nextIdx < RK_CONF_DOMAIN_SHARED_REGIONS;
              nextIdx++)
         {
-            if (modulePtr->sharedRegionPtr[nextIdx] == regionPtr)
+            if (domainPtr->sharedRegionPtr[nextIdx] == regionPtr)
             {
                 return (RK_FALSE);
             }
@@ -898,49 +898,49 @@ static RK_BOOL kMpuModuleSharedMappingsValid_(RK_MODULE const *const modulePtr)
     return (RK_TRUE);
 }
 
-static RK_ERR kMpuLayoutValidateModuleReservations_(VOID)
+static RK_ERR kMpuLayoutValidateDomainReservations_(VOID)
 {
     for (UINT idx = 0U; idx < RK_NTHREADS; idx++)
     {
-        RK_MPU_MODULE_RESERVATION const *const resPtr =
-            &RK_gMpuModuleReservation[idx];
+        RK_MPU_DOMAIN_RESERVATION const *const resPtr =
+            &RK_gMpuDomainReservation[idx];
 
-        if ((resPtr->modulePtr == NULL) &&
+        if ((resPtr->domainPtr == NULL) &&
             (resPtr->regionBasePtr == NULL) &&
             (resPtr->regionBytes == 0UL))
         {
             continue;
         }
 
-        if ((resPtr->modulePtr == NULL) ||
+        if ((resPtr->domainPtr == NULL) ||
             (resPtr->regionBasePtr == NULL) ||
             (resPtr->regionBytes == 0UL) ||
-            (resPtr->modulePtr->init != RK_TRUE) ||
-            (resPtr->modulePtr->regionBasePtr != resPtr->regionBasePtr) ||
-            (resPtr->modulePtr->regionBytes != resPtr->regionBytes))
+            (resPtr->domainPtr->init != RK_TRUE) ||
+            (resPtr->domainPtr->regionBasePtr != resPtr->regionBasePtr) ||
+            (resPtr->domainPtr->regionBytes != resPtr->regionBytes))
         {
             return (RK_ERR_INVALID_OBJ);
         }
 
-        if ((kMpuModuleMemoryValid(resPtr->modulePtr) == RK_FALSE) ||
-            (kMpuModuleSharedMappingsValid_(resPtr->modulePtr) == RK_FALSE))
+        if ((kMpuDomainMemoryValid(resPtr->domainPtr) == RK_FALSE) ||
+            (kMpuDomainSharedMappingsValid_(resPtr->domainPtr) == RK_FALSE))
         {
             return (RK_ERR_INVALID_PARAM);
         }
 
         for (UINT nextIdx = idx + 1U; nextIdx < RK_NTHREADS; nextIdx++)
         {
-            RK_MPU_MODULE_RESERVATION const *const nextPtr =
-                &RK_gMpuModuleReservation[nextIdx];
+            RK_MPU_DOMAIN_RESERVATION const *const nextPtr =
+                &RK_gMpuDomainReservation[nextIdx];
 
-            if ((nextPtr->modulePtr == NULL) &&
+            if ((nextPtr->domainPtr == NULL) &&
                 (nextPtr->regionBasePtr == NULL) &&
                 (nextPtr->regionBytes == 0UL))
             {
                 continue;
             }
 
-            if ((nextPtr->modulePtr == resPtr->modulePtr) ||
+            if ((nextPtr->domainPtr == resPtr->domainPtr) ||
                 (kMpuRangesOverlap_(resPtr->regionBasePtr,
                                     resPtr->regionBytes,
                                     nextPtr->regionBasePtr,
@@ -971,8 +971,8 @@ static RK_ERR kMpuLayoutValidateModuleReservations_(VOID)
             }
         }
 
-        if (resPtr->modulePtr->taskCount !=
-            kMpuLiveTaskCountForModule_(resPtr->modulePtr))
+        if (resPtr->domainPtr->taskCount !=
+            kMpuLiveTaskCountForDomain_(resPtr->domainPtr))
         {
             return (RK_ERR_INVALID_OBJ);
         }
@@ -1061,14 +1061,14 @@ static RK_ERR kMpuLayoutValidateTask_(RK_TCB const *const taskPtr)
     }
 
     if (((taskPtr->savedControl & 0x1UL) == 0UL) &&
-        (taskPtr->modulePtr == NULL) &&
+        (taskPtr->domainPtr == NULL) &&
         (taskPtr->taskMemoryBasePtr == NULL) &&
         (taskPtr->taskMemoryBytes == 0UL))
     {
         return (RK_ERR_SUCCESS);
     }
 
-    if ((taskPtr->modulePtr == NULL) ||
+    if ((taskPtr->domainPtr == NULL) ||
         (taskPtr->taskMemoryBasePtr == NULL) ||
         (taskPtr->taskMemoryBytes == 0UL))
     {
@@ -1079,16 +1079,16 @@ static RK_ERR kMpuLayoutValidateTask_(RK_TCB const *const taskPtr)
     memory.regionBytes = taskPtr->taskMemoryBytes;
     memory.stackBasePtr = taskPtr->stackBufPtr;
     memory.stackWords = taskPtr->stackSize;
-    memory.modulePtr = taskPtr->modulePtr;
+    memory.domainPtr = taskPtr->domainPtr;
 
-    if ((kMpuModuleReserved_(taskPtr->modulePtr) != RK_TRUE) ||
+    if ((kMpuDomainReserved_(taskPtr->domainPtr) != RK_TRUE) ||
         (kMpuTaskMemoryValid(&memory) == RK_FALSE) ||
-        (kMpuModuleSharedMappingsValid_(taskPtr->modulePtr) == RK_FALSE))
+        (kMpuDomainSharedMappingsValid_(taskPtr->domainPtr) == RK_FALSE))
     {
         return (RK_ERR_INVALID_OBJ);
     }
 
-    if (kMpuTaskStackOverlapsLive_(taskPtr, taskPtr->modulePtr,
+    if (kMpuTaskStackOverlapsLive_(taskPtr, taskPtr->domainPtr,
                                    taskPtr->stackBufPtr,
                                    taskPtr->stackSize) == RK_TRUE)
     {
@@ -1133,7 +1133,7 @@ RK_ERR kMpuLayoutFinalize(VOID)
         return (RK_ERR_SUCCESS);
     }
 
-    err = kMpuLayoutValidateModuleReservations_();
+    err = kMpuLayoutValidateDomainReservations_();
     if (err != RK_ERR_SUCCESS)
     {
         return (err);
@@ -1157,30 +1157,30 @@ RK_ERR kMpuLayoutFinalize(VOID)
     return (RK_ERR_SUCCESS);
 }
 
-static VOID kMpuModuleMemoryRelease_(RK_MODULE *const modulePtr)
+static VOID kMpuDomainMemoryRelease_(RK_DOMAIN *const domainPtr)
 {
-    if (modulePtr == NULL)
+    if (domainPtr == NULL)
     {
         return;
     }
 
     for (UINT idx = 0U; idx < RK_NTHREADS; idx++)
     {
-        RK_MPU_MODULE_RESERVATION *const resPtr =
-            &RK_gMpuModuleReservation[idx];
+        RK_MPU_DOMAIN_RESERVATION *const resPtr =
+            &RK_gMpuDomainReservation[idx];
 
-        if (resPtr->modulePtr == modulePtr)
+        if (resPtr->domainPtr == domainPtr)
         {
-            resPtr->modulePtr = NULL;
+            resPtr->domainPtr = NULL;
             resPtr->regionBasePtr = NULL;
             resPtr->regionBytes = 0UL;
         }
     }
 }
 
-RK_ERR kMpuModuleMemoryReserve(RK_MODULE *const modulePtr)
+RK_ERR kMpuDomainMemoryReserve(RK_DOMAIN *const domainPtr)
 {
-    if (modulePtr == NULL)
+    if (domainPtr == NULL)
     {
         return (RK_ERR_OBJ_NULL);
     }
@@ -1190,29 +1190,29 @@ RK_ERR kMpuModuleMemoryReserve(RK_MODULE *const modulePtr)
         return (RK_ERR_INVALID_PHASE);
     }
 
-    if (kMpuModuleMemoryValid(modulePtr) == RK_FALSE)
+    if (kMpuDomainMemoryValid(domainPtr) == RK_FALSE)
     {
         return (RK_ERR_INVALID_PARAM);
     }
 
-    if ((kMpuModuleReservationOverlaps_(modulePtr, modulePtr->regionBasePtr,
-                                        modulePtr->regionBytes) == RK_TRUE) ||
-        (kMpuSharedReservationOverlaps_(NULL, modulePtr->regionBasePtr,
-                                        modulePtr->regionBytes) == RK_TRUE))
+    if ((kMpuDomainReservationOverlaps_(domainPtr, domainPtr->regionBasePtr,
+                                        domainPtr->regionBytes) == RK_TRUE) ||
+        (kMpuSharedReservationOverlaps_(NULL, domainPtr->regionBasePtr,
+                                        domainPtr->regionBytes) == RK_TRUE))
     {
         return (RK_ERR_INVALID_OBJ);
     }
 
     for (UINT idx = 0U; idx < RK_NTHREADS; idx++)
     {
-        RK_MPU_MODULE_RESERVATION *const resPtr =
-            &RK_gMpuModuleReservation[idx];
+        RK_MPU_DOMAIN_RESERVATION *const resPtr =
+            &RK_gMpuDomainReservation[idx];
 
-        if (resPtr->modulePtr == NULL)
+        if (resPtr->domainPtr == NULL)
         {
-            resPtr->modulePtr = modulePtr;
-            resPtr->regionBasePtr = modulePtr->regionBasePtr;
-            resPtr->regionBytes = modulePtr->regionBytes;
+            resPtr->domainPtr = domainPtr;
+            resPtr->regionBasePtr = domainPtr->regionBasePtr;
+            resPtr->regionBytes = domainPtr->regionBytes;
             return (RK_ERR_SUCCESS);
         }
     }
@@ -1237,7 +1237,7 @@ RK_ERR kMpuSharedRegionMemoryReserve(RK_SHARED_REGION *const regionPtr)
         return (RK_ERR_INVALID_PARAM);
     }
 
-    if ((kMpuModuleReservationOverlaps_(NULL, regionPtr->regionBasePtr,
+    if ((kMpuDomainReservationOverlaps_(NULL, regionPtr->regionBasePtr,
                                         regionPtr->regionBytes) == RK_TRUE) ||
         (kMpuSharedReservationOverlaps_(regionPtr, regionPtr->regionBasePtr,
                                         regionPtr->regionBytes) == RK_TRUE))
@@ -1287,7 +1287,7 @@ RK_ERR kMpuTaskMemoryReserve(RK_TCB *const taskPtr,
                              RK_TASK_MEMORY const *const memoryPtr)
 {
     RK_TASK_MEMORY taskMemory;
-    RK_MODULE *modulePtr;
+    RK_DOMAIN *domainPtr;
 
     if ((taskPtr == NULL) || (memoryPtr == NULL))
     {
@@ -1299,67 +1299,67 @@ RK_ERR kMpuTaskMemoryReserve(RK_TCB *const taskPtr,
         return (RK_ERR_INVALID_PARAM);
     }
 
-    if ((taskPtr->taskMemoryBasePtr != NULL) || (taskPtr->modulePtr != NULL))
+    if ((taskPtr->taskMemoryBasePtr != NULL) || (taskPtr->domainPtr != NULL))
     {
         return (RK_ERR_INVALID_OBJ);
     }
 
     taskMemory = *memoryPtr;
-    modulePtr = memoryPtr->modulePtr;
+    domainPtr = memoryPtr->domainPtr;
 
-    if (modulePtr == NULL)
+    if (domainPtr == NULL)
     {
         if (RK_gMpuLayoutFinalized == RK_TRUE)
         {
             return (RK_ERR_INVALID_PHASE);
         }
 
-        taskPtr->privateModule.regionBasePtr = memoryPtr->regionBasePtr;
-        taskPtr->privateModule.regionBytes = memoryPtr->regionBytes;
-        taskPtr->privateModule.init = RK_FALSE;
+        taskPtr->privateDomain.regionBasePtr = memoryPtr->regionBasePtr;
+        taskPtr->privateDomain.regionBytes = memoryPtr->regionBytes;
+        taskPtr->privateDomain.init = RK_FALSE;
 
-        RK_ERR const err = kMpuModuleMemoryReserve(&taskPtr->privateModule);
+        RK_ERR const err = kMpuDomainMemoryReserve(&taskPtr->privateDomain);
         if (err != RK_ERR_SUCCESS)
         {
             return (err);
         }
 
-        taskPtr->privateModule.init = RK_TRUE;
-        modulePtr = &taskPtr->privateModule;
-        taskMemory.modulePtr = modulePtr;
+        taskPtr->privateDomain.init = RK_TRUE;
+        domainPtr = &taskPtr->privateDomain;
+        taskMemory.domainPtr = domainPtr;
     }
 
-    if (kMpuModuleReserved_(modulePtr) != RK_TRUE)
+    if (kMpuDomainReserved_(domainPtr) != RK_TRUE)
     {
         return (RK_ERR_INVALID_OBJ);
     }
 
     if (kMpuTaskMemoryValid(&taskMemory) == RK_FALSE)
     {
-        if (modulePtr == &taskPtr->privateModule)
+        if (domainPtr == &taskPtr->privateDomain)
         {
-            kMpuModuleMemoryRelease_(&taskPtr->privateModule);
-            RK_MEMSET(&taskPtr->privateModule, 0, sizeof(RK_MODULE));
+            kMpuDomainMemoryRelease_(&taskPtr->privateDomain);
+            RK_MEMSET(&taskPtr->privateDomain, 0, sizeof(RK_DOMAIN));
         }
         return (RK_ERR_INVALID_PARAM);
     }
 
-    if (kMpuTaskStackOverlapsLive_(taskPtr, modulePtr,
+    if (kMpuTaskStackOverlapsLive_(taskPtr, domainPtr,
                                    taskMemory.stackBasePtr,
                                    taskMemory.stackWords) == RK_TRUE)
     {
-        if (modulePtr == &taskPtr->privateModule)
+        if (domainPtr == &taskPtr->privateDomain)
         {
-            kMpuModuleMemoryRelease_(&taskPtr->privateModule);
-            RK_MEMSET(&taskPtr->privateModule, 0, sizeof(RK_MODULE));
+            kMpuDomainMemoryRelease_(&taskPtr->privateDomain);
+            RK_MEMSET(&taskPtr->privateDomain, 0, sizeof(RK_DOMAIN));
         }
         return (RK_ERR_INVALID_OBJ);
     }
 
     taskPtr->taskMemoryBasePtr = taskMemory.regionBasePtr;
     taskPtr->taskMemoryBytes = taskMemory.regionBytes;
-    taskPtr->modulePtr = modulePtr;
-    modulePtr->taskCount++;
+    taskPtr->domainPtr = domainPtr;
+    domainPtr->taskCount++;
     return (RK_ERR_SUCCESS);
 }
 
@@ -1390,15 +1390,15 @@ RK_ERR kMpuTaskAttachSharedRegions(RK_TCB *const taskPtr)
         }
     }
 
-    if (taskPtr->modulePtr == NULL)
+    if (taskPtr->domainPtr == NULL)
     {
         return (RK_ERR_SUCCESS);
     }
 
-    for (UINT idx = 0U; idx < RK_CONF_MODULE_SHARED_REGIONS; idx++)
+    for (UINT idx = 0U; idx < RK_CONF_DOMAIN_SHARED_REGIONS; idx++)
     {
         RK_SHARED_REGION *const regionPtr =
-            taskPtr->modulePtr->sharedRegionPtr[idx];
+            taskPtr->domainPtr->sharedRegionPtr[idx];
 
         if (regionPtr == NULL)
         {
@@ -1429,30 +1429,30 @@ RK_ERR kMpuTaskAttachSharedRegions(RK_TCB *const taskPtr)
 
 VOID kMpuTaskMemoryRelease(RK_TCB *const taskPtr)
 {
-    RK_MODULE *const modulePtr = (taskPtr != NULL) ? taskPtr->modulePtr : NULL;
+    RK_DOMAIN *const domainPtr = (taskPtr != NULL) ? taskPtr->domainPtr : NULL;
 
     if (taskPtr == NULL)
     {
         return;
     }
 
-    if ((modulePtr != NULL) && (modulePtr->taskCount > 0UL))
+    if ((domainPtr != NULL) && (domainPtr->taskCount > 0UL))
     {
-        modulePtr->taskCount--;
+        domainPtr->taskCount--;
     }
 
     /* Called during task teardown/reuse so a later isolated task can reserve
-     * the same private one-task module RAM block. Explicit modules outlive
+     * the same private one-task domain RAM block. Explicit domains outlive
      * their member tasks. */
-    if (modulePtr == &taskPtr->privateModule)
+    if (domainPtr == &taskPtr->privateDomain)
     {
-        kMpuModuleMemoryRelease_(&taskPtr->privateModule);
-        RK_MEMSET(&taskPtr->privateModule, 0, sizeof(RK_MODULE));
+        kMpuDomainMemoryRelease_(&taskPtr->privateDomain);
+        RK_MEMSET(&taskPtr->privateDomain, 0, sizeof(RK_DOMAIN));
     }
 
     taskPtr->taskMemoryBasePtr = NULL;
     taskPtr->taskMemoryBytes = 0UL;
-    taskPtr->modulePtr = NULL;
+    taskPtr->domainPtr = NULL;
 }
 
 VOID kMpuInit(VOID)

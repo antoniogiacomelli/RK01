@@ -7,8 +7,8 @@ RK0 remains the mature flat real-time executive. It has the broader wiki and
 DocBook material, and it is still the simpler choice when all firmware code is
 trusted and shared memory is intentional. RK01 keeps the RK0 real-time model,
 but changes what happens when ordinary task code is wrong: task code runs
-unprivileged, kernel services are reached through SVC, and private task/module
-RAM is enforced by the MPU.
+unprivileged, kernel services are reached through SVC, and domain-owned
+writable state is enforced by the MPU.
 
 This repository is the first public RK01 source drop. The README is deliberately
 larger than the RK0 README because RK01 does not yet have the same external
@@ -28,12 +28,12 @@ Immediate differences from RK0:
 
 | Area | RK0 | RK01 |
 | --- | --- | --- |
-| Firmware model | One trusted firmware image. | Still one firmware image. No hosted apps and no loader. |
+| Firmware model | One trusted firmware image. | V0.1.0 still builds one firmware image. Future linker-described domain images are ThreadX-inspired, but no standalone loader is shipped yet. |
 | Kernel boundary | Kernel and application code share privileged address space. | Ordinary tasks run unprivileged on PSP and enter SVC for kernel services. |
-| Memory protection | Cooperative discipline. | Cortex-M MPU regions protect kernel RAM, module RAM and shared apertures. |
-| Application grouping | Tasks can directly share C globals. | Tasks share memory only inside their module, global shared RAM or explicit shared memory. |
+| Memory protection | Cooperative discipline. | Cortex-M MPU regions protect kernel RAM, domain RAM and shared apertures. |
+| Application grouping | Tasks can directly share C globals. | Tasks share memory only inside their domain, global shared RAM or explicit shared memory. |
 | Kernel objects | Raw/static objects are natural; pool-backed creation is optional. | Runtime objects are fixed-capacity kernel pool entries addressed by opaque handles. |
-| IPC rule | Pointer transfer is fine when firmware agrees. | By-reference direct messages are same-module only; cross-module data should be copied. |
+| IPC rule | Pointer transfer is fine when firmware agrees. | By-reference direct messages are same-domain only; cross-domain data should be copied. |
 | Bad syscall pointers | A bad pointer can become a privileged fault if unchecked. | SVC validates user read/write/function ranges before privileged code dereferences them. |
 | Fault handling | Serious task faults usually become system faults. | Unprivileged MemManage faults can be contained, marked `FAULT_PENDING` and cleaned by PostProc. |
 | Documentation state | Mature RK0 docs exist outside the source tree. | First public drop uses this README as the primary public guide. |
@@ -54,8 +54,9 @@ protection boundary is practical and local:
 - ordinary tasks run unprivileged and enter kernel services through SVC;
 - kernel RAM, object pools, registries and privileged stacks remain
   privileged-only;
-- each module gets an MPU-shaped private RAM domain for its tasks and stacks;
-- cross-module data moves through copied IPC, global shared RAM or explicitly
+- each domain provides a statically declared writable-authority boundary shared
+  by one or more tasks;
+- cross-domain data moves through copied IPC, global shared RAM or explicitly
   attached shared memory;
 - unprivileged MemManage faults can be recorded, contained and cleaned up by
   PostProc.
@@ -63,8 +64,8 @@ protection boundary is practical and local:
 The trusted base remains the kernel, startup code, board port, privileged
 service tasks, build, DMA setup, debug access and physical device access. RK01
 focuses on preventing defective unprivileged task code from corrupting kernel
-RAM, another module's private RAM or privileged service state through ordinary
-bad-pointer mistakes.
+RAM, another domain's writable state or privileged service state through
+ordinary bad-pointer mistakes.
 
 ## Delivered Supported Targets
 
@@ -76,8 +77,8 @@ This repo delivers a build environment to run on Nucleo STM32F401RE M4F, and a Q
 | `ARCH=armv8m PLATFORM=mps2-an505` | QEMU MPS2 AN505 Cortex-M33. | Fast functional smoke path for SVC and MPU mechanics. |
 
 RK01 does not currently ship an ARMv6-M port. A future Cortex-M0+ MPU board can
-still be useful, but it should be treated as a smaller single-module profile,
-not as proof that multi-module isolation is practical on every MCU.
+still be useful, but it should be treated as a smaller single-domain profile,
+not as proof that multi-domain isolation is practical on every MCU.
 
 ## Repository Layout
 
@@ -86,7 +87,7 @@ not as proof that multi-module isolation is practical on every MCU.
 | `Makefile` | Firmware build, flash and run entry point. |
 | `app/src/application.c`, `app/src/tiny_*.c` | Default public record-console example. |
 | `app/examples/` | Selectable `APP_EXAMPLE` profiles. |
-| `app/linker-modules.ld` | Module placement include used by the linker scripts. |
+| `app/linker-domains.ld` | Linker hook reserved for ThreadX-style domain image layout; V0.1.0 still uses C-declared domain RAM. |
 | `arch/armv7m/` | STM32F401RE Cortex-M4 port. |
 | `arch/armv8m/` | MPS2 AN505 Cortex-M33 port. |
 | `core/inc/` | Public and internal kernel headers. |
@@ -102,7 +103,8 @@ IDE settings.
 
 ## Build Requirements
 
-- Different from RK0 that convervatively keeps aligned to C99 standard, RK01 requires a C11 compiler. 
+- Unlike RK0, which conservatively stays aligned with C99, RK01 requires a C11
+  compiler.
 
 Required for firmware builds:
 
@@ -169,11 +171,11 @@ On STM32F401RE:
 - The foreground app console accepts CR, LF and CRLF endings.
 - Completed input lines are stored in a shared line ring, up to
   `RK_CONF_CONSOLE_LINE_MAX_BYTES` bytes.
-- `EchoTask` runs unprivileged in an explicit `Echo` module.
+- `EchoTask` runs unprivileged in an explicit `Echo` domain.
 - `EchoTask` parses commands such as `SET A 123` and `READ A`.
 - In the default mixed console, `RKMONITOR` enters SysMon diagnostics. Commands
   such as `ps` are then accepted directly until `exit` or `quit`.
-- `RecordTask` runs unprivileged in an explicit `Rec` module.
+- `RecordTask` runs unprivileged in an explicit `Rec` domain.
 - Echo calls Record through copied call/reply messages.
 - A privileged `FS` service task owns RKFS/LittleFS, reserved flash and the
   STM32 flash controller.
@@ -198,17 +200,57 @@ make -j4 APP_EXAMPLE=01-fleet
 make -j4 APP_EXAMPLE=02-isolated
 make -j4 APP_EXAMPLE=03-watchdog
 make -j4 APP_EXAMPLE=04-sysmon
+make -j4 APP_EXAMPLE=05-profile-preempt EXTRA_DEFS="-DNDEBUG -DRK_CONF_SYSTICK_DIV=1000"
+make -j4 APP_EXAMPLE=06-profile-ctxsw EXTRA_DEFS="-DNDEBUG"
 make -j4 APP_EXAMPLE=99-showcase
 ```
 
 | Example | Focus |
 | --- | --- |
-| `tiny` | Record console, Echo/Record modules, copied call/reply, RKFS on F401. |
-| `01-fleet` | Explicit Control/Comms modules and copied task-addressed IPC. |
-| `02-isolated` | Isolated one-task modules exchanging copied messages. |
+| `tiny` | Record console, Echo/Record domains, copied call/reply, RKFS on F401. |
+| `01-fleet` | Explicit Control/Comms domains and copied task-addressed IPC. |
+| `02-isolated` | Isolated one-task domains exchanging copied messages. |
 | `03-watchdog` | STM32F401RE watchdog through the HAL, or a heartbeat task on targets without one. |
 | `04-sysmon` | Optional SysMon kernel diagnostic service. |
-| `99-showcase` | Larger combined example with App tasks, isolated tasks, explicit modules and copied IPC. |
+| `05-profile-preempt` | RK0-style ThreadX preemptive scheduling counter profile. |
+| `06-profile-ctxsw` | RK0-style same-priority yield context-switch cycle profile. |
+| `99-showcase` | Larger combined example with App tasks, isolated tasks, explicit domains and copied IPC. |
+
+## Profiling
+
+The profiling examples mirror the RK0 profiling conditions on the
+STM32F401RE: Cortex-M4F at 80 MHz, `-O2`, `-DNDEBUG`, FPU disabled, debug
+symbols kept, stack-usage output enabled and stack-overflow checking not
+enabled.
+
+Run the preemptive scheduling counter profile with a 1 ms tick:
+
+```sh
+make board-run APP_EXAMPLE=05-profile-preempt \
+    SERIAL_PORT=/dev/cu.usbmodemXXXX \
+    BOARD_TIMEOUT=155 \
+    BOARD_FLASH_TOOL=openocd \
+    FPU=OFF \
+    EXTRA_DEFS="-DNDEBUG -DRK_CONF_SYSTICK_DIV=1000"
+```
+
+Run the context-switch cycle profile with the default 10 ms tick:
+
+```sh
+make board-run APP_EXAMPLE=06-profile-ctxsw \
+    SERIAL_PORT=/dev/cu.usbmodemXXXX \
+    BOARD_TIMEOUT=25 \
+    BOARD_FLASH_TOOL=openocd \
+    FPU=OFF \
+    EXTRA_DEFS="-DNDEBUG"
+```
+
+Captured board results from the RK01 STM32F401RE path:
+
+| Profile | Result |
+| --- | --- |
+| Preemptive scheduling | Five 30 s rounds, `errors=0`, final average `1441372` per task, max task-counter spread `1`. |
+| Context switch | Two 10 s rounds, raw PendSV min/last `385` cycles, raw max `409` cycles. With the RK0 `-7` cycle adjustment this is `378..402` cycles, about `4.7..5.0 us` at 80 MHz. |
 
 ## Flashing And Board Capture
 
@@ -223,7 +265,7 @@ make flash ARCH=armv7m PLATFORM=stm32f401re FLASH_TOOL=jlink
 
 Run the board harness:
 
-```shgit
+```sh
 make board-run SERIAL_PORT=/dev/cu.usbmodemXXXX
 make board-run BOARD_TIMEOUT=10
 make board-run BOARD_FLASH_TOOL=jlink SERIAL_PORT=/dev/cu.usbmodemXXXX
@@ -248,7 +290,9 @@ state.
 
 ## Memory Model
 
-RK01 separates memory by privilege first and by module ownership second.
+RK01 separates memory by privilege first and by domain ownership second. A
+task's effective MPU configuration combines its domain, private stack and
+explicitly granted shared-memory or peripheral regions.
 
 ![STM32F401RE memory domains](docs/readme_memory_model.svg)
 
@@ -256,9 +300,9 @@ RK01 separates memory by privilege first and by module ownership second.
 | --- | --- |
 | Flash | User-readable and executable. On STM32F401RE this is `0x08000000..0x08040000`. |
 | FS_FLASH | STM32F401RE reserved flash at `0x08040000..0x08080000`, used by RKFS. Not user executable. |
-| Task/module RAM | Writable only by tasks whose current MPU view maps that module. |
+| Task/domain RAM | Writable only by tasks whose current MPU view maps that domain. |
 | Global shared RAM | Small firmware-wide aperture mapped into ordinary tasks. |
-| Explicit shared memory | Boot-created shared segment attached only to selected modules. |
+| Explicit shared memory | Boot-created shared segment attached only to selected domains. |
 | Kernel RAM | Privileged only. Contains TCBs, object pools, registries and privileged stacks. |
 
 Typical MPU slot intent:
@@ -266,17 +310,18 @@ Typical MPU slot intent:
 | MPU slot | Meaning |
 | --- | --- |
 | Region 0 | User-readable executable Flash, installed once. |
-| Region 1 | Active task/module RAM, rewritten on context switch. |
+| Region 1 | Active task/domain RAM, rewritten on context switch. |
 | Region 2 | Global shared RAM, rewritten from the incoming TCB. |
 | Regions 3..7 | Explicit shared-memory segments, enabled only when attached. |
 
 Privileged handler code keeps the default memory map through `PRIVDEFENA`.
 Unprivileged task code only sees the programmed user regions.
 
-## Modules
+## Domains
 
-A module is an MPU-shaped RAM domain shared by a set of tasks. It is not a
-process. It has no executable image, user, file table or scheduler namespace.
+An RK01 domain is a statically declared writable-authority boundary shared by
+one or more tasks. Tasks remain independently scheduled entities. It is not a
+process and has no user, file table or scheduler namespace.
 
 The normal small-application shape is still RK0-like:
 
@@ -287,22 +332,31 @@ kTaskInit(&workerHandle, WorkerTask, RK_NO_ARGS, "Worker",
           workerStack, 256U, WORKER_PRIO, RK_PREEMPT);
 ```
 
-That places the task in the implicit `App` module. Tasks in the same module can
-share module RAM directly and should protect shared mutable state with ordinary
+That places the task in the implicit `App` domain. Tasks in the same domain can
+share domain RAM directly and should protect shared mutable state with ordinary
 RK0-style services such as mutexes or semaphores.
 
-Use explicit modules only when there is a real fault-containment boundary:
+Use explicit domains only when there is a real fault-containment boundary:
 
 ```c
-RK_DECLARE_MODULE(controlModule, controlRam, 4096U)
-RK_DECLARE_MODULE_TASK(controlHandle, ControlTask)
+RK_DECLARE_DOMAIN(controlDomain, controlRam, 4096U)
+RK_DECLARE_DOMAIN_TASK(controlHandle, ControlTask)
 
-kModuleInit(&controlModule, controlRam, sizeof(controlRam), "Control");
-kModuleTaskInit(&controlModule, &controlHandle, ControlTask, RK_NO_ARGS,
+kDomainInit(&controlDomain, controlRam, sizeof(controlRam), "Control");
+kDomainTaskInit(&controlDomain, &controlHandle, ControlTask, RK_NO_ARGS,
                 "Control", 256U, CONTROL_PRIO, RK_PREEMPT);
 ```
 
-Cross-module payload transfer should normally use copied IPC.
+The intended image direction is ThreadX-inspired: a domain may later become a
+linker-described unit with a bounded text/rodata range, domain-owned data/BSS,
+entry metadata and a syscall veneer rather than an ad hoc collection of global
+objects. V0.1.0 has the writable-domain and SVC side of that model, while
+`app/linker-domains.ld` remains the reserved hook for describing domain images
+in the linker script. Until that lands, public examples use `RK_DECLARE_DOMAIN()`
+to declare naturally aligned domain RAM in C and create domain tasks during
+BOOT.
+
+Cross-domain payload transfer should normally use copied IPC.
 
 ## Syscalls And Handles
 
@@ -338,12 +392,12 @@ Start with the RK0 interaction, then apply the RK01 memory rule.
 | Interaction | RK01 rule |
 | --- | --- |
 | Shared memory | Direct load/store is allowed only where the MPU maps the same RAM into the participating tasks. Use mutexes for shared-memory ownership. |
-| Asynchronous direct message | Transfers message ownership. By-reference messages require memory both sides can access; copied async messages can cross non-shared module boundaries. Pool ceilings apply to this ownership contract. |
+| Asynchronous direct message | Transfers message ownership. By-reference messages require memory both sides can access; copied async messages can cross non-shared domain boundaries. Pool ceilings apply to this ownership contract. |
 | Synchronous send/receive | Blocking copy rendezvous: the sender waits until the receiver copies the payload. There is no reply and no receiver priority substitution. |
-| Synchronous call/reply | Extended rendezvous: the caller waits for a reply and the server runs at caller effective priority while the call is queued or active. Syscall validation lets copied payloads cross non-shared module boundaries. |
-| Cross-module notification | Task events or copied messages. |
-| Cross-module payload | Message queues, mailboxes, synchronous send/receive, synchronous call/reply or task-addressed copy messages. |
-| Latest value | MRM is module-local because leases are pointers. Use copied payloads or a small `RK_SHARED_MEM` snapshot across modules. |
+| Synchronous call/reply | Extended rendezvous: the caller waits for a reply and the server runs at caller effective priority while the call is queued or active. Syscall validation lets copied payloads cross non-shared domain boundaries. |
+| Cross-domain notification | Task events or copied messages. |
+| Cross-domain payload | Message queues, mailboxes, synchronous send/receive, synchronous call/reply or task-addressed copy messages. |
+| Latest value | MRM is domain-local because leases are pointers. Use copied payloads or a small `RK_SHARED_MEM` snapshot across domains. |
 
 RK01 deliberately keeps both shared-state services and message-passing services.
 It does not force every local interaction into an actor model.
@@ -369,7 +423,7 @@ Use the narrowest public header that fits the code:
 | Header | Use |
 | --- | --- |
 | `kapi_app.h` | Ordinary App tasks, local objects, copied IPC, timers, sleep and logging. |
-| `kapi_module.h` | BOOT code that declares explicit modules, isolated tasks or shared memory. |
+| `kapi_domain.h` | BOOT code that declares explicit domains, isolated tasks or shared memory. |
 | `kconsole.h` | Privileged console UART service, foreground RX ownership and bounded console writes. |
 | `kapi_diag.h` | Optional diagnostics such as SysMon object naming and trace snapshots. |
 | `kapi_trusted.h` | Privileged service setup and low-level trusted construction. |

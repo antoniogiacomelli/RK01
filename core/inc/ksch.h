@@ -109,24 +109,24 @@ RK_ERR kTaskInit(RK_TASK_HANDLE *,
                    CHAR *const, RK_STACK *const,
                    const ULONG, const RK_PRIO,
                    const RK_OPTION);
-RK_MODULE *kApplicationModuleGet(VOID);
-RK_ERR kApplicationModuleEnsureInit(VOID);
-RK_ERR kModuleInit(RK_MODULE *const, BYTE *const, ULONG const, CHAR *const);
-VOID *kModuleAlloc(RK_MODULE *const, ULONG const, ULONG const);
-RK_STACK *kModuleStackAlloc(RK_MODULE *const, ULONG const);
-RK_ERR kModuleTaskInit(RK_MODULE *const,
+RK_DOMAIN *kApplicationDomainGet(VOID);
+RK_ERR kApplicationDomainEnsureInit(VOID);
+RK_ERR kDomainInit(RK_DOMAIN *const, BYTE *const, ULONG const, CHAR *const);
+VOID *kDomainAlloc(RK_DOMAIN *const, ULONG const, ULONG const);
+RK_STACK *kDomainStackAlloc(RK_DOMAIN *const, ULONG const);
+RK_ERR kDomainTaskInit(RK_DOMAIN *const,
                        RK_TASK_HANDLE *,
                        const RK_TASKENTRY, VOID *,
                        CHAR *const,
                        const ULONG, const RK_PRIO,
                        const RK_OPTION);
 RK_ERR kSharedRegionInit(RK_SHARED_REGION *const, BYTE *const, ULONG const);
-RK_ERR kModuleMapSharedRegion(RK_MODULE *const, RK_SHARED_REGION *const);
-RK_ERR kTaskInitModule(RK_TASK_HANDLE *,
+RK_ERR kDomainMapSharedRegion(RK_DOMAIN *const, RK_SHARED_REGION *const);
+RK_ERR kTaskInitDomain(RK_TASK_HANDLE *,
                        const RK_TASKENTRY, VOID *,
                        CHAR *const, RK_STACK *const,
                        const ULONG, const RK_PRIO,
-                       const RK_OPTION, RK_MODULE *const);
+                       const RK_OPTION, RK_DOMAIN *const);
 RK_ERR kTaskInitPrivileged(RK_TASK_HANDLE *,
                            const RK_TASKENTRY, VOID *,
                            CHAR *const, RK_STACK *const,

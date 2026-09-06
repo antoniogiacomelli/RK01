@@ -16,6 +16,7 @@ PLATFORM ?= stm32f401re
 TARGET ?= rk01_demo
 EXTRA_DEFINES ?=
 EXTRA_DEFS ?=
+APP_DEFS :=
 APP_EXAMPLE ?= tiny
 RK_BUILD_COOKIE ?= $(shell date +%s)
 BUILD ?= debug
@@ -36,18 +37,23 @@ APP_SRCS := \
     $(APP_DIR)/src/tiny_record.c \
     $(APP_DIR)/src/tiny_support.c
 else ifeq ($(APP_EXAMPLE),01-fleet)
-APP_SRCS := $(APP_DIR)/examples/01_fleet_modules.c
+APP_SRCS := $(APP_DIR)/examples/01_fleet_domains.c
 else ifeq ($(APP_EXAMPLE),02-isolated)
 APP_SRCS := $(APP_DIR)/examples/02_isolated_tasks.c
 else ifeq ($(APP_EXAMPLE),03-watchdog)
 APP_SRCS := $(APP_DIR)/examples/03_watchdog.c
 else ifeq ($(APP_EXAMPLE),04-sysmon)
 APP_SRCS := $(APP_DIR)/examples/04_sysmon.c
-EXTRA_DEFS += -DRK_CONF_SYSMON=ON
+APP_DEFS += -DRK_CONF_SYSMON=ON
+else ifeq ($(APP_EXAMPLE),05-profile-preempt)
+APP_SRCS := $(APP_DIR)/examples/05_profile_preempt.c
+else ifeq ($(APP_EXAMPLE),06-profile-ctxsw)
+APP_SRCS := $(APP_DIR)/examples/06_profile_ctxsw.c
+APP_DEFS += -DRK_CONF_PROFILE_PENDSV=1
 else ifeq ($(APP_EXAMPLE),99-showcase)
 APP_SRCS := $(APP_DIR)/examples/99_showcase.c
 else
-$(error Unsupported APP_EXAMPLE '$(APP_EXAMPLE)': use tiny, 01-fleet, 02-isolated, 03-watchdog, 04-sysmon, or 99-showcase)
+$(error Unsupported APP_EXAMPLE '$(APP_EXAMPLE)': use tiny, 01-fleet, 02-isolated, 03-watchdog, 04-sysmon, 05-profile-preempt, 06-profile-ctxsw, or 99-showcase)
 endif
 endif
 
@@ -149,7 +155,7 @@ else
 $(error Unsupported PLATFORM '$(PLATFORM)': RK01 supports stm32f401re and mps2-an505 MPU targets)
 endif
 
-DEFINES += $(EXTRA_DEFINES) $(EXTRA_DEFS)
+DEFINES += $(EXTRA_DEFINES) $(EXTRA_DEFS) $(APP_DEFS)
 
 C_SRCS := \
     $(filter-out $(CORE_DIR)/src/ktrace.c,$(wildcard $(CORE_DIR)/src/*.c)) \
@@ -266,6 +272,8 @@ help:
 	    '  make -j4 APP_EXAMPLE=02-isolated' \
 	    '  make -j4 APP_EXAMPLE=03-watchdog' \
 	    '  make -j4 APP_EXAMPLE=04-sysmon' \
+	    '  make -j4 APP_EXAMPLE=05-profile-preempt EXTRA_DEFS="-DNDEBUG -DRK_CONF_SYSTICK_DIV=1000"' \
+	    '  make -j4 APP_EXAMPLE=06-profile-ctxsw EXTRA_DEFS="-DNDEBUG"' \
 	    '  make -j4 APP_EXAMPLE=99-showcase' \
 	    '  make -j4 ARCH=armv7m PLATFORM=stm32f401re FPU=ON' \
 	    '  make -j4 ARCH=armv8m PLATFORM=mps2-an505' \

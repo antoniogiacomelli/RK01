@@ -14,9 +14,9 @@
 
 /******************************************************************************/
 /**
- * @brief              Initialise a new task in the implicit application module.
+ * @brief              Initialise a new task in the implicit application domain.
  *                     This is the RK0-shaped default: tasks created with
- *                     kTaskInit() share the App-module RAM view while still
+ *                     kTaskInit() share the App-domain RAM view while still
  *                     using syscall-backed kernel services. Task prototype:
  *
  *                     VOID taskFunc(VOID *args)
@@ -34,7 +34,7 @@
  *
  * @param stackBufPtr     Pointer to the task stack (the array's name).
  *                        Must be declared with RK_DECLARE_TASK() or placed in
- *                        the App-module RAM window. Must be aligned to an
+ *                        the App-domain RAM window. Must be aligned to an
  *                        8-byte boundary and must not be NULL.
  *
  * @param stackSize    Size of the task stack, in words. Must be at least
@@ -79,53 +79,53 @@ RK_ERR kTaskInit(RK_TASK_HANDLE *taskHandlePtr, const RK_TASKENTRY taskFunc,
 #define kTaskCreate kTaskInit
 
 /* kTaskInit() is the RK0-shaped default: every task created through it joins
- * the implicit application module and therefore shares that module's writable
- * application RAM with the other default tasks. Use kTaskInitModule() for an
- * explicit module and kTaskInitIsolated() only when a task must get its own
- * one-task module. */
+ * the implicit application domain and therefore shares that domain's writable
+ * application RAM with the other default tasks. Use kTaskInitDomain() for an
+ * explicit domain and kTaskInitIsolated() only when a task must get its own
+ * one-task domain. */
 
 /**
- * @brief Return RK01's implicit application module after it has been created.
+ * @brief Return RK01's implicit application domain after it has been created.
  *        Normal code usually does not need this pointer; plain Create APIs bind
- *        boot-created module-local objects to this module automatically.
+ *        boot-created domain-local objects to this domain automatically.
  */
-RK_MODULE *kApplicationModuleGet(VOID);
+RK_DOMAIN *kApplicationDomainGet(VOID);
 
 /**
- * @brief Initialise a module, which is a user RAM region shared by a set of
- *        tasks. Tasks created in the same module can read/write this memory
- *        while tasks outside the module cannot.
+ * @brief Initialise a statically declared writable-authority boundary shared
+ *        by one or more tasks. Tasks created in the same domain can read/write
+ *        this memory while tasks outside the domain cannot.
  *
- *        Module memory must be power-of-two sized, naturally aligned to that
+ *        Domain memory must be power-of-two sized, naturally aligned to that
  *        size, and placed in RK task RAM.
  */
-RK_ERR kModuleInit(RK_MODULE *const modulePtr,
+RK_ERR kDomainInit(RK_DOMAIN *const domainPtr,
                    BYTE *const regionBasePtr,
                    ULONG const regionBytes,
-                   RK_STRING moduleName);
+                   RK_STRING domainName);
 
 /**
- * @brief Allocate bytes from a module RAM window during BOOT construction.
- *        The returned memory belongs to the module and remains valid for the
- *        lifetime of that module. Allocation closes once tasks have been
- *        created in the module or the MPU layout has been finalised.
+ * @brief Allocate bytes from a domain RAM window during BOOT construction.
+ *        The returned memory belongs to the domain and remains valid for the
+ *        lifetime of that domain. Allocation closes once tasks have been
+ *        created in the domain or the MPU layout has been finalised.
  */
-VOID *kModuleAlloc(RK_MODULE *const modulePtr,
+VOID *kDomainAlloc(RK_DOMAIN *const domainPtr,
                    ULONG const nBytes,
                    ULONG const alignBytes);
 
 /**
- * @brief Allocate an 8-byte aligned task stack from a module RAM window.
+ * @brief Allocate an 8-byte aligned task stack from a domain RAM window.
  */
-RK_STACK *kModuleStackAlloc(RK_MODULE *const modulePtr,
+RK_STACK *kDomainStackAlloc(RK_DOMAIN *const domainPtr,
                             ULONG const stackWords);
 
 /**
- * @brief Allocate a stack from a module RAM window and create a task in that
- *        module. This is the preferred BOOT-time spelling for module tasks
+ * @brief Allocate a stack from a domain RAM window and create a task in that
+ *        domain. This is the preferred BOOT-time spelling for domain tasks
  *        because the allocation and task construction happen as one operation.
  */
-RK_ERR kModuleTaskInit(RK_MODULE *const modulePtr,
+RK_ERR kDomainTaskInit(RK_DOMAIN *const domainPtr,
                        RK_TASK_HANDLE *taskHandlePtr,
                        const RK_TASKENTRY taskFunc,
                        VOID *argsPtr,
@@ -145,16 +145,16 @@ RK_ERR kSharedRegionInit(RK_SHARED_REGION *const regionPtr,
 /**
  * @brief Low-level MPU shared-region mapping.
  *        Prefer kSharedMemAttach() in application code. Call before creating
- *        tasks in that module.
+ *        tasks in that domain.
  */
-RK_ERR kModuleMapSharedRegion(RK_MODULE *const modulePtr,
+RK_ERR kDomainMapSharedRegion(RK_DOMAIN *const domainPtr,
                               RK_SHARED_REGION *const regionPtr);
 
 /**
- * @brief Create a handle-addressed inter-module shared memory segment.
+ * @brief Create a handle-addressed inter-domain shared memory segment.
  *        The backing RAM must have normal MPU region geometry and live in
- *        task RAM. This is a construction-phase service; attach modules before
- *        creating tasks in those modules.
+ *        task RAM. This is a construction-phase service; attach domains before
+ *        creating tasks in those domains.
  * @param objName NUL-terminated object name.
  */
 RK_ERR kSharedMemCreate(RK_SHARED_MEM_HANDLE *const sharedMemHandlePtr,
@@ -163,20 +163,20 @@ RK_ERR kSharedMemCreate(RK_SHARED_MEM_HANDLE *const sharedMemHandlePtr,
                         ULONG const regionBytes);
 
 /**
- * @brief Attach a shared memory segment to a module. A shared segment is useful
- *        only across module boundaries; same-module tasks should use their
- *        module RAM instead.
+ * @brief Attach a shared memory segment to a domain. A shared segment is useful
+ *        only across domain boundaries; same-domain tasks should use their
+ *        domain RAM instead.
  */
 RK_ERR kSharedMemAttach(RK_SHARED_MEM_HANDLE const sharedMemHandle,
-                        RK_MODULE *const modulePtr);
+                        RK_DOMAIN *const domainPtr);
 
 /**
- * @brief Remove a construction-phase shared memory attachment from a module.
+ * @brief Remove a construction-phase shared memory attachment from a domain.
  *        This is for BOOT rollback before task creation and MPU layout
  *        finalisation, not runtime unmapping.
  */
 RK_ERR kSharedMemDetach(RK_SHARED_MEM_HANDLE const sharedMemHandle,
-                        RK_MODULE *const modulePtr);
+                        RK_DOMAIN *const domainPtr);
 
 /**
  * @brief Destroy an unattached shared memory segment before MPU layout
@@ -185,21 +185,21 @@ RK_ERR kSharedMemDetach(RK_SHARED_MEM_HANDLE const sharedMemHandle,
 RK_ERR kSharedMemDestroy(RK_SHARED_MEM_HANDLE *const sharedMemHandlePtr);
 
 /**
- * @brief Return the shared segment address and size to an attached module.
- *        Runtime callers must belong to a module attached with
- *        kSharedMemAttach(). The service rejects single-module use.
+ * @brief Return the shared segment address and size to an attached domain.
+ *        Runtime callers must belong to a domain attached with
+ *        kSharedMemAttach(). The service rejects single-domain use.
  */
 RK_ERR kSharedMemGet(RK_SHARED_MEM_HANDLE const sharedMemHandle,
                      VOID **const regionBasePPtr,
                      ULONG *const regionBytesPtr);
 
 /**
- * @brief Initialise a task that belongs to a module. The task keeps its own
- *        scheduler identity but runs in the module RAM protection domain.
- *        Its stack must be inside modulePtr's RAM region. Other tasks in the
- *        same module can access that RAM; tasks in other modules cannot.
+ * @brief Initialise a task that belongs to a domain. The task keeps its own
+ *        scheduler identity while its MPU view includes the domain.
+ *        Its stack must be inside domainPtr's RAM region. Other tasks in the
+ *        same domain can access that RAM; tasks in other domains cannot.
  */
-RK_ERR kTaskInitModule(RK_TASK_HANDLE *taskHandlePtr,
+RK_ERR kTaskInitDomain(RK_TASK_HANDLE *taskHandlePtr,
                        const RK_TASKENTRY taskFunc,
                        VOID *argsPtr,
                        RK_STRING taskName,
@@ -207,12 +207,12 @@ RK_ERR kTaskInitModule(RK_TASK_HANDLE *taskHandlePtr,
                        const ULONG stackSize,
                        const RK_PRIO priority,
                        const RK_OPTION preempt,
-                       RK_MODULE *const modulePtr);
-#define kTaskCreateIn kTaskInitModule
+                       RK_DOMAIN *const domainPtr);
+#define kTaskCreateIn kTaskInitDomain
 
 /**
  * @brief Initialise a deliberately isolated unprivileged task. The task gets a
- *        private one-task module using only the provided stack buffer as its
+ *        private one-task domain using only the provided stack buffer as its
  *        RAM region. The stack must therefore have MPU region geometry: a
  *        power-of-two byte size and matching natural alignment.
  */
@@ -228,11 +228,11 @@ RK_ERR kTaskInitIsolated(RK_TASK_HANDLE *taskHandlePtr,
 
 /**
  * @brief Initialise an unprivileged protected task from an explicit memory
- *        arena. If memoryPtr->modulePtr is NULL, the arena becomes a private
- *        isolated module owned by this task. If modulePtr is set, the task
- *        joins that module and its stack must live inside the module RAM.
+ *        arena. If memoryPtr->domainPtr is NULL, the arena becomes a private
+ *        isolated domain owned by this task. If domainPtr is set, the task
+ *        joins that domain and its stack must live inside the domain RAM.
  *
- *        A private isolated module may be identical to the task stack:
+ *        A private isolated domain may be identical to the task stack:
  *        regionBasePtr == stackBasePtr and regionBytes == stackWords *
  *        sizeof(RK_STACK).
  *
@@ -257,14 +257,14 @@ RK_ERR kTaskInitProtected(RK_TCB *const taskPtr,
  * @brief Spawn a runtime task using the shared task pool and a user-selected
  *        stack partition.
  *        The spawned task stack size is the partition block size (in words).
- *        If modulePtr is NULL, the new task joins the caller's module at
- *        runtime or the implicit App module during BOOT. If modulePtr is set,
- *        it must name an already-finalised module after layout finalisation.
+ *        If domainPtr is NULL, the new task joins the caller's domain at
+ *        runtime or the implicit App domain during BOOT. If domainPtr is set,
+ *        it must name an already-finalised domain after layout finalisation.
  *        Controlled by RK_CONF_DYNAMIC_TASK in kconfig.h.
  * @param taskAttrPtr Pointer to dynamic task attributes.
  *                     stackMemPtr must identify the stack-block partition.
- *                     modulePtr is the module the spawned task joins under MPU,
- *                     or NULL to inherit the caller/App module.
+ *                     domainPtr is the domain the spawned task joins under MPU,
+ *                     or NULL to inherit the caller/App domain.
  * @param taskHandlePtr Receives task handle.
  * @return
  *                  RK_ERR_SUCCESS            Task spawned.
@@ -276,7 +276,7 @@ RK_ERR kTaskInitProtected(RK_TCB *const taskPtr,
  *                  RK_ERR_INVALID_PRIO       Priority is out of range.
  *                  RK_ERR_INVALID_OBJ        `stackMemPtr` is not a valid
  *                                              initialised memory partition.
- *                  RK_ERR_OBJ_NOT_INIT       `modulePtr` is not initialised.
+ *                  RK_ERR_OBJ_NOT_INIT       `domainPtr` is not initialised.
  *                  RK_ERR_TASK_POOL_EMPTY    No free stack block in partition
  *                                              or no free TCB in task pool.
  *                  RK_ERR_ERROR              Internal failure creating the task.
@@ -330,7 +330,7 @@ RK_ERR kTaskTerminateSelf(VOID);
  *        kSemaphoreCreate(), kMutexCreate(), kSleepQueueCreate(),
  *        kMesgQueueCreate(), kTimerCreate(), or kMRMCreate() directly. The
  *        handle variable passed to any Create API must contain NULL before the
- *        call. Use the GlobalScope or ModuleScope constructors during
+ *        call. Use the GlobalScope or DomainScope constructors during
  *        BOOT/configuration when object ownership must be explicit before tasks
  *        run.
  * @return RK_ERR_SUCCESS on success, or a propagated partition init error.
@@ -339,12 +339,12 @@ RK_ERR kObjPartitionsInit(VOID);
 
 /*
  * Object scope policy:
- *   - RK_SCOPE_MODULE_LOCAL: shared-state service used only by tasks in the
- *     named module.
+ *   - RK_SCOPE_DOMAIN_LOCAL: shared-state service used only by tasks in the
+ *     named domain.
  *   - RK_SCOPE_KERNEL_GLOBAL: explicit kernel/global object, normally reserved
  *     for trusted services such as RK_SHARED_MEM wrappers and the logger.
  *   - RK_SCOPE_UNASSIGNED: internal placeholder for objects that have not yet
- *     been bound to a usable task/module scope.
+ *     been bound to a usable task/domain scope.
  */
 
 #ifndef RK_STACK_ALIGN
@@ -370,27 +370,27 @@ RK_ERR kObjPartitionsInit(VOID);
 
 #ifndef RK_ISOLATED_TASK_STACK_ATTR
 #define RK_ISOLATED_TASK_STACK_ATTR(NWORDS)                                   \
-    RK_STACK_ALIGN(NWORDS) RK_SECTION_MODULE_BSS
+    RK_STACK_ALIGN(NWORDS) RK_SECTION_DOMAIN_BSS
 #endif
 
 #ifndef RK_PRIVILEGED_TASK_STACK_ATTR
 #define RK_PRIVILEGED_TASK_STACK_ATTR(NWORDS) K_ALIGN(8)
 #endif
 
-#ifndef RK_MODULE_RAM_ATTR
-#define RK_MODULE_RAM_ATTR(NBYTES) K_ALIGN(NBYTES) RK_SECTION_MODULE_BSS
+#ifndef RK_DOMAIN_RAM_ATTR
+#define RK_DOMAIN_RAM_ATTR(NBYTES) K_ALIGN(NBYTES) RK_SECTION_DOMAIN_BSS
 #endif
 
 #ifndef RK_KERNEL_RAM_ATTR
 #define RK_KERNEL_RAM_ATTR K_ALIGN(4) RK_SECTION_NAMED(".rk_kernel_bss")
 #endif
 
-#ifndef RK_MODULE_DESC_ATTR
-#define RK_MODULE_DESC_ATTR RK_KERNEL_RAM_ATTR
+#ifndef RK_DOMAIN_DESC_ATTR
+#define RK_DOMAIN_DESC_ATTR RK_KERNEL_RAM_ATTR
 #endif
 
 #ifndef RK_SHARED_REGION_ATTR
-#define RK_SHARED_REGION_ATTR(NBYTES) K_ALIGN(NBYTES) RK_SECTION_MODULE_BSS
+#define RK_SHARED_REGION_ATTR(NBYTES) K_ALIGN(NBYTES) RK_SECTION_DOMAIN_BSS
 #endif
 
 #ifndef RK_SHARED_RAM_ATTR
@@ -419,10 +419,10 @@ RK_ERR kObjPartitionsInit(VOID);
  *        Declaration scope controls where the handle token is stored. It does
  *        not create the object and it does not decide the kernel object's
  *        visibility. Pair the declaration with the matching Create API:
- *        k...Create(), k...CreateGlobalScope() or k...CreateModuleScope().
+ *        k...Create(), k...CreateGlobalScope() or k...CreateDomainScope().
  *
  *        Local handle variables live in the implicit App RAM aperture. Global
- *        handle variables live in shared RAM so explicit module tasks can read
+ *        handle variables live in shared RAM so explicit domain tasks can read
  *        the token.
  */
 #ifndef RK_DECLARE_LOCAL_KOBJ_HANDLE
@@ -604,33 +604,33 @@ RK_ERR kObjPartitionsInit(VOID);
 #endif
 
 /**
- * @brief Declare a module descriptor and a raw byte MPU-shaped RAM block.
+ * @brief Declare a domain descriptor and a raw byte MPU-shaped RAM block.
  */
-#ifndef RK_DECLARE_MODULE
-#define RK_DECLARE_MODULE(MODULE, RAMBUF, NBYTES)                              \
-    BYTE RAMBUF[NBYTES] RK_MODULE_RAM_ATTR(NBYTES);                            \
-    RK_MODULE MODULE RK_MODULE_DESC_ATTR;
+#ifndef RK_DECLARE_DOMAIN
+#define RK_DECLARE_DOMAIN(DOMAIN, RAMBUF, NBYTES)                              \
+    BYTE RAMBUF[NBYTES] RK_DOMAIN_RAM_ATTR(NBYTES);                            \
+    RK_DOMAIN DOMAIN RK_DOMAIN_DESC_ATTR;
 #endif
 
-#ifndef RK_MODULE_ALLOC
-#define RK_MODULE_ALLOC(MODULEPTR, TYPE)                                       \
-    ((TYPE *)kModuleAlloc((MODULEPTR), sizeof(TYPE), (ULONG)_Alignof(TYPE)))
+#ifndef RK_DOMAIN_ALLOC
+#define RK_DOMAIN_ALLOC(DOMAINPTR, TYPE)                                       \
+    ((TYPE *)kDomainAlloc((DOMAINPTR), sizeof(TYPE), (ULONG)_Alignof(TYPE)))
 #endif
 
-#ifndef RK_MODULE_ALLOC_ARRAY
-#define RK_MODULE_ALLOC_ARRAY(MODULEPTR, TYPE, COUNT)                         \
-    ((TYPE *)kModuleAlloc((MODULEPTR),                                        \
+#ifndef RK_DOMAIN_ALLOC_ARRAY
+#define RK_DOMAIN_ALLOC_ARRAY(DOMAINPTR, TYPE, COUNT)                         \
+    ((TYPE *)kDomainAlloc((DOMAINPTR),                                        \
                           sizeof(TYPE) * (ULONG)(COUNT),                      \
                           (ULONG)_Alignof(TYPE)))
 #endif
 
-#ifndef RK_MODULE_ALLOC_STACK
-#define RK_MODULE_ALLOC_STACK(MODULEPTR, NWORDS)                              \
-    kModuleStackAlloc((MODULEPTR), (NWORDS))
+#ifndef RK_DOMAIN_ALLOC_STACK
+#define RK_DOMAIN_ALLOC_STACK(DOMAINPTR, NWORDS)                              \
+    kDomainStackAlloc((DOMAINPTR), (NWORDS))
 #endif
 
 /**
- * @brief Declare a low-level inter-module shared region object and RAM block.
+ * @brief Declare a low-level inter-domain shared region object and RAM block.
  *        Prefer RK_DECLARE_SHARED_MEM() in application code.
  */
 #ifndef RK_DECLARE_SHARED_REGION
@@ -640,7 +640,7 @@ RK_ERR kObjPartitionsInit(VOID);
 #endif
 
 /**
- * @brief Declare an inter-module shared memory handle and MPU-shaped backing
+ * @brief Declare an inter-domain shared memory handle and MPU-shaped backing
  *        byte RAM for kSharedMemCreate().
  */
 #ifndef RK_DECLARE_SHARED_MEM_RAW
@@ -669,10 +669,10 @@ RK_ERR kObjPartitionsInit(VOID);
 #endif
 
 /**
- * @brief Declare a task that will use a stack carved from module RAM.
+ * @brief Declare a task that will use a stack carved from domain RAM.
  */
-#ifndef RK_DECLARE_MODULE_TASK
-#define RK_DECLARE_MODULE_TASK(HANDLE, TASKENTRY)                              \
+#ifndef RK_DECLARE_DOMAIN_TASK
+#define RK_DECLARE_DOMAIN_TASK(HANDLE, TASKENTRY)                              \
     VOID TASKENTRY(VOID *args);                                                \
     RK_DECLARE_GLOBAL_TASK_HANDLE(HANDLE)
 #endif
@@ -878,11 +878,11 @@ RK_ERR kSemaphoreCreateGlobalScope(RK_HANDLE *const semaHandlePtr,
                                    RK_STRING objName,
                                    UINT const initValue,
                                    UINT const maxValue);
-RK_ERR kSemaphoreCreateModuleScope(RK_HANDLE *const semaHandlePtr,
+RK_ERR kSemaphoreCreateDomainScope(RK_HANDLE *const semaHandlePtr,
                                    RK_STRING objName,
                                    UINT const initValue,
                                    UINT const maxValue,
-                                   RK_MODULE *const modulePtr);
+                                   RK_DOMAIN *const domainPtr);
 RK_ERR kSemaphoreDestroy(RK_HANDLE *const semaHandlePtr);
 
 /**
@@ -966,10 +966,10 @@ RK_ERR kMutexCreate(RK_HANDLE *const mutexHandlePtr, RK_STRING objName,
 RK_ERR kMutexCreateGlobalScope(RK_HANDLE *const mutexHandlePtr,
                                RK_STRING objName,
                                UINT protocol);
-RK_ERR kMutexCreateModuleScope(RK_HANDLE *const mutexHandlePtr,
+RK_ERR kMutexCreateDomainScope(RK_HANDLE *const mutexHandlePtr,
                                RK_STRING objName,
                                UINT protocol,
-                               RK_MODULE *const modulePtr);
+                               RK_DOMAIN *const domainPtr);
 RK_ERR kMutexDestroy(RK_HANDLE *const mutexHandlePtr);
 
 /**
@@ -1044,9 +1044,9 @@ RK_ERR kMutexQuery(RK_HANDLE const mutexHandle, UINT *const statePtr);
 RK_ERR kSleepQueueCreate(RK_HANDLE *const sleepqHandlePtr, RK_STRING objName);
 RK_ERR kSleepQueueCreateGlobalScope(RK_HANDLE *const sleepqHandlePtr,
                                     RK_STRING objName);
-RK_ERR kSleepQueueCreateModuleScope(RK_HANDLE *const sleepqHandlePtr,
+RK_ERR kSleepQueueCreateDomainScope(RK_HANDLE *const sleepqHandlePtr,
                                     RK_STRING objName,
-                                    RK_MODULE *const modulePtr);
+                                    RK_DOMAIN *const domainPtr);
 RK_ERR kSleepQueueDestroy(RK_HANDLE *const sleepqHandlePtr);
 /**
  * @brief           Puts the running task to sleep on a Sleep Queue.
@@ -1190,12 +1190,12 @@ RK_ERR kMesgQueueCreateGlobalScope(RK_HANDLE *const queueHandlePtr,
                                    VOID *const bufPtr,
                                    ULONG const mesgWords,
                                    ULONG const nMesg);
-RK_ERR kMesgQueueCreateModuleScope(RK_HANDLE *const queueHandlePtr,
+RK_ERR kMesgQueueCreateDomainScope(RK_HANDLE *const queueHandlePtr,
                                    RK_STRING objName,
                                    VOID *const bufPtr,
                                    ULONG const mesgWords,
                                    ULONG const nMesg,
-                                   RK_MODULE *const modulePtr);
+                                   RK_DOMAIN *const domainPtr);
 RK_ERR kMesgQueueDestroy(RK_HANDLE *const queueHandlePtr);
 #define kMboxCreate kMesgQueueCreate
 #define kMboxDestroy kMesgQueueDestroy
@@ -1511,7 +1511,7 @@ RK_ERR kMesgQueueBroadcastRecv(RK_HANDLE const queueHandle,
  * originating pool with kMesgFree().
  *
  * With the MPU enabled, by-reference direct async messages are valid only when
- * sender and receiver can both access the message pool memory. Same-module or
+ * sender and receiver can both access the message pool memory. Same-domain or
  * explicitly shared memory is the normal fit. Use kMesgQueueSend() /
  * kMesgQueueRecv() when a queue is the shared rendezvous point and payloads
  * should be copied. Use
@@ -1564,12 +1564,12 @@ RK_ERR kMesgPoolInitGlobalScope(RK_MEM_PARTITION *const poolPtr,
                                 ULONG const payloadBytes,
                                 ULONG const nMesg,
                                 RK_PRIO const ceilingPrio);
-RK_ERR kMesgPoolInitModuleScope(RK_MEM_PARTITION *const poolPtr,
+RK_ERR kMesgPoolInitDomainScope(RK_MEM_PARTITION *const poolPtr,
                                 VOID *const memPoolPtr,
                                 ULONG const payloadBytes,
                                 ULONG const nMesg,
                                 RK_PRIO const ceilingPrio,
-                                RK_MODULE *const modulePtr);
+                                RK_DOMAIN *const domainPtr);
 
 /**
  * @brief Allocate one message from a direct-message pool.
@@ -1670,7 +1670,7 @@ RK_ERR kMesgWait(RK_TASK_HANDLE const fromTaskHandle,
  *
  *        A task may own one message endpoint model: synchronous direct,
  *        asynchronous pointer-direct, or asynchronous copy. Copy endpoints are
- *        intended for cross-module traffic because the kernel copies payloads
+ *        intended for cross-domain traffic because the kernel copies payloads
  *        into a bounded internal pool and never returns RK_MESG pointers to the
  *        application. The kernel owns and frees those internal message blocks.
  */
@@ -2268,14 +2268,14 @@ UINT kTraceTaskPrioSnapshot(RK_TASK_HANDLE const taskHandle,
  * at publish/get time, but kMRMReserve() and kMRMGet() return RK_MRM_BUF lease
  * pointers that must later be passed to kMRMPublish() or kMRMUnget().
  *
- * For that reason, MRM is a module-local service under MPU. A task may operate
- * on an MRM only from the module that owns it. Plain kMRMCreate() follows the
+ * For that reason, MRM is a domain-local service under MPU. A task may operate
+ * on an MRM only from the domain that owns it. Plain kMRMCreate() follows the
  * default ownership rule: during BOOT it creates an App-owned MRM, and at
- * runtime it uses the calling task's module. Use kMRMCreateModuleScope() during
+ * runtime it uses the calling task's domain. Use kMRMCreateDomainScope() during
  * BOOT when trusted construction code is intentionally creating an MRM for an
- * explicit module. Use message queues or task-addressed copy messages for
- * cross-module latest-value transfer, then keep the latest value locally in
- * the receiving module.
+ * explicit domain. Use message queues or task-addressed copy messages for
+ * cross-domain latest-value transfer, then keep the latest value locally in
+ * the receiving domain.
  */
 /**
  * @brief               Create an MRM control block from the MRM object pool.
@@ -2298,12 +2298,12 @@ RK_ERR kMRMCreate(RK_HANDLE *const mrmHandlePtr,
                   RK_MRM_BUF *const mrmPoolPtr,
                   VOID *mesgPoolPtr, ULONG const nBufs,
                   ULONG const dataSizeWords);
-RK_ERR kMRMCreateModuleScope(RK_HANDLE *const mrmHandlePtr,
+RK_ERR kMRMCreateDomainScope(RK_HANDLE *const mrmHandlePtr,
                              RK_STRING objName,
                              RK_MRM_BUF *const mrmPoolPtr,
                              VOID *mesgPoolPtr, ULONG const nBufs,
                              ULONG const dataSizeWords,
-                             RK_MODULE *const modulePtr);
+                             RK_DOMAIN *const domainPtr);
 RK_ERR kMRMDestroy(RK_HANDLE *const mrmHandlePtr);
 
 /**
@@ -2370,8 +2370,8 @@ RK_ERR kMRMUnget(RK_HANDLE const mrmHandle, RK_MRM_BUF *const bufPtr);
  * Single-core Cortex-M sequence counter.
  *
  * This is a small latest-value protocol helper for memory that the
- * participating tasks can already access: same-module RAM, global shared RAM,
- * or an attached RK_SHARED_MEM segment. It is not an inter-module capability
+ * participating tasks can already access: same-domain RAM, global shared RAM,
+ * or an attached RK_SHARED_MEM segment. It is not an inter-domain capability
  * grant and it is not a blocking synchronisation object.
  *
  * Writers must keep RK_CR_ENTER/RK_CR_EXIT active across the whole update:
@@ -2478,14 +2478,14 @@ RK_ERR kTimerCreateGlobalScope(RK_HANDLE *const timerHandlePtr,
                                RK_TIMER_CALLOUT const funPtr,
                                VOID *const argsPtr,
                                RK_OPTION const reload);
-RK_ERR kTimerCreateModuleScope(RK_HANDLE *const timerHandlePtr,
+RK_ERR kTimerCreateDomainScope(RK_HANDLE *const timerHandlePtr,
                                RK_STRING objName,
                                RK_TICK const phase,
                                RK_TICK const countTicks,
                                RK_TIMER_CALLOUT const funPtr,
                                VOID *const argsPtr,
                                RK_OPTION const reload,
-                               RK_MODULE *const modulePtr);
+                               RK_DOMAIN *const domainPtr);
 RK_ERR kTimerDestroy(RK_HANDLE *const timerHandlePtr);
 
 /**
@@ -2646,11 +2646,11 @@ RK_ERR kMemPartitionInitGlobalScope(RK_MEM_PARTITION *const kobj,
                                     VOID *memPoolPtr,
                                     ULONG blkSize,
                                     const ULONG numBlocks);
-RK_ERR kMemPartitionInitModuleScope(RK_MEM_PARTITION *const kobj,
+RK_ERR kMemPartitionInitDomainScope(RK_MEM_PARTITION *const kobj,
                                     VOID *memPoolPtr,
                                     ULONG blkSize,
                                     const ULONG numBlocks,
-                                    RK_MODULE *const modulePtr);
+                                    RK_DOMAIN *const domainPtr);
 #ifndef RK_DECLARE_MEM_POOL
 #define RK_DECLARE_MEM_POOL(TYPE, BUFNAME, N_BLOCKS)                           \
     RK_DECLARE_LOCAL_MEM_POOL(TYPE, BUFNAME, N_BLOCKS)

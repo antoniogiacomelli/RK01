@@ -25,9 +25,9 @@ RK_ERR kMesgPoolInit(RK_MEM_PARTITION *const, VOID *const, ULONG const,
                      ULONG const, RK_PRIO const);
 RK_ERR kMesgPoolInitGlobalScope(RK_MEM_PARTITION *const, VOID *const,
                                 ULONG const, ULONG const, RK_PRIO const);
-RK_ERR kMesgPoolInitModuleScope(RK_MEM_PARTITION *const, VOID *const,
+RK_ERR kMesgPoolInitDomainScope(RK_MEM_PARTITION *const, VOID *const,
                                 ULONG const, ULONG const, RK_PRIO const,
-                                RK_MODULE *const);
+                                RK_DOMAIN *const);
 RK_ERR kMesgAlloc(RK_MEM_PARTITION *const, RK_MESG **const, RK_TICK const);
 RK_ERR kMesgFree(RK_MESG *const);
 VOID *kMesgPayload(RK_MESG *const);

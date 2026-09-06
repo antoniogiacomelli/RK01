@@ -68,8 +68,8 @@ static RK_ERR kMesgQueueReadyErr_(RK_MESG_QUEUE const *const kobj)
         return (readyErr);
     }
 
-    return (kObjHeaderModuleLocalAccessErr(
-        &kobj->header, (RK_gRunPtr != NULL) ? RK_gRunPtr->modulePtr : NULL));
+    return (kObjHeaderDomainLocalAccessErr(
+        &kobj->header, (RK_gRunPtr != NULL) ? RK_gRunPtr->domainPtr : NULL));
 }
 
 static RK_ERR kMesgQueueReportErr_(RK_ERR const err)
@@ -180,8 +180,8 @@ RK_ERR kMesgQueueInit(RK_MESG_QUEUE *const kobj, VOID *const bufPtr,
     kobj->init = 1;
     kobj->objID = RK_MESGQQUEUE_KOBJ_ID;
     kobj->objName[0] = '\0';
-    kObjHeaderOwnerModuleSet(&kobj->header,
-                             (RK_gRunPtr != NULL) ? RK_gRunPtr->modulePtr
+    kObjHeaderOwnerDomainSet(&kobj->header,
+                             (RK_gRunPtr != NULL) ? RK_gRunPtr->domainPtr
                                                   : NULL);
     kobj->broadcastReceivers = 0UL;
 

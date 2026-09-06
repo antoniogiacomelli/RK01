@@ -31,9 +31,9 @@ RK_ERR kMesgQueueCreate(RK_MESG_QUEUE_HANDLE *const, RK_STRING, VOID *const,
                         ULONG const, ULONG const);
 RK_ERR kMesgQueueCreateGlobalScope(RK_MESG_QUEUE_HANDLE *const, RK_STRING,
                                    VOID *const, ULONG const, ULONG const);
-RK_ERR kMesgQueueCreateModuleScope(RK_MESG_QUEUE_HANDLE *const, RK_STRING,
+RK_ERR kMesgQueueCreateDomainScope(RK_MESG_QUEUE_HANDLE *const, RK_STRING,
                                    VOID *const, ULONG const, ULONG const,
-                                   RK_MODULE *const);
+                                   RK_DOMAIN *const);
 RK_ERR kMesgQueueDestroy(RK_MESG_QUEUE_HANDLE *const);
 #ifndef kMboxCreate
 #define kMboxCreate kMesgQueueCreate

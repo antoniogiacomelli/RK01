@@ -26,8 +26,8 @@ RK_ERR kSemaphoreCreate(RK_SEMAPHORE_HANDLE *const, RK_STRING, UINT const,
                         UINT const);
 RK_ERR kSemaphoreCreateGlobalScope(RK_SEMAPHORE_HANDLE *const, RK_STRING,
                                    UINT const, UINT const);
-RK_ERR kSemaphoreCreateModuleScope(RK_SEMAPHORE_HANDLE *const, RK_STRING,
-                                   UINT const, UINT const, RK_MODULE *const);
+RK_ERR kSemaphoreCreateDomainScope(RK_SEMAPHORE_HANDLE *const, RK_STRING,
+                                   UINT const, UINT const, RK_DOMAIN *const);
 RK_ERR kSemaphoreDestroy(RK_SEMAPHORE_HANDLE *const);
 RK_ERR kSemaphorePend(RK_SEMAPHORE_HANDLE const, RK_TICK const);
 RK_ERR kSemaphorePost(RK_SEMAPHORE_HANDLE const);

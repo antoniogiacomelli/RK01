@@ -176,6 +176,30 @@ void kErrHandler(RK_FAULT fault) /* generic error handler */
     RK_ABORT
 }
 #else
+volatile RK_FAULT RK_gFaultID = 0;
+volatile struct traceItem RK_gTraceInfo;
+
+VOID kFaultTraceClear(VOID)
+{
+    RK_gTraceInfo.magic = RK_FAULT_TRACE_MAGIC;
+    RK_gTraceInfo.buildCookie = (ULONG)RK_BUILD_COOKIE;
+    RK_gTraceInfo.code = 0;
+    RK_gTraceInfo.tick = 0UL;
+    RK_gTraceInfo.sp = 0U;
+    RK_gTraceInfo.task = NULL;
+    RK_gTraceInfo.taskID = (BYTE)0xFFU;
+    RK_gTraceInfo.lr = 0U;
+}
+
+VOID kFaultTraceInit(VOID)
+{
+    if ((RK_gTraceInfo.magic != RK_FAULT_TRACE_MAGIC) ||
+        (RK_gTraceInfo.buildCookie != (ULONG)RK_BUILD_COOKIE))
+    {
+        kFaultTraceClear();
+    }
+}
+
 void kErrHandler(RK_FAULT fault)
 {
     (void)fault;

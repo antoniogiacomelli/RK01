@@ -76,13 +76,13 @@ extern uint32_t _sdata;      /* Start address of the .data section */
 extern uint32_t _edata;      /* End address of the .data section */
 extern uint32_t _sbss;       /* Start address of the .bss section */
 extern uint32_t _ebss;       /* End address of the .bss section */
-extern uint32_t __rk_app_module_data_load;
-extern uint32_t __rk_app_module_data_begin;
-extern uint32_t __rk_app_module_data_end;
-extern uint32_t __rk_module_bss_begin;
-extern uint32_t __rk_module_bss_end;
-extern uint32_t __rk_app_module_bss_begin;
-extern uint32_t __rk_app_module_bss_end;
+extern uint32_t __rk_app_domain_data_load;
+extern uint32_t __rk_app_domain_data_begin;
+extern uint32_t __rk_app_domain_data_end;
+extern uint32_t __rk_domain_bss_begin;
+extern uint32_t __rk_domain_bss_end;
+extern uint32_t __rk_app_domain_bss_begin;
+extern uint32_t __rk_app_domain_bss_end;
 extern uint32_t __rk_shared_bss_begin;
 extern uint32_t __rk_shared_bss_end;
 extern uint32_t _estack;     /* alias for __stack */
@@ -307,12 +307,12 @@ void Reset_Handler(void)
         *pDest++ = *pSrc++;
     }
 
-    /* Copy application initialised globals into the App module RAM window. */
-    pSrc = &__rk_app_module_data_load;
-    pDest = &__rk_app_module_data_begin;
+    /* Copy application initialised globals into the App domain RAM window. */
+    pSrc = &__rk_app_domain_data_load;
+    pDest = &__rk_app_domain_data_begin;
 
     /* cppcheck-suppress comparePointers */
-    while (pDest < &__rk_app_module_data_end)
+    while (pDest < &__rk_app_domain_data_end)
     {
         *pDest++ = *pSrc++;
     }
@@ -324,14 +324,14 @@ void Reset_Handler(void)
         *pDest = 0;
     }
 
-    /* Zero user/module and shared BSS sections that are deliberately NOLOAD. */
-    for (pDest = &__rk_app_module_bss_begin;
-         pDest < &__rk_app_module_bss_end; pDest++)
+    /* Zero user/domain and shared BSS sections that are deliberately NOLOAD. */
+    for (pDest = &__rk_app_domain_bss_begin;
+         pDest < &__rk_app_domain_bss_end; pDest++)
     {
         *pDest = 0;
     }
 
-    for (pDest = &__rk_module_bss_begin; pDest < &__rk_module_bss_end; pDest++)
+    for (pDest = &__rk_domain_bss_begin; pDest < &__rk_domain_bss_end; pDest++)
     {
         *pDest = 0;
     }

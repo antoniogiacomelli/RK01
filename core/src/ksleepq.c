@@ -85,8 +85,8 @@ static RK_ERR kSleepQueueReadyErr_(RK_SLEEP_QUEUE const *const kobj)
         return (err);
     }
 
-    return (kObjHeaderModuleLocalAccessErr(
-        &kobj->header, (RK_gRunPtr != NULL) ? RK_gRunPtr->modulePtr : NULL));
+    return (kObjHeaderDomainLocalAccessErr(
+        &kobj->header, (RK_gRunPtr != NULL) ? RK_gRunPtr->domainPtr : NULL));
 }
 
 static RK_ERR kSleepQueueReportErr_(RK_ERR const err)
@@ -164,8 +164,8 @@ RK_ERR kSleepQueueInit(RK_SLEEP_QUEUE *const kobj)
     kobj->init = RK_TRUE;
     kobj->objID = RK_SLEEPQ_KOBJ_ID;
     kobj->objName[0] = '\0';
-    kObjHeaderOwnerModuleSet(&kobj->header,
-                             (RK_gRunPtr != NULL) ? RK_gRunPtr->modulePtr
+    kObjHeaderOwnerDomainSet(&kobj->header,
+                             (RK_gRunPtr != NULL) ? RK_gRunPtr->domainPtr
                                                   : NULL);
     kTraceRegisterObject(kobj, RK_SLEEPQ_KOBJ_ID);
 

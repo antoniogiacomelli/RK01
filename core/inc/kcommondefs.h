@@ -58,8 +58,8 @@ extern "C"
 #define RK_SECTION_APP_RAM __attribute__((section(".rk_app_ram")))
 #endif
 
-#ifndef RK_SECTION_MODULE_BSS
-#define RK_SECTION_MODULE_BSS __attribute__((section(".rk_module_bss")))
+#ifndef RK_SECTION_DOMAIN_BSS
+#define RK_SECTION_DOMAIN_BSS __attribute__((section(".rk_domain_bss")))
 #endif
 
 #ifndef RK_SECTION_SHARED_BSS
@@ -75,7 +75,7 @@ extern "C"
 #endif
 
 #ifndef RK_SECTION_TASK_RAM
-#define RK_SECTION_TASK_RAM RK_SECTION_MODULE_BSS
+#define RK_SECTION_TASK_RAM RK_SECTION_DOMAIN_BSS
 #endif
 
 #ifndef RK_SECTION_SHARED_RAM
@@ -139,7 +139,7 @@ typedef CHAR RK_NAME[(RK_NAME_SIZE)];
 typedef struct RK_STRUCT_KOBJ RK_KOBJ;
 typedef RK_KOBJ RK_OBJ;
 typedef struct RK_OBJ_TCB RK_TCB;
-typedef struct RK_OBJ_MODULE RK_MODULE;
+typedef struct RK_OBJ_DOMAIN RK_DOMAIN;
 typedef struct RK_OBJ_SHARED_REGION RK_SHARED_REGION;
 typedef struct RK_OBJ_SHARED_MEM RK_SHARED_MEM;
 typedef struct RK_STRUCT_TASK_MEMORY RK_TASK_MEMORY;
@@ -152,14 +152,14 @@ typedef RK_LIST RK_TCBQ;
 typedef enum
 {
     RK_SCOPE_UNASSIGNED = 0U,
-    RK_SCOPE_MODULE_LOCAL,
+    RK_SCOPE_DOMAIN_LOCAL,
     RK_SCOPE_KERNEL_GLOBAL
 } RK_OBJ_SCOPE;
 
 typedef struct RK_STRUCT_OBJ_ATTR
 {
     RK_OBJ_SCOPE scope;
-    RK_MODULE *modulePtr;
+    RK_DOMAIN *domainPtr;
 } RK_OBJ_ATTR;
 
 /*
@@ -293,7 +293,7 @@ struct RK_STRUCT_TASK_MEMORY
     ULONG regionBytes;
     RK_STACK *stackBasePtr;
     ULONG stackWords;
-    RK_MODULE *modulePtr;
+    RK_DOMAIN *domainPtr;
 } K_ALIGN(4);
 
 

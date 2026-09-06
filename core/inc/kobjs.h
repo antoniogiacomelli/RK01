@@ -65,7 +65,7 @@ struct RK_STRUCT_KOBJ
     CHAR objName[RK_NAME_SIZE];
     RK_BOOL init;
     RK_OBJ_SCOPE scope;
-    RK_MODULE *ownerModulePtr;
+    RK_DOMAIN *ownerDomainPtr;
 #if (RK_CONF_SYSMON == ON)
     struct RK_STRUCT_LIST_NODE sysMonNode;
     RK_BOOL sysMonListed;
@@ -90,7 +90,7 @@ struct RK_STRUCT_KOBJ
             CHAR objName[RK_NAME_SIZE];                                       \
             RK_BOOL init;                                                     \
             RK_OBJ_SCOPE scope;                                               \
-            RK_MODULE *ownerModulePtr;                                        \
+            RK_DOMAIN *ownerDomainPtr;                                        \
             RK_OBJ_HEADER_SYSMON_FIELDS                                       \
         };                                                                    \
     }
@@ -128,42 +128,42 @@ static inline RK_ERR kObjHeaderReadyErr(RK_KOBJ const *const headerPtr,
     return (RK_ERR_SUCCESS);
 }
 
-static inline VOID kObjHeaderOwnerModuleSet(RK_KOBJ *const headerPtr,
-                                            RK_MODULE *const modulePtr)
+static inline VOID kObjHeaderOwnerDomainSet(RK_KOBJ *const headerPtr,
+                                            RK_DOMAIN *const domainPtr)
 {
     if (headerPtr != NULL)
     {
-        headerPtr->scope = (modulePtr != NULL) ? RK_SCOPE_MODULE_LOCAL
+        headerPtr->scope = (domainPtr != NULL) ? RK_SCOPE_DOMAIN_LOCAL
                                                : RK_SCOPE_UNASSIGNED;
-        headerPtr->ownerModulePtr = modulePtr;
+        headerPtr->ownerDomainPtr = domainPtr;
     }
 }
 
 static inline RK_ERR kObjHeaderScopeSet(RK_KOBJ *const headerPtr,
                                         RK_OBJ_SCOPE const scope,
-                                        RK_MODULE *const modulePtr)
+                                        RK_DOMAIN *const domainPtr)
 {
     if (headerPtr == NULL)
     {
         return (RK_ERR_OBJ_NULL);
     }
 
-    if (((scope == RK_SCOPE_MODULE_LOCAL) && (modulePtr == NULL)) ||
-        ((scope == RK_SCOPE_KERNEL_GLOBAL) && (modulePtr != NULL)) ||
+    if (((scope == RK_SCOPE_DOMAIN_LOCAL) && (domainPtr == NULL)) ||
+        ((scope == RK_SCOPE_KERNEL_GLOBAL) && (domainPtr != NULL)) ||
         (scope == RK_SCOPE_UNASSIGNED))
     {
         return (RK_ERR_INVALID_PARAM);
     }
 
     headerPtr->scope = scope;
-    headerPtr->ownerModulePtr =
-        (scope == RK_SCOPE_MODULE_LOCAL) ? modulePtr : NULL;
+    headerPtr->ownerDomainPtr =
+        (scope == RK_SCOPE_DOMAIN_LOCAL) ? domainPtr : NULL;
     return (RK_ERR_SUCCESS);
 }
 
 static inline RK_ERR
-kObjHeaderModuleLocalAccessErr(RK_KOBJ const *const headerPtr,
-                               RK_MODULE const *const callerModulePtr)
+kObjHeaderDomainLocalAccessErr(RK_KOBJ const *const headerPtr,
+                               RK_DOMAIN const *const callerDomainPtr)
 {
     if (headerPtr == NULL)
     {
@@ -177,18 +177,18 @@ kObjHeaderModuleLocalAccessErr(RK_KOBJ const *const headerPtr,
 
     if (headerPtr->scope == RK_SCOPE_UNASSIGNED)
     {
-        return ((callerModulePtr == NULL) ? RK_ERR_SUCCESS
+        return ((callerDomainPtr == NULL) ? RK_ERR_SUCCESS
                                           : RK_ERR_INVALID_PARAM);
     }
 
-    if ((headerPtr->scope != RK_SCOPE_MODULE_LOCAL) ||
-        (headerPtr->ownerModulePtr == NULL))
+    if ((headerPtr->scope != RK_SCOPE_DOMAIN_LOCAL) ||
+        (headerPtr->ownerDomainPtr == NULL))
     {
         return (RK_ERR_INVALID_PARAM);
     }
 
-    if ((callerModulePtr != NULL) &&
-        (headerPtr->ownerModulePtr != callerModulePtr))
+    if ((callerDomainPtr != NULL) &&
+        (headerPtr->ownerDomainPtr != callerDomainPtr))
     {
         return (RK_ERR_INVALID_PARAM);
     }
@@ -207,17 +207,17 @@ struct RK_OBJ_SHARED_MEM
 {
     RK_KOBJ_HEADER;
     RK_SHARED_REGION region;
-    RK_MODULE *attachedModulePtr[RK_NTHREADS];
+    RK_DOMAIN *attachedDomainPtr[RK_NTHREADS];
     ULONG attachCount;
 } K_ALIGN(4);
 
-struct RK_OBJ_MODULE
+struct RK_OBJ_DOMAIN
 {
-    CHAR moduleName[RK_NAME_SIZE];
+    CHAR domainName[RK_NAME_SIZE];
     BYTE *regionBasePtr;
     ULONG regionBytes;
     ULONG allocBytes;
-    RK_SHARED_REGION *sharedRegionPtr[RK_CONF_MODULE_SHARED_REGIONS];
+    RK_SHARED_REGION *sharedRegionPtr[RK_CONF_DOMAIN_SHARED_REGIONS];
     ULONG taskCount;
     RK_BOOL init;
 } K_ALIGN(4);
@@ -231,7 +231,7 @@ struct RK_STRUCT_DYNAMIC_TASK_ATTR
     RK_PRIO priority;
     RK_OPTION preempt;
     RK_MEM_PARTITION *stackMemPtr;
-    RK_MODULE *modulePtr;
+    RK_DOMAIN *domainPtr;
 } K_ALIGN(4);
 #endif
 
@@ -259,8 +259,8 @@ struct  RK_OBJ_TCB
     ULONG savedControl;
     BYTE *taskMemoryBasePtr;
     ULONG taskMemoryBytes;
-    RK_MODULE *modulePtr;
-    RK_MODULE privateModule;
+    RK_DOMAIN *domainPtr;
+    RK_DOMAIN privateDomain;
     RK_MPU_REGION mpuRegion[RK_MPU_N_REGIONS];
     RK_EXCEPTION_FRAME *syscallFramePtr;
     ULONG syscallNumber;

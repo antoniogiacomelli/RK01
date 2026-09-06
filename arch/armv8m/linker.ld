@@ -48,26 +48,26 @@ SECTIONS
     __etext = .;
   } > FLASH
 
-  .rk_app_module_data : AT(__etext)
+  .rk_app_domain_data : AT(__etext)
   {
     . = ALIGN(0x4000);
     __rk_task_ram_static_begin = .;
-    __rk_app_module_begin = .;
-    __rk_app_module_data_begin = .;
+    __rk_app_domain_begin = .;
+    __rk_app_domain_data_begin = .;
     *app/src/*.o(.data* .sdata*)
     */app/src/*.o(.data* .sdata*)
     *app/examples/*.o(.data* .sdata*)
     */app/examples/*.o(.data* .sdata*)
     . = ALIGN(4);
-    __rk_app_module_data_end = .;
+    __rk_app_domain_data_end = .;
   } > TASK_RAM
-  __rk_app_module_data_load = LOADADDR(.rk_app_module_data);
-  __rk_app_module_data_load_end = __rk_app_module_data_load + SIZEOF(.rk_app_module_data);
+  __rk_app_domain_data_load = LOADADDR(.rk_app_domain_data);
+  __rk_app_domain_data_load_end = __rk_app_domain_data_load + SIZEOF(.rk_app_domain_data);
 
-  .rk_app_module_bss (NOLOAD) :
+  .rk_app_domain_bss (NOLOAD) :
   {
     . = ALIGN(8);
-    __rk_app_module_bss_begin = .;
+    __rk_app_domain_bss_begin = .;
     *(.rk_app_ram*)
     *(.rk_task_stack*)
     *app/src/*.o(.bss* .sbss* COMMON)
@@ -75,25 +75,25 @@ SECTIONS
     *app/examples/*.o(.bss* .sbss* COMMON)
     */app/examples/*.o(.bss* .sbss* COMMON)
     . = ALIGN(8);
-    __rk_app_module_bss_end = .;
-    ASSERT((__rk_app_module_bss_end - __rk_app_module_begin) <= 0x4000, "RK implicit application module exceeds 16K");
-    . = __rk_app_module_begin + 0x4000;
-    __rk_app_module_end = .;
-    __rk_task_stack_begin = __rk_app_module_begin;
-    __rk_task_stack_end = __rk_app_module_bss_end;
+    __rk_app_domain_bss_end = .;
+    ASSERT((__rk_app_domain_bss_end - __rk_app_domain_begin) <= 0x4000, "RK implicit application domain exceeds 16K");
+    . = __rk_app_domain_begin + 0x4000;
+    __rk_app_domain_end = .;
+    __rk_task_stack_begin = __rk_app_domain_begin;
+    __rk_task_stack_end = __rk_app_domain_bss_end;
   } > TASK_RAM
 
-  .rk_module_bss (NOLOAD) :
+  .rk_domain_bss (NOLOAD) :
   {
     . = ALIGN(8);
-    __rk_module_bss_begin = .;
+    __rk_domain_bss_begin = .;
 
-    INCLUDE app/linker-modules.ld
+    INCLUDE app/linker-domains.ld
 
-    *(.rk_module_bss*)
+    *(.rk_domain_bss*)
     *(.rk_task_ram*)
     . = ALIGN(8);
-    __rk_module_bss_end = .;
+    __rk_domain_bss_end = .;
   } > TASK_RAM
 
   .rk_task_noinit (NOLOAD) :
@@ -125,7 +125,7 @@ SECTIONS
   } > TASK_RAM
 
   /* Initialised data: copied from flash to RAM */
- .data : AT(__rk_app_module_data_load_end)
+ .data : AT(__rk_app_domain_data_load_end)
   {
    . = ALIGN(4);
     _sdata = .;

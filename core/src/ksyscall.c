@@ -784,7 +784,7 @@ static VOID kSyscallDispatchActive_(RK_EXCEPTION_FRAME *const framePtr)
             break;
         }
 
-        case RK_SYSCALL_TASK_INIT_MODULE:
+        case RK_SYSCALL_TASK_INIT_DOMAIN:
         {
             RK_TASK_INIT_SYSCALL_ARGS args;
             ULONG stackBytes = 0UL;
@@ -808,8 +808,8 @@ static VOID kSyscallDispatchActive_(RK_EXCEPTION_FRAME *const framePtr)
             }
             if (ret == RK_ERR_SUCCESS)
             {
-                ret = kSyscallUserReadRequired_(args.modulePtr,
-                                                sizeof(RK_MODULE));
+                ret = kSyscallUserReadRequired_(args.domainPtr,
+                                                sizeof(RK_DOMAIN));
             }
             if (ret == RK_ERR_SUCCESS)
             {
@@ -824,11 +824,11 @@ static VOID kSyscallDispatchActive_(RK_EXCEPTION_FRAME *const framePtr)
             }
             if (ret == RK_ERR_SUCCESS)
             {
-                ret = kTaskInitModule(args.taskHandlePtr,
+                ret = kTaskInitDomain(args.taskHandlePtr,
                                       args.taskFunc, args.argsPtr,
                                       args.taskName, args.stackBufPtr,
                                       args.stackSize, args.priority,
-                                      args.preempt, args.modulePtr);
+                                      args.preempt, args.domainPtr);
             }
             break;
         }
@@ -862,10 +862,10 @@ static VOID kSyscallDispatchActive_(RK_EXCEPTION_FRAME *const framePtr)
                 ret = kSyscallUserWriteRequired_(memory.stackBasePtr,
                                                  stackBytes);
             }
-            if ((ret == RK_ERR_SUCCESS) && (memory.modulePtr != NULL))
+            if ((ret == RK_ERR_SUCCESS) && (memory.domainPtr != NULL))
             {
-                ret = kSyscallUserReadRequired_(memory.modulePtr,
-                                                sizeof(RK_MODULE));
+                ret = kSyscallUserReadRequired_(memory.domainPtr,
+                                                sizeof(RK_DOMAIN));
             }
             if (ret == RK_ERR_SUCCESS)
             {
@@ -904,10 +904,10 @@ static VOID kSyscallDispatchActive_(RK_EXCEPTION_FRAME *const framePtr)
                 ret = kSyscallUserReadRequired_(attr.stackMemPtr,
                                                 sizeof(RK_MEM_PARTITION));
             }
-            if ((ret == RK_ERR_SUCCESS) && (attr.modulePtr != NULL))
+            if ((ret == RK_ERR_SUCCESS) && (attr.domainPtr != NULL))
             {
-                ret = kSyscallUserReadRequired_(attr.modulePtr,
-                                                sizeof(RK_MODULE));
+                ret = kSyscallUserReadRequired_(attr.domainPtr,
+                                                sizeof(RK_DOMAIN));
             }
             if (ret == RK_ERR_SUCCESS)
             {
@@ -930,9 +930,9 @@ static VOID kSyscallDispatchActive_(RK_EXCEPTION_FRAME *const framePtr)
             break;
 #endif
 
-        case RK_SYSCALL_MODULE_INIT:
-            ret = kSyscallUserWriteRequired_((RK_MODULE *)(UINTPTR)arg0,
-                                             sizeof(RK_MODULE));
+        case RK_SYSCALL_DOMAIN_INIT:
+            ret = kSyscallUserWriteRequired_((RK_DOMAIN *)(UINTPTR)arg0,
+                                             sizeof(RK_DOMAIN));
             if (ret == RK_ERR_SUCCESS)
             {
                 ret = kSyscallUserWriteRequired_((BYTE *)(UINTPTR)arg1,
@@ -945,7 +945,7 @@ static VOID kSyscallDispatchActive_(RK_EXCEPTION_FRAME *const framePtr)
             }
             if (ret == RK_ERR_SUCCESS)
             {
-                ret = kModuleInit((RK_MODULE *)(UINTPTR)arg0,
+                ret = kDomainInit((RK_DOMAIN *)(UINTPTR)arg0,
                                   (BYTE *)(UINTPTR)arg1, arg2,
                                   (CHAR *)(UINTPTR)arg3);
             }
@@ -966,9 +966,9 @@ static VOID kSyscallDispatchActive_(RK_EXCEPTION_FRAME *const framePtr)
             }
             break;
 
-        case RK_SYSCALL_MODULE_MAP_SHARED_REGION:
-            ret = kSyscallUserWriteRequired_((RK_MODULE *)(UINTPTR)arg0,
-                                             sizeof(RK_MODULE));
+        case RK_SYSCALL_DOMAIN_MAP_SHARED_REGION:
+            ret = kSyscallUserWriteRequired_((RK_DOMAIN *)(UINTPTR)arg0,
+                                             sizeof(RK_DOMAIN));
             if (ret == RK_ERR_SUCCESS)
             {
                 ret = kSyscallUserReadRequired_(
@@ -977,7 +977,7 @@ static VOID kSyscallDispatchActive_(RK_EXCEPTION_FRAME *const framePtr)
             }
             if (ret == RK_ERR_SUCCESS)
             {
-                ret = kModuleMapSharedRegion((RK_MODULE *)(UINTPTR)arg0,
+                ret = kDomainMapSharedRegion((RK_DOMAIN *)(UINTPTR)arg0,
                                              (RK_SHARED_REGION *)(UINTPTR)arg1);
             }
             break;
@@ -1037,12 +1037,12 @@ static VOID kSyscallDispatchActive_(RK_EXCEPTION_FRAME *const framePtr)
             if (ret == RK_ERR_SUCCESS)
             {
                 ret = kSyscallUserWriteRequired_(
-                    (RK_MODULE *)(UINTPTR)arg1, sizeof(RK_MODULE));
+                    (RK_DOMAIN *)(UINTPTR)arg1, sizeof(RK_DOMAIN));
             }
             if (ret == RK_ERR_SUCCESS)
             {
                 ret = kSharedMemAttach((RK_SHARED_MEM_HANDLE)arg0,
-                                       (RK_MODULE *)(UINTPTR)arg1);
+                                       (RK_DOMAIN *)(UINTPTR)arg1);
             }
             break;
 
@@ -1057,12 +1057,12 @@ static VOID kSyscallDispatchActive_(RK_EXCEPTION_FRAME *const framePtr)
             if (ret == RK_ERR_SUCCESS)
             {
                 ret = kSyscallUserWriteRequired_(
-                    (RK_MODULE *)(UINTPTR)arg1, sizeof(RK_MODULE));
+                    (RK_DOMAIN *)(UINTPTR)arg1, sizeof(RK_DOMAIN));
             }
             if (ret == RK_ERR_SUCCESS)
             {
                 ret = kSharedMemDetach((RK_SHARED_MEM_HANDLE)arg0,
-                                       (RK_MODULE *)(UINTPTR)arg1);
+                                       (RK_DOMAIN *)(UINTPTR)arg1);
             }
             break;
 

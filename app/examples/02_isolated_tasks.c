@@ -8,10 +8,10 @@
 /******************************************************************************/
 
 /*
- * Advanced example 02: isolated one-task modules exchanging copied messages.
+ * Advanced example 02: isolated one-task domains exchanging copied messages.
  */
 
-#include <kapi_module.h>
+#include <kapi_domain.h>
 
 #define APP_LOG_PRIO (10U)
 #define ISO_STACK_WORDS (256U)

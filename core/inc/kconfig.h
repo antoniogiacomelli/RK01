@@ -37,9 +37,9 @@
 #endif
 
 /* RK01 keeps region 2 for the global shared aperture and leaves regions 3..7
- * available for explicitly mapped inter-module regions. */
-#ifndef RK_CONF_MODULE_SHARED_REGIONS
-#define RK_CONF_MODULE_SHARED_REGIONS (5U)
+ * available for explicitly mapped inter-domain regions. */
+#ifndef RK_CONF_DOMAIN_SHARED_REGIONS
+#define RK_CONF_DOMAIN_SHARED_REGIONS (5U)
 #endif
 
 /* Default to containing unprivileged MPU task faults so the runtime can retire
@@ -378,7 +378,7 @@ account.
  * message pool memory under MPU.
  *
  * RK_CONF_ASYNCH_COPY_MESG below enables the task-addressed copy-message path
- * that uses a bounded kernel-owned RK_MESG pool for cross-module payloads.
+ * that uses a bounded kernel-owned RK_MESG pool for cross-domain payloads.
  */
 #ifndef RK_CONF_ASYNCH_MESG
 #define RK_CONF_ASYNCH_MESG (ON)

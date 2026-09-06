@@ -6,8 +6,8 @@ skinparam monochrome true
 rectangle "FLASH\n0x08000000..0x08040000\nuser read + execute" as Flash
 rectangle "FS_FLASH\n0x08040000..0x08080000\nRKFS storage, not user executable" as FsFlash
 
-rectangle "TASK_RAM\n0x20000000..0x20010000\nmodule RAM, task stacks and shared aperture" as TaskRam {
-  rectangle "module/task RAM" as ModuleRam
+rectangle "TASK_RAM\n0x20000000..0x20010000\ndomain RAM, private stacks and shared aperture" as TaskRam {
+  rectangle "domain RAM + stacks" as DomainRam
   rectangle ".rk_shared_ram\n0x20007000..0x20007400" as SharedRam
 }
 

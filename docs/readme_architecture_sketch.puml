@@ -10,15 +10,15 @@ rectangle "Privileged kernel\nhandlers + system tasks" as Kernel {
   component "fault cleanup" as FaultCleanup
 }
 
-node "Module A\nunprivileged PSP" as ModuleA {
+node "Domain A\nunprivileged PSP" as DomainA {
   component "Task A1" as TaskA1
   component "Task A2" as TaskA2
-  database "Module A private RAM" as ModuleARam
+  database "Domain A writable state" as DomainARam
 }
 
-node "Module B\nunprivileged PSP" as ModuleB {
+node "Domain B\nunprivileged PSP" as DomainB {
   component "Task B1" as TaskB1
-  database "Module B private RAM" as ModuleBRam
+  database "Domain B writable state" as DomainBRam
 }
 
 node "Privileged service\noptional trusted task" as Service {
@@ -27,13 +27,13 @@ node "Privileged service\noptional trusted task" as Service {
 }
 
 database "Global shared RAM\n.rk_shared_ram" as GlobalShared
-database "Explicit shared memory\nattached to selected modules" as ExplicitShared
+database "Explicit shared memory\nattached to selected domains" as ExplicitShared
 
 TaskA1 --> Kernel : k* APIs through SVC
 TaskA2 --> Kernel : k* APIs through SVC
 TaskB1 --> Kernel : k* APIs through SVC
-TaskA1 --> ModuleARam : same-module data
-TaskA2 --> ModuleARam : same-module data
+TaskA1 --> DomainARam : same-domain data
+TaskA2 --> DomainARam : same-domain data
 TaskA1 --> GlobalShared
 TaskB1 --> GlobalShared
 TaskA2 --> ExplicitShared
@@ -41,6 +41,6 @@ TaskB1 --> ExplicitShared
 TaskA1 --> TaskB1 : copied message or handle API
 TaskB1 --> ServiceTask : copied request
 ServiceTask --> DeviceState
-TaskA1 -[#red,dashed]-> ModuleBRam : MPU denies direct write
-TaskB1 -[#red,dashed]-> ModuleARam : MPU denies direct write
+TaskA1 -[#red,dashed]-> DomainBRam : MPU denies direct write
+TaskB1 -[#red,dashed]-> DomainARam : MPU denies direct write
 @enduml

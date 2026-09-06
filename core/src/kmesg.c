@@ -12,7 +12,7 @@
  *   Asynchronous message primitives. The legacy direct path transfers
  *   application-owned RK_MESG buffers by reference in memory visible to both
  *   endpoints. The copy path transfers task-addressed payloads by value through
- *   a bounded kernel-owned RK_MESG pool, which is safe across MPU module
+ *   a bounded kernel-owned RK_MESG pool, which is safe across MPU domain
  *   boundaries.
  *
  * Contracts/invariants:
@@ -31,7 +31,7 @@
 /*
  * The by-reference asynchronous direct path uses RK_MESG buffers from caller
  * pools. Under MPU, this pointer-transfer primitive is restricted to tasks in
- * the same module: inter-module payload exchange must use message queues or
+ * the same domain: inter-domain payload exchange must use message queues or
  * task-addressed copy messages.
  *
  * Ceiling protocol:
@@ -140,11 +140,11 @@ static inline RK_BOOL kMesgStateHasSender_(RK_MESG const *const mesgPtr)
                 : RK_FALSE);
 }
 
-static inline RK_BOOL kMesgTasksShareModule_(RK_TCB const *const aPtr,
+static inline RK_BOOL kMesgTasksShareDomain_(RK_TCB const *const aPtr,
                                              RK_TCB const *const bPtr)
 {
     return (((aPtr != NULL) && (bPtr != NULL) &&
-             (aPtr->modulePtr == bPtr->modulePtr))
+             (aPtr->domainPtr == bPtr->domainPtr))
                 ? RK_TRUE
                 : RK_FALSE);
 }
@@ -1493,9 +1493,9 @@ static RK_ERR kMesgPoolInitWithAttr_(RK_MEM_PARTITION *const poolPtr,
             ? ((attrPtr->scope == RK_SCOPE_KERNEL_GLOBAL)
                    ? kMemPartitionInitGlobalScope(poolPtr, memPoolPtr,
                                                   blockBytes, nMesg)
-                   : kMemPartitionInitModuleScope(poolPtr, memPoolPtr,
+                   : kMemPartitionInitDomainScope(poolPtr, memPoolPtr,
                                                   blockBytes, nMesg,
-                                                  attrPtr->modulePtr))
+                                                  attrPtr->domainPtr))
             : kMemPartitionInit(poolPtr, memPoolPtr, blockBytes, nMesg);
     if (err != RK_ERR_SUCCESS)
     {
@@ -1556,14 +1556,14 @@ RK_ERR kMesgPoolInitGlobalScope(RK_MEM_PARTITION *const poolPtr,
                                    ceilingPrio, &attr));
 }
 
-RK_ERR kMesgPoolInitModuleScope(RK_MEM_PARTITION *const poolPtr,
+RK_ERR kMesgPoolInitDomainScope(RK_MEM_PARTITION *const poolPtr,
                                 VOID *const memPoolPtr,
                                 ULONG const payloadBytes,
                                 ULONG const nMesg,
                                 RK_PRIO const ceilingPrio,
-                                RK_MODULE *const modulePtr)
+                                RK_DOMAIN *const domainPtr)
 {
-    RK_OBJ_ATTR const attr = { RK_SCOPE_MODULE_LOCAL, modulePtr };
+    RK_OBJ_ATTR const attr = { RK_SCOPE_DOMAIN_LOCAL, domainPtr };
     return (kMesgPoolInitWithAttr_(poolPtr, memPoolPtr, payloadBytes, nMesg,
                                    ceilingPrio, &attr));
 }
@@ -2202,7 +2202,7 @@ RK_ERR kMesgSend(RK_TASK_HANDLE const taskHandle,
         return (RK_ERR_OBJ_NOT_INIT);
     }
 
-    if (kMesgTasksShareModule_(RK_gRunPtr, taskPtr) != RK_TRUE)
+    if (kMesgTasksShareDomain_(RK_gRunPtr, taskPtr) != RK_TRUE)
     {
 #if (RK_CONF_ERR_CHECK == ON)
         K_ERR_HANDLER(RK_FAULT_INVALID_PARAM);
@@ -2345,7 +2345,7 @@ RK_ERR kMesgWait(RK_TASK_HANDLE const fromTaskHandle,
     }
 
     if ((fromTaskPtr != NULL) &&
-        (kMesgTasksShareModule_(RK_gRunPtr, fromTaskPtr) != RK_TRUE))
+        (kMesgTasksShareDomain_(RK_gRunPtr, fromTaskPtr) != RK_TRUE))
     {
 #if (RK_CONF_ERR_CHECK == ON)
         K_ERR_HANDLER(RK_FAULT_INVALID_PARAM);
@@ -2502,7 +2502,7 @@ RK_ERR kMesgWaitSyscall(RK_EXCEPTION_FRAME *const framePtr,
     }
 
     if ((fromTaskPtr != NULL) &&
-        (kMesgTasksShareModule_(RK_gRunPtr, fromTaskPtr) != RK_TRUE))
+        (kMesgTasksShareDomain_(RK_gRunPtr, fromTaskPtr) != RK_TRUE))
     {
 #if (RK_CONF_ERR_CHECK == ON)
         K_ERR_HANDLER(RK_FAULT_INVALID_PARAM);

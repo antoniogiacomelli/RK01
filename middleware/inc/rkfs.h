@@ -18,7 +18,7 @@ extern "C"
 {
 #endif
 
-#define RKFS_MODULE_BYTES (8192U)
+#define RKFS_DOMAIN_BYTES (8192U)
 #define RKFS_STACK_WORDS (1024U)
 #define RKFS_PATH_BYTES (32U)
 #define RKFS_RECORD_BYTES (64U)
@@ -71,7 +71,7 @@ typedef struct
     BYTE progCache[RKFS_CACHE_BYTES];
     BYTE fileCache[RKFS_CACHE_BYTES];
     BYTE lookahead[RKFS_LOOKAHEAD_BYTES];
-    BYTE reserved[RKFS_MODULE_BYTES -
+    BYTE reserved[RKFS_DOMAIN_BYTES -
                   ((RKFS_STACK_WORDS * sizeof(RK_STACK)) +
                    sizeof(lfs_t) +
                    sizeof(struct lfs_config) +
@@ -79,8 +79,8 @@ typedef struct
                    RKFS_LOOKAHEAD_BYTES)];
 } RKFS_RAM;
 
-_Static_assert(sizeof(RKFS_RAM) == RKFS_MODULE_BYTES,
-               "filesystem module RAM layout must fill its MPU region");
+_Static_assert(sizeof(RKFS_RAM) == RKFS_DOMAIN_BYTES,
+               "filesystem domain RAM layout must fill its MPU region");
 
 RK_ERR rkFsClientMkdir(RK_TASK_HANDLE serverHandle,
                        CHAR const *pathPtr);

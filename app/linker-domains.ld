@@ -8,9 +8,11 @@
 /******************************************************************************/
 
 /*
- * Empty application linker hook.
+ * Reserved application domain linker hook.
  *
- * This fragment is included inside .rk_module_bss by the architecture linker
- * script. Modules use RK_DECLARE_MODULE() C-declared RAM, so no per-module
- * linker symbols are required.
+ * The intended RK01 image direction is ThreadX-inspired: domain images should
+ * be described by the linker with bounded code/rodata, data/BSS, entry
+ * metadata and MPU geometry. V0.1.0 has the writable-domain/SVC side of that
+ * model, but public examples still use RK_DECLARE_DOMAIN() C-declared RAM. No
+ * per-domain linker symbols are required in this release.
  */

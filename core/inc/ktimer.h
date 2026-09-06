@@ -32,11 +32,11 @@ RK_ERR kTimerCreateGlobalScope(RK_TIMER_HANDLE *const, RK_STRING,
                                RK_TICK const, RK_TICK const,
                                RK_TIMER_CALLOUT const, VOID *const,
                                RK_OPTION const);
-RK_ERR kTimerCreateModuleScope(RK_TIMER_HANDLE *const, RK_STRING,
+RK_ERR kTimerCreateDomainScope(RK_TIMER_HANDLE *const, RK_STRING,
                                RK_TICK const, RK_TICK const,
                                RK_TIMER_CALLOUT const, VOID *const,
                                RK_OPTION const,
-                               RK_MODULE *const);
+                               RK_DOMAIN *const);
 RK_ERR kTimerDestroy(RK_TIMER_HANDLE *const);
 RK_ERR kTimerCancel(RK_TIMER_HANDLE const);
 VOID kRemoveTimerNode(RK_TIMEOUT_NODE*);

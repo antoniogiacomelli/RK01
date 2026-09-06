@@ -30,9 +30,9 @@ extern "C"
 #define RK_MPU_REGION_SHARED_RAM (2U)
 #define RK_MPU_REGION_EXPLICIT_SHARED_BASE (3U)
 
-#if (RK_CONF_MODULE_SHARED_REGIONS >                                      \
+#if (RK_CONF_DOMAIN_SHARED_REGIONS >                                      \
      (RK_MPU_N_REGIONS - RK_MPU_REGION_EXPLICIT_SHARED_BASE))
-#error "RK_CONF_MODULE_SHARED_REGIONS exceeds available MPU regions"
+#error "RK_CONF_DOMAIN_SHARED_REGIONS exceeds available MPU regions"
 #endif
 
 /* CONTROL values saved in each TCB. RK01 tasks run on PSP; bit 0 selects
@@ -156,8 +156,8 @@ RK_ERR kMpuBuildRegion(RK_MPU_REGION *const regionPtr,
                        ULONG const regionSize,
                        ULONG const attributes);
 
-/* Validate and reserve the task's module RAM mapping. A NULL module in
- * RK_TASK_MEMORY creates the private module used by explicit isolated tasks. */
+/* Validate and reserve the task's domain RAM mapping. A NULL domain in
+ * RK_TASK_MEMORY creates the private domain used by explicit isolated tasks. */
 RK_BOOL kMpuTaskMemoryValid(RK_TASK_MEMORY const *const memoryPtr);
 RK_ERR kMpuTaskMemoryReserve(RK_TCB *const taskPtr,
                              RK_TASK_MEMORY const *const memoryPtr);
@@ -179,18 +179,18 @@ RK_BOOL kMpuUserWriteValid(RK_TCB const *const taskPtr,
                            ULONG const bytes);
 RK_BOOL kMpuUserFunctionValid(VOID const *const funPtr);
 
-/* Validate module RAM. A module is a task RAM protection domain shared by all
- * member tasks; each member's stack must live inside this region. */
-RK_BOOL kMpuModuleMemoryValid(RK_MODULE const *const modulePtr);
-RK_ERR kMpuModuleMemoryReserve(RK_MODULE *const modulePtr);
+/* Validate domain RAM: the statically declared writable-authority region used
+ * by member tasks. Each member's stack must live inside this region. */
+RK_BOOL kMpuDomainMemoryValid(RK_DOMAIN const *const domainPtr);
+RK_ERR kMpuDomainMemoryReserve(RK_DOMAIN *const domainPtr);
 
-/* Validate and reserve an explicit shared memory region that selected modules
+/* Validate and reserve an explicit shared memory region that selected domains
  * can map in addition to the global shared RAM aperture. */
 RK_BOOL kMpuSharedRegionMemoryValid(RK_SHARED_REGION const *const regionPtr);
 RK_ERR kMpuSharedRegionMemoryReserve(RK_SHARED_REGION *const regionPtr);
 VOID kMpuSharedRegionMemoryRelease(RK_SHARED_REGION *const regionPtr);
 
-/* Release a task's private one-task module reservation during TCB teardown. */
+/* Release a task's private one-task domain reservation during TCB teardown. */
 VOID kMpuTaskMemoryRelease(RK_TCB *const taskPtr);
 
 /* C half of MemManage_Handler. Captures fault info and either terminates the

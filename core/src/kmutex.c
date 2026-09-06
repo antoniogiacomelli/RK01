@@ -93,8 +93,8 @@ static RK_ERR kMutexReadyErr_(RK_MUTEX const *const kobj)
         return (err);
     }
 
-    return (kObjHeaderModuleLocalAccessErr(
-        &kobj->header, (RK_gRunPtr != NULL) ? RK_gRunPtr->modulePtr : NULL));
+    return (kObjHeaderDomainLocalAccessErr(
+        &kobj->header, (RK_gRunPtr != NULL) ? RK_gRunPtr->domainPtr : NULL));
 }
 
 static RK_ERR kMutexReportErr_(RK_ERR const err)
@@ -213,8 +213,8 @@ RK_ERR kMutexInit(RK_MUTEX *const kobj, UINT const protocol)
     kobj->protocol = protocol;
     kobj->objID = RK_MUTEX_KOBJ_ID;
     kobj->objName[0] = '\0';
-    kObjHeaderOwnerModuleSet(&kobj->header,
-                             (RK_gRunPtr != NULL) ? RK_gRunPtr->modulePtr
+    kObjHeaderOwnerDomainSet(&kobj->header,
+                             (RK_gRunPtr != NULL) ? RK_gRunPtr->domainPtr
                                                   : NULL);
     kobj->lock = RK_FALSE;
     kobj->ownerFaulted = RK_FALSE;

@@ -28,9 +28,7 @@ compile_commands.json
 # Local/editor state
 .DS_Store
 .vscode/c_cpp_properties.json
-.vscode/launch.json
 .vscode/settings.json
-.vscode/tasks.json
 
 # Scratch or private harness material
 scripts/*

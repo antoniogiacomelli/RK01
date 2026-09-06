@@ -15,8 +15,8 @@
 #include <kstring.h>
 
 /* Static construction parameters for this tiny example. */
-#define ECHO_MODULE_BYTES (2048U)
-#define RECORD_MODULE_BYTES (2048U)
+#define ECHO_DOMAIN_BYTES (2048U)
+#define RECORD_DOMAIN_BYTES (2048U)
 #define TASK_STACK_WORDS (256U)
 #define APP_LOG_PRIO (10U)
 #define ECHO_TASK_PRIO (1)
@@ -50,7 +50,7 @@ _Static_assert(APP_LINE_RING_CAP_BYTES <= (ULONG)RK_UINT_MAX,
                "Line-ready semaphore max must fit UINT");
 
 /*
- * A RECORD is the binary payload exchanged between modules.
+ * A RECORD is the binary payload exchanged between domains.
  *
  *   RECORD:
  *   +------+-------+-------------+
@@ -99,7 +99,7 @@ typedef struct
 } RecordSlot;
 
 /*
- * RecordTask owns this ring. Other modules use copied call/reply messages, so
+ * RecordTask owns this ring. Other domains use copied call/reply messages, so
  * no caller can keep a raw pointer into the record slots.
  */
 typedef struct

@@ -10,7 +10,7 @@
 #ifndef RK_API_TRUSTED_H
 #define RK_API_TRUSTED_H
 
-#include <kapi_module.h>
+#include <kapi_domain.h>
 
 #if (RK_CONF_TRACE == ON)
 #include <ktrace.h>
@@ -36,7 +36,7 @@ RK_ERR kTaskInitProtected(RK_TCB *const taskPtr,
 RK_ERR kSharedRegionInit(RK_SHARED_REGION *const regionPtr,
                          BYTE *const regionBasePtr,
                          ULONG const regionBytes);
-RK_ERR kModuleMapSharedRegion(RK_MODULE *const modulePtr,
+RK_ERR kDomainMapSharedRegion(RK_DOMAIN *const domainPtr,
                               RK_SHARED_REGION *const regionPtr);
 
 #if (RK_CONF_SYSMON == ON)

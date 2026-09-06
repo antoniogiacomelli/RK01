@@ -95,8 +95,8 @@ static RK_ERR kSemaphoreReadyErr_(RK_SEMAPHORE const *const kobj)
         return (err);
     }
 
-    return (kObjHeaderModuleLocalAccessErr(
-        &kobj->header, (RK_gRunPtr != NULL) ? RK_gRunPtr->modulePtr : NULL));
+    return (kObjHeaderDomainLocalAccessErr(
+        &kobj->header, (RK_gRunPtr != NULL) ? RK_gRunPtr->domainPtr : NULL));
 }
 
 static RK_ERR kSemaphoreReportErr_(RK_ERR const err)
@@ -183,8 +183,8 @@ RK_ERR kSemaphoreInit(RK_SEMAPHORE *const kobj,
     kobj->init = RK_TRUE;
     kobj->objID = RK_SEMAPHORE_KOBJ_ID;
     kobj->objName[0] = '\0';
-    kObjHeaderOwnerModuleSet(&kobj->header,
-                             (RK_gRunPtr != NULL) ? RK_gRunPtr->modulePtr
+    kObjHeaderOwnerDomainSet(&kobj->header,
+                             (RK_gRunPtr != NULL) ? RK_gRunPtr->domainPtr
                                                   : NULL);
     kobj->maxValue = maxValue;
     kSemaphoreValueStore_(kobj, initValue);

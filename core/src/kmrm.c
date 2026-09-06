@@ -18,7 +18,7 @@
  *   - nUsers counts outstanding kMRMGet() leases for that buffer.
  *   - Reserve grants an exclusive unpublished buffer to the current task.
  *   - Publish drops that reservation and becomes the new currBufPtr.
- *   - Runtime reserve/get/publish/unget are module-local because the API
+ *   - Runtime reserve/get/publish/unget are domain-local because the API
  *     returns RK_MRM_BUF lease pointers.
  *   - Cleanup walks the bounded lease table so task death cannot leak buffers.
  */
@@ -115,27 +115,27 @@ static RK_ERR kMRMResolve_(RK_MRM_HANDLE const mrmHandle,
     return (RK_ERR_SUCCESS);
 }
 
-static RK_ERR kMRMModuleLocalAccessErr_(RK_MRM const *const kobj)
+static RK_ERR kMRMDomainLocalAccessErr_(RK_MRM const *const kobj)
 {
-    RK_MODULE const *const callerModulePtr =
-        (RK_gRunPtr != NULL) ? RK_gRunPtr->modulePtr : NULL;
+    RK_DOMAIN const *const callerDomainPtr =
+        (RK_gRunPtr != NULL) ? RK_gRunPtr->domainPtr : NULL;
 
     if (kobj == NULL)
     {
         return (RK_ERR_OBJ_NULL);
     }
 
-    if (callerModulePtr == NULL)
+    if (callerDomainPtr == NULL)
     {
         return (RK_ERR_SUCCESS);
     }
 
-    if (kobj->scope != RK_SCOPE_MODULE_LOCAL)
+    if (kobj->scope != RK_SCOPE_DOMAIN_LOCAL)
     {
         return (RK_ERR_INVALID_PARAM);
     }
 
-    return (kObjHeaderModuleLocalAccessErr(&kobj->header, callerModulePtr));
+    return (kObjHeaderDomainLocalAccessErr(&kobj->header, callerDomainPtr));
 }
 
 /******************************************************************************/
@@ -739,8 +739,8 @@ RK_ERR kMRMInit(RK_MRM *const kobj, RK_MRM_BUF *const mrmPoolPtr,
         kobj->size = dataSizeWords;
         kobj->objID = RK_MRM_KOBJ_ID;
         kobj->objName[0] = '\0';
-        kObjHeaderOwnerModuleSet(&kobj->header,
-                                 (RK_gRunPtr != NULL) ? RK_gRunPtr->modulePtr
+        kObjHeaderOwnerDomainSet(&kobj->header,
+                                 (RK_gRunPtr != NULL) ? RK_gRunPtr->domainPtr
                                                       : NULL);
         kTraceRegisterObject(kobj, RK_MRM_KOBJ_ID);
     }
@@ -802,7 +802,7 @@ RK_MRM_BUF *kMRMReserve(RK_MRM_HANDLE const mrmHandle)
         return (NULL);
     }
 
-    RK_ERR const accessErr = kMRMModuleLocalAccessErr_(kobj);
+    RK_ERR const accessErr = kMRMDomainLocalAccessErr_(kobj);
     if (accessErr != RK_ERR_SUCCESS)
     {
 #if (RK_CONF_ERR_CHECK == ON)
@@ -893,7 +893,7 @@ RK_ERR kMRMPublish(RK_MRM_HANDLE const mrmHandle, RK_MRM_BUF *const bufPtr,
         return (RK_ERR_INVALID_OBJ);
     }
 
-    RK_ERR const accessErr = kMRMModuleLocalAccessErr_(kobj);
+    RK_ERR const accessErr = kMRMDomainLocalAccessErr_(kobj);
     if (accessErr != RK_ERR_SUCCESS)
     {
 #if (RK_CONF_ERR_CHECK == ON)
@@ -1014,7 +1014,7 @@ RK_MRM_BUF *kMRMGet(RK_MRM_HANDLE const mrmHandle, VOID *const getMesgPtr)
         return (NULL);
     }
 
-    RK_ERR const accessErr = kMRMModuleLocalAccessErr_(kobj);
+    RK_ERR const accessErr = kMRMDomainLocalAccessErr_(kobj);
     if (accessErr != RK_ERR_SUCCESS)
     {
 #if (RK_CONF_ERR_CHECK == ON)
@@ -1125,7 +1125,7 @@ RK_ERR kMRMUnget(RK_MRM_HANDLE const mrmHandle, RK_MRM_BUF *const bufPtr)
         return (RK_ERR_INVALID_OBJ);
     }
 
-    RK_ERR const accessErr = kMRMModuleLocalAccessErr_(kobj);
+    RK_ERR const accessErr = kMRMDomainLocalAccessErr_(kobj);
     if (accessErr != RK_ERR_SUCCESS)
     {
 #if (RK_CONF_ERR_CHECK == ON)

@@ -747,18 +747,18 @@ static RK_ERR kDynObjScopeAttrErr_(RK_OBJ_ATTR const *const attrPtr)
 
     if (attrPtr->scope == RK_SCOPE_KERNEL_GLOBAL)
     {
-        return ((attrPtr->modulePtr == NULL) ? RK_ERR_SUCCESS
+        return ((attrPtr->domainPtr == NULL) ? RK_ERR_SUCCESS
                                              : RK_ERR_INVALID_PARAM);
     }
 
-    if (attrPtr->scope == RK_SCOPE_MODULE_LOCAL)
+    if (attrPtr->scope == RK_SCOPE_DOMAIN_LOCAL)
     {
-        if (attrPtr->modulePtr == NULL)
+        if (attrPtr->domainPtr == NULL)
         {
             return (RK_ERR_INVALID_PARAM);
         }
 
-        return ((attrPtr->modulePtr->init == RK_TRUE) ? RK_ERR_SUCCESS
+        return ((attrPtr->domainPtr->init == RK_TRUE) ? RK_ERR_SUCCESS
                                                       : RK_ERR_OBJ_NOT_INIT);
     }
 
@@ -772,20 +772,20 @@ static RK_ERR kDynObjApplyScope_(RK_KOBJ *const headerPtr,
     {
         if (RK_gRunPtr == NULL)
         {
-            RK_ERR const err = kApplicationModuleEnsureInit();
+            RK_ERR const err = kApplicationDomainEnsureInit();
             if (err != RK_ERR_SUCCESS)
             {
                 return (err);
             }
 
-            return (kObjHeaderScopeSet(headerPtr, RK_SCOPE_MODULE_LOCAL,
-                                       kApplicationModuleGet()));
+            return (kObjHeaderScopeSet(headerPtr, RK_SCOPE_DOMAIN_LOCAL,
+                                       kApplicationDomainGet()));
         }
 
         return (RK_ERR_SUCCESS);
     }
 
-    return (kObjHeaderScopeSet(headerPtr, attrPtr->scope, attrPtr->modulePtr));
+    return (kObjHeaderScopeSet(headerPtr, attrPtr->scope, attrPtr->domainPtr));
 }
 
 static RK_ERR kDynObjNameArgErr_(RK_STRING objName)
@@ -1241,13 +1241,13 @@ RK_ERR kSemaphoreCreateGlobalScope(RK_SEMAPHORE_HANDLE *const semaHandlePtr,
                                       &attr));
 }
 
-RK_ERR kSemaphoreCreateModuleScope(RK_SEMAPHORE_HANDLE *const semaHandlePtr,
+RK_ERR kSemaphoreCreateDomainScope(RK_SEMAPHORE_HANDLE *const semaHandlePtr,
                                    RK_STRING objName,
                                    UINT const initValue,
                                    UINT const maxValue,
-                                   RK_MODULE *const modulePtr)
+                                   RK_DOMAIN *const domainPtr)
 {
-    RK_OBJ_ATTR const attr = { RK_SCOPE_MODULE_LOCAL, modulePtr };
+    RK_OBJ_ATTR const attr = { RK_SCOPE_DOMAIN_LOCAL, domainPtr };
     return (kSemaphoreCreateWithAttr_(semaHandlePtr, objName, initValue,
                                       maxValue,
                                       &attr));
@@ -1299,8 +1299,8 @@ RK_ERR kSemaphoreDestroy(RK_SEMAPHORE_HANDLE *const semaHandlePtr)
         return (RK_ERR_INVALID_OBJ);
     }
 
-    err = kObjHeaderModuleLocalAccessErr(
-        &semaPtr->header, (RK_gRunPtr != NULL) ? RK_gRunPtr->modulePtr : NULL);
+    err = kObjHeaderDomainLocalAccessErr(
+        &semaPtr->header, (RK_gRunPtr != NULL) ? RK_gRunPtr->domainPtr : NULL);
     if (err != RK_ERR_SUCCESS)
     {
         RK_CR_EXIT
@@ -1445,12 +1445,12 @@ RK_ERR kMutexCreateGlobalScope(RK_MUTEX_HANDLE *const mutexHandlePtr,
     return (kMutexCreateWithAttr_(mutexHandlePtr, objName, protocol, &attr));
 }
 
-RK_ERR kMutexCreateModuleScope(RK_MUTEX_HANDLE *const mutexHandlePtr,
+RK_ERR kMutexCreateDomainScope(RK_MUTEX_HANDLE *const mutexHandlePtr,
                                RK_STRING objName,
                                UINT const protocol,
-                               RK_MODULE *const modulePtr)
+                               RK_DOMAIN *const domainPtr)
 {
-    RK_OBJ_ATTR const attr = { RK_SCOPE_MODULE_LOCAL, modulePtr };
+    RK_OBJ_ATTR const attr = { RK_SCOPE_DOMAIN_LOCAL, domainPtr };
     return (kMutexCreateWithAttr_(mutexHandlePtr, objName, protocol, &attr));
 }
 
@@ -1500,8 +1500,8 @@ RK_ERR kMutexDestroy(RK_MUTEX_HANDLE *const mutexHandlePtr)
         return (RK_ERR_INVALID_OBJ);
     }
 
-    err = kObjHeaderModuleLocalAccessErr(
-        &mutexPtr->header, (RK_gRunPtr != NULL) ? RK_gRunPtr->modulePtr : NULL);
+    err = kObjHeaderDomainLocalAccessErr(
+        &mutexPtr->header, (RK_gRunPtr != NULL) ? RK_gRunPtr->domainPtr : NULL);
     if (err != RK_ERR_SUCCESS)
     {
         RK_CR_EXIT
@@ -1650,12 +1650,12 @@ RK_ERR kSleepQueueCreateGlobalScope(
     return (kSleepQueueCreateWithAttr_(sleepqHandlePtr, objName, &attr));
 }
 
-RK_ERR kSleepQueueCreateModuleScope(
+RK_ERR kSleepQueueCreateDomainScope(
     RK_SLEEP_QUEUE_HANDLE *const sleepqHandlePtr,
     RK_STRING objName,
-    RK_MODULE *const modulePtr)
+    RK_DOMAIN *const domainPtr)
 {
-    RK_OBJ_ATTR const attr = { RK_SCOPE_MODULE_LOCAL, modulePtr };
+    RK_OBJ_ATTR const attr = { RK_SCOPE_DOMAIN_LOCAL, domainPtr };
     return (kSleepQueueCreateWithAttr_(sleepqHandlePtr, objName, &attr));
 }
 
@@ -1705,9 +1705,9 @@ RK_ERR kSleepQueueDestroy(RK_SLEEP_QUEUE_HANDLE *const sleepqHandlePtr)
         return (RK_ERR_INVALID_OBJ);
     }
 
-    err = kObjHeaderModuleLocalAccessErr(
+    err = kObjHeaderDomainLocalAccessErr(
         &sleepqPtr->header,
-        (RK_gRunPtr != NULL) ? RK_gRunPtr->modulePtr : NULL);
+        (RK_gRunPtr != NULL) ? RK_gRunPtr->domainPtr : NULL);
     if (err != RK_ERR_SUCCESS)
     {
         RK_CR_EXIT
@@ -1869,15 +1869,15 @@ RK_ERR kMesgQueueCreateGlobalScope(
                                       mesgWords, depth, &attr));
 }
 
-RK_ERR kMesgQueueCreateModuleScope(
+RK_ERR kMesgQueueCreateDomainScope(
     RK_MESG_QUEUE_HANDLE *const queueHandlePtr,
     RK_STRING objName,
     VOID *const bufPtr,
     ULONG const mesgWords,
     ULONG const depth,
-    RK_MODULE *const modulePtr)
+    RK_DOMAIN *const domainPtr)
 {
-    RK_OBJ_ATTR const attr = { RK_SCOPE_MODULE_LOCAL, modulePtr };
+    RK_OBJ_ATTR const attr = { RK_SCOPE_DOMAIN_LOCAL, domainPtr };
     return (kMesgQueueCreateWithAttr_(queueHandlePtr, objName, bufPtr,
                                       mesgWords, depth, &attr));
 }
@@ -1928,9 +1928,9 @@ RK_ERR kMesgQueueDestroy(RK_MESG_QUEUE_HANDLE *const queueHandlePtr)
         return (RK_ERR_INVALID_OBJ);
     }
 
-    err = kObjHeaderModuleLocalAccessErr(
+    err = kObjHeaderDomainLocalAccessErr(
         &queuePtr->header,
-        (RK_gRunPtr != NULL) ? RK_gRunPtr->modulePtr : NULL);
+        (RK_gRunPtr != NULL) ? RK_gRunPtr->domainPtr : NULL);
     if (err != RK_ERR_SUCCESS)
     {
         RK_CR_EXIT
@@ -2117,16 +2117,16 @@ RK_ERR kTimerCreateGlobalScope(RK_TIMER_HANDLE *const timerHandlePtr,
                                   funPtr, argsPtr, reload, &attr));
 }
 
-RK_ERR kTimerCreateModuleScope(RK_TIMER_HANDLE *const timerHandlePtr,
+RK_ERR kTimerCreateDomainScope(RK_TIMER_HANDLE *const timerHandlePtr,
                                RK_STRING objName,
                                RK_TICK const phase,
                                RK_TICK const countTicks,
                                RK_TIMER_CALLOUT const funPtr,
                                VOID *const argsPtr,
                                RK_OPTION const reload,
-                               RK_MODULE *const modulePtr)
+                               RK_DOMAIN *const domainPtr)
 {
-    RK_OBJ_ATTR const attr = { RK_SCOPE_MODULE_LOCAL, modulePtr };
+    RK_OBJ_ATTR const attr = { RK_SCOPE_DOMAIN_LOCAL, domainPtr };
     return (kTimerCreateWithAttr_(timerHandlePtr, objName, phase, countTicks,
                                   funPtr, argsPtr, reload, &attr));
 }
@@ -2232,7 +2232,7 @@ static RK_ERR kMRMCreateWithAttr_(RK_MRM_HANDLE *const mrmHandlePtr,
     {
         return (err);
     }
-    if ((attrPtr != NULL) && (attrPtr->scope != RK_SCOPE_MODULE_LOCAL))
+    if ((attrPtr != NULL) && (attrPtr->scope != RK_SCOPE_DOMAIN_LOCAL))
     {
         return (RK_ERR_INVALID_PARAM);
     }
@@ -2336,15 +2336,15 @@ RK_ERR kMRMCreate(RK_MRM_HANDLE *const mrmHandlePtr,
                                 mesgPoolPtr, nBufs, dataSizeWords, NULL));
 }
 
-RK_ERR kMRMCreateModuleScope(RK_MRM_HANDLE *const mrmHandlePtr,
+RK_ERR kMRMCreateDomainScope(RK_MRM_HANDLE *const mrmHandlePtr,
                              RK_STRING objName,
                              RK_MRM_BUF *const mrmPoolPtr,
                              VOID *mesgPoolPtr,
                              ULONG const nBufs,
                              ULONG const dataSizeWords,
-                             RK_MODULE *const modulePtr)
+                             RK_DOMAIN *const domainPtr)
 {
-    RK_OBJ_ATTR const attr = { RK_SCOPE_MODULE_LOCAL, modulePtr };
+    RK_OBJ_ATTR const attr = { RK_SCOPE_DOMAIN_LOCAL, domainPtr };
     return (kMRMCreateWithAttr_(mrmHandlePtr, objName, mrmPoolPtr,
                                 mesgPoolPtr, nBufs, dataSizeWords, &attr));
 }
@@ -2395,12 +2395,12 @@ RK_ERR kMRMDestroy(RK_MRM_HANDLE *const mrmHandlePtr)
         return (RK_ERR_INVALID_OBJ);
     }
 
-    RK_MODULE const *const callerModulePtr =
-        (RK_gRunPtr != NULL) ? RK_gRunPtr->modulePtr : NULL;
-    err = ((callerModulePtr != NULL) && (mrmPtr->ownerModulePtr == NULL))
+    RK_DOMAIN const *const callerDomainPtr =
+        (RK_gRunPtr != NULL) ? RK_gRunPtr->domainPtr : NULL;
+    err = ((callerDomainPtr != NULL) && (mrmPtr->ownerDomainPtr == NULL))
               ? RK_ERR_INVALID_PARAM
-              : kObjHeaderModuleLocalAccessErr(&mrmPtr->header,
-                                                callerModulePtr);
+              : kObjHeaderDomainLocalAccessErr(&mrmPtr->header,
+                                                callerDomainPtr);
     if (err != RK_ERR_SUCCESS)
     {
         RK_CR_EXIT

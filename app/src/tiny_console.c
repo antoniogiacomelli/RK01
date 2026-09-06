@@ -14,7 +14,7 @@
  * circular buffer. CR, LF and CRLF terminal endings are accepted. When a
  * complete line is registered, the console callback posts a global counting
  * semaphore. EchoTask consumes one semaphore count per complete line, parses
- * console commands and calls the Record module through copied call/reply
+ * console commands and calls the Record domain through copied call/reply
  * messages.
  */
 

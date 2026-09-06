@@ -11,6 +11,10 @@
 .text
 .align 4
 
+#ifndef RK_CONF_PROFILE_PENDSV
+#define RK_CONF_PROFILE_PENDSV 0
+#endif
+
 /* task status values */
 .equ READY,   0x10
 .equ RUNNING, 0x20
@@ -19,6 +23,7 @@
 /* ARMv8-M system-control register addresses used by the scheduler path. */
 .equ SCB_ICSR,   0xE000ED04 /* base icsr */
 .equ STICK_CTRL, 0xE000E010 /* systick csr */
+.equ DWT_CYCCNT, 0xE0001004
 /* ARMv8-M register values */
 .equ ISCR_SETPSV, (1 << 28)
 .equ ISCR_CLRPSV, (1 << 27)
@@ -39,6 +44,22 @@
 .equ RUNCNTR_OFFSET, 8
 .equ LR_OFFSET, 12
 .equ STACKADDR, 16
+
+#if (RK_CONF_PROFILE_PENDSV == 1)
+.section .rk_shared_bss, "aw", %nobits
+.align 2
+.global rkProfilePendSvStart
+.global rkProfilePendSvCycles
+.global rkProfilePendSvSamples
+rkProfilePendSvStart:
+    .word 0
+rkProfilePendSvCycles:
+    .word 0
+rkProfilePendSvSamples:
+    .word 0
+.text
+.align 4
+#endif
 
 
 
@@ -192,6 +213,12 @@ SysTick_Handler:
 .align 4
 PendSV_Handler:
     CPSID I
+#if (RK_CONF_PROFILE_PENDSV == 1)
+    LDR R0, =DWT_CYCCNT
+    LDR R3, [R0]
+    LDR R2, =rkProfilePendSvStart
+    STR R3, [R2]
+#endif
 #ifndef NDEBUG
     TST LR, #4
     BNE PENDSV_EXC_RETURN_OK
@@ -281,6 +308,19 @@ CALL_SCHEDULER:
     MSR CONTROL, R0
     DSB
     ISB
+#if (RK_CONF_PROFILE_PENDSV == 1)
+    LDR R0, =DWT_CYCCNT
+    LDR R3, [R0]
+    LDR R2, =rkProfilePendSvStart
+    LDR R1, [R2]
+    SUB R3, R3, R1
+    LDR R2, =rkProfilePendSvCycles
+    STR R3, [R2]
+    LDR R2, =rkProfilePendSvSamples
+    LDR R1, [R2]
+    ADDS R1, R1, #1
+    STR R1, [R2]
+#endif
     CPSIE I
     ISB
     BX LR

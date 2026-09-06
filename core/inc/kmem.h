@@ -20,8 +20,8 @@ extern "C" {
 RK_ERR kMemPartitionInit(RK_MEM_PARTITION* const, VOID*, ULONG const, ULONG);
 RK_ERR kMemPartitionInitGlobalScope(RK_MEM_PARTITION *const, VOID *,
                                     ULONG const, ULONG);
-RK_ERR kMemPartitionInitModuleScope(RK_MEM_PARTITION *const, VOID *,
-                                    ULONG const, ULONG, RK_MODULE *const);
+RK_ERR kMemPartitionInitDomainScope(RK_MEM_PARTITION *const, VOID *,
+                                    ULONG const, ULONG, RK_DOMAIN *const);
 VOID* kMemPartitionAlloc(RK_MEM_PARTITION* const);
 RK_ERR kMemPartitionFree(RK_MEM_PARTITION* const, VOID*);
 

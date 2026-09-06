@@ -113,8 +113,8 @@ static inline RK_ERR kMemPartitionReadyErr_(
         return (readyErr);
     }
 
-    return (kObjHeaderModuleLocalAccessErr(
-        &kobj->header, (RK_gRunPtr != NULL) ? RK_gRunPtr->modulePtr : NULL));
+    return (kObjHeaderDomainLocalAccessErr(
+        &kobj->header, (RK_gRunPtr != NULL) ? RK_gRunPtr->domainPtr : NULL));
 }
 
 static RK_ERR kMemPartitionReportReadyErr_(RK_ERR const err)
@@ -151,18 +151,18 @@ static RK_ERR kMemPartitionScopeAttrErr_(RK_OBJ_ATTR const *const attrPtr)
 
     if (attrPtr->scope == RK_SCOPE_KERNEL_GLOBAL)
     {
-        return ((attrPtr->modulePtr == NULL) ? RK_ERR_SUCCESS
+        return ((attrPtr->domainPtr == NULL) ? RK_ERR_SUCCESS
                                              : RK_ERR_INVALID_PARAM);
     }
 
-    if (attrPtr->scope == RK_SCOPE_MODULE_LOCAL)
+    if (attrPtr->scope == RK_SCOPE_DOMAIN_LOCAL)
     {
-        if (attrPtr->modulePtr == NULL)
+        if (attrPtr->domainPtr == NULL)
         {
             return (RK_ERR_INVALID_PARAM);
         }
 
-        return ((attrPtr->modulePtr->init == RK_TRUE) ? RK_ERR_SUCCESS
+        return ((attrPtr->domainPtr->init == RK_TRUE) ? RK_ERR_SUCCESS
                                                       : RK_ERR_OBJ_NOT_INIT);
     }
 
@@ -262,14 +262,14 @@ static RK_ERR kMemPartitionInitImpl_(RK_MEM_PARTITION *const kobj,
     kobj->init = RK_TRUE;
     kobj->objID = RK_MEMALLOC_KOBJ_ID;
     kobj->objName[0] = '\0';
-    kObjHeaderOwnerModuleSet(&kobj->header,
-                             (RK_gRunPtr != NULL) ? RK_gRunPtr->modulePtr
+    kObjHeaderOwnerDomainSet(&kobj->header,
+                             (RK_gRunPtr != NULL) ? RK_gRunPtr->domainPtr
                                                   : NULL);
     if (attrPtr != NULL)
     {
         RK_ERR const scopeErr =
             kObjHeaderScopeSet(&kobj->header, attrPtr->scope,
-                               attrPtr->modulePtr);
+                               attrPtr->domainPtr);
         if (scopeErr != RK_ERR_SUCCESS)
         {
             RK_CR_EXIT
@@ -297,14 +297,14 @@ RK_ERR kMemPartitionInit(RK_MEM_PARTITION *const kobj, VOID *memPoolPtr,
     RK_OBJ_ATTR const *attrPtr = NULL;
     if (RK_gRunPtr == NULL)
     {
-        RK_ERR const appModuleErr = kApplicationModuleEnsureInit();
-        if (appModuleErr != RK_ERR_SUCCESS)
+        RK_ERR const appDomainErr = kApplicationDomainEnsureInit();
+        if (appDomainErr != RK_ERR_SUCCESS)
         {
-            return (appModuleErr);
+            return (appDomainErr);
         }
 
-        attr.scope = RK_SCOPE_MODULE_LOCAL;
-        attr.modulePtr = kApplicationModuleGet();
+        attr.scope = RK_SCOPE_DOMAIN_LOCAL;
+        attr.domainPtr = kApplicationDomainGet();
         attrPtr = &attr;
     }
 
@@ -327,18 +327,18 @@ RK_ERR kMemPartitionInitGlobalScope(RK_MEM_PARTITION *const kobj,
                                    &attr));
 }
 
-RK_ERR kMemPartitionInitModuleScope(RK_MEM_PARTITION *const kobj,
+RK_ERR kMemPartitionInitDomainScope(RK_MEM_PARTITION *const kobj,
                                     VOID *memPoolPtr,
                                     ULONG blkSize,
                                     ULONG const numBlocks,
-                                    RK_MODULE *const modulePtr)
+                                    RK_DOMAIN *const domainPtr)
 {
     if (kSyscallRequired() == RK_TRUE)
     {
         return (RK_ERR_INVALID_PHASE);
     }
 
-    RK_OBJ_ATTR const attr = { RK_SCOPE_MODULE_LOCAL, modulePtr };
+    RK_OBJ_ATTR const attr = { RK_SCOPE_DOMAIN_LOCAL, domainPtr };
     return (kMemPartitionInitImpl_(kobj, memPoolPtr, blkSize, numBlocks,
                                    &attr));
 }

@@ -48,7 +48,7 @@ typedef struct
 {
     RK_TID tid;
     CHAR name[RK_OBJ_MAX_NAME_LEN];
-    CHAR moduleName[RK_NAME_SIZE];
+    CHAR domainName[RK_NAME_SIZE];
     RK_TASK_STATUS status;
     RK_PRIO priority;
     RK_PRIO prioNominal;
@@ -67,7 +67,7 @@ typedef struct
 {
     RK_ID objID;
     CHAR objName[RK_NAME_SIZE];
-    CHAR moduleName[RK_NAME_SIZE];
+    CHAR domainName[RK_NAME_SIZE];
     CHAR ownerName[RK_OBJ_MAX_NAME_LEN];
     VOID const *objPtr;
     RK_OBJ_SCOPE scope;
@@ -290,8 +290,8 @@ static CHAR const *kSysMonScopeName_(RK_OBJ_SCOPE const scope)
 {
     switch (scope)
     {
-        case RK_SCOPE_MODULE_LOCAL:
-            return ("module");
+        case RK_SCOPE_DOMAIN_LOCAL:
+            return ("domain");
         case RK_SCOPE_KERNEL_GLOBAL:
             return ("global");
         case RK_SCOPE_UNASSIGNED:
@@ -458,14 +458,14 @@ static VOID kSysMonFillTaskRow_(RK_TCB const *const taskPtr,
 
     rowPtr->tid = taskPtr->tid;
     kSysMonNameCopy_(rowPtr->name, sizeof(rowPtr->name), taskPtr->taskName);
-    if (taskPtr->modulePtr != NULL)
+    if (taskPtr->domainPtr != NULL)
     {
-        kSysMonNameCopy_(rowPtr->moduleName, sizeof(rowPtr->moduleName),
-                         taskPtr->modulePtr->moduleName);
+        kSysMonNameCopy_(rowPtr->domainName, sizeof(rowPtr->domainName),
+                         taskPtr->domainPtr->domainName);
     }
     else
     {
-        kSysMonNameCopy_(rowPtr->moduleName, sizeof(rowPtr->moduleName), "-");
+        kSysMonNameCopy_(rowPtr->domainName, sizeof(rowPtr->domainName), "-");
     }
     rowPtr->status = taskPtr->status;
     rowPtr->priority = taskPtr->priority;
@@ -540,15 +540,15 @@ static VOID kSysMonFillObjectCommon_(RK_KOBJ const *const objPtr,
                      (objPtr->objName[0] != '\0')
                          ? objPtr->objName
                          : kSysMonObjTypeName_(objPtr->objID));
-    if ((objPtr->scope == RK_SCOPE_MODULE_LOCAL) &&
-        (objPtr->ownerModulePtr != NULL))
+    if ((objPtr->scope == RK_SCOPE_DOMAIN_LOCAL) &&
+        (objPtr->ownerDomainPtr != NULL))
     {
-        kSysMonNameCopy_(rowPtr->moduleName, sizeof(rowPtr->moduleName),
-                         objPtr->ownerModulePtr->moduleName);
+        kSysMonNameCopy_(rowPtr->domainName, sizeof(rowPtr->domainName),
+                         objPtr->ownerDomainPtr->domainName);
     }
     else
     {
-        kSysMonNameCopy_(rowPtr->moduleName, sizeof(rowPtr->moduleName), "-");
+        kSysMonNameCopy_(rowPtr->domainName, sizeof(rowPtr->domainName), "-");
     }
     kSysMonNameCopy_(rowPtr->ownerName, sizeof(rowPtr->ownerName), "-");
 }
@@ -813,7 +813,7 @@ static VOID kSysMonPrintTasks_(VOID)
 
     printf("\r\ntasks total=%u\r\n", count);
     printf("tid name    st     pr nom runs     stack     ev-cur   ev-req   "
-           "mux mode module\r\n");
+           "mux mode domain\r\n");
     for (RK_TID tid = 0U; tid < RK_NTHREADS; tid++)
     {
         if (kSysMonSnapshotTask_(tid, &sysMonTaskRow) != RK_TRUE)
@@ -835,7 +835,7 @@ static VOID kSysMonPrintTasks_(VOID)
                rowPtr->eventReq,
                rowPtr->ownedMutexes,
                (rowPtr->privileged == RK_TRUE) ? "priv" : "user",
-               rowPtr->moduleName);
+               rowPtr->domainName);
     }
 }
 
@@ -877,7 +877,7 @@ static VOID kSysMonPrintObjectCommon_(RK_SYSMON_OBJECT_ROW_ const *const rowPtr)
            rowPtr->objName,
            (ULONG)(UINTPTR)rowPtr->objPtr,
            kSysMonScopeName_(rowPtr->scope),
-           rowPtr->moduleName);
+           rowPtr->domainName);
 }
 
 static VOID kSysMonPrintMem_(VOID)
@@ -886,7 +886,7 @@ static VOID kSysMonPrintMem_(VOID)
     UINT const count = kSysMonSnapshotObjects_(RK_MEMALLOC_KOBJ_ID, &total);
 
     printf("\r\nmemory partitions total=%u\r\n", total);
-    printf("type    name    addr       scope  module  used/max blk wait\r\n");
+    printf("type    name    addr       scope  domain  used/max blk wait\r\n");
     for (UINT i = 0U; i < count; i++)
     {
         RK_SYSMON_OBJECT_ROW_ const *const rowPtr = &sysMonObjectRows[i];
@@ -905,7 +905,7 @@ static VOID kSysMonPrintSema_(VOID)
     UINT const count = kSysMonSnapshotObjects_(RK_SEMAPHORE_KOBJ_ID, &total);
 
     printf("\r\nsemaphores total=%u\r\n", total);
-    printf("type    name    addr       scope  module  value/max wait\r\n");
+    printf("type    name    addr       scope  domain  value/max wait\r\n");
     for (UINT i = 0U; i < count; i++)
     {
         RK_SYSMON_OBJECT_ROW_ const *const rowPtr = &sysMonObjectRows[i];
@@ -926,7 +926,7 @@ static VOID kSysMonPrintSleepq_(VOID)
     UINT const count = kSysMonSnapshotObjects_(RK_SLEEPQ_KOBJ_ID, &total);
 
     printf("\r\nsleep queues total=%u\r\n", total);
-    printf("type    name    addr       scope  module  wait\r\n");
+    printf("type    name    addr       scope  domain  wait\r\n");
     for (UINT i = 0U; i < count; i++)
     {
         RK_SYSMON_OBJECT_ROW_ const *const rowPtr = &sysMonObjectRows[i];
@@ -946,7 +946,7 @@ static VOID kSysMonPrintMutex_(VOID)
     UINT const count = kSysMonSnapshotObjects_(RK_MUTEX_KOBJ_ID, &total);
 
     printf("\r\nmutexes total=%u\r\n", total);
-    printf("type    name    addr       scope  module  lock proto wait fault "
+    printf("type    name    addr       scope  domain  lock proto wait fault "
            "owner\r\n");
     for (UINT i = 0U; i < count; i++)
     {
@@ -979,7 +979,7 @@ static VOID kSysMonPrintQueues_(VOID)
     UINT const count = kSysMonSnapshotObjects_(RK_MESGQQUEUE_KOBJ_ID, &total);
 
     printf("\r\nqueues total=%u\r\n", total);
-    printf("type    name    addr       scope  module  used/max recv send bcast\r\n");
+    printf("type    name    addr       scope  domain  used/max recv send bcast\r\n");
     for (UINT i = 0U; i < count; i++)
     {
         RK_SYSMON_OBJECT_ROW_ const *const rowPtr = &sysMonObjectRows[i];
@@ -1001,7 +1001,7 @@ static VOID kSysMonPrintMrm_(VOID)
     UINT const count = kSysMonSnapshotObjects_(RK_MRM_KOBJ_ID, &total);
 
     printf("\r\nmrm total=%u\r\n", total);
-    printf("type    name    addr       scope  module  size active users\r\n");
+    printf("type    name    addr       scope  domain  size active users\r\n");
     for (UINT i = 0U; i < count; i++)
     {
         RK_SYSMON_OBJECT_ROW_ const *const rowPtr = &sysMonObjectRows[i];
@@ -1022,7 +1022,7 @@ static VOID kSysMonPrintTimers_(VOID)
     UINT const count = kSysMonSnapshotObjects_(RK_TIMER_KOBJ_ID, &total);
 
     printf("\r\ntimers total=%u\r\n", total);
-    printf("type    name    addr       scope  module  armed reload period phase\r\n");
+    printf("type    name    addr       scope  domain  armed reload period phase\r\n");
     for (UINT i = 0U; i < count; i++)
     {
         RK_SYSMON_OBJECT_ROW_ const *const rowPtr = &sysMonObjectRows[i];
@@ -1043,7 +1043,7 @@ static VOID kSysMonPrintShared_(VOID)
     UINT const count = kSysMonSnapshotObjects_(RK_SHARED_MEM_KOBJ_ID, &total);
 
     printf("\r\nshared memory total=%u\r\n", total);
-    printf("type    name    addr       scope  module  bytes attaches\r\n");
+    printf("type    name    addr       scope  domain  bytes attaches\r\n");
     for (UINT i = 0U; i < count; i++)
     {
         RK_SYSMON_OBJECT_ROW_ const *const rowPtr = &sysMonObjectRows[i];

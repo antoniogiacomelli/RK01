@@ -8,14 +8,14 @@
 /******************************************************************************/
 
 /*
- * Advanced example 01: two explicit modules crossing the boundary with copied
+ * Advanced example 01: two explicit domains crossing the boundary with copied
  * direct messages.
  */
 
-#include <kapi_module.h>
+#include <kapi_domain.h>
 
 #define APP_LOG_PRIO (10U)
-#define MODULE_BYTES (2048U)
+#define DOMAIN_BYTES (2048U)
 #define TASK_STACK_WORDS (256U)
 #define PLANNER_PRIO (8U)
 #define LINK_PRIO (9U)
@@ -40,10 +40,10 @@ typedef struct
     ULONG checksum;
 } FleetOrder;
 
-RK_DECLARE_MODULE(fleetControlModule, fleetControlRam, MODULE_BYTES)
-RK_DECLARE_MODULE(fleetCommsModule, fleetCommsRam, MODULE_BYTES)
-RK_DECLARE_MODULE_TASK(fleetPlannerHandle, FleetPlannerTask)
-RK_DECLARE_MODULE_TASK(fleetLinkHandle, FleetLinkTask)
+RK_DECLARE_DOMAIN(fleetControlDomain, fleetControlRam, DOMAIN_BYTES)
+RK_DECLARE_DOMAIN(fleetCommsDomain, fleetCommsRam, DOMAIN_BYTES)
+RK_DECLARE_DOMAIN_TASK(fleetPlannerHandle, FleetPlannerTask)
+RK_DECLARE_DOMAIN_TASK(fleetLinkHandle, FleetLinkTask)
 
 static FleetControlState *fleetControlState;
 static FleetCommsState *fleetCommsState;
@@ -91,22 +91,22 @@ VOID kApplicationInit(VOID)
 {
     kLogInit(APP_LOG_PRIO);
 
-    AppCheck_(kModuleInit(&fleetControlModule, fleetControlRam,
+    AppCheck_(kDomainInit(&fleetControlDomain, fleetControlRam,
                           sizeof(fleetControlRam), "FleetC"));
-    AppCheck_(kModuleInit(&fleetCommsModule, fleetCommsRam,
+    AppCheck_(kDomainInit(&fleetCommsDomain, fleetCommsRam,
                           sizeof(fleetCommsRam), "FleetM"));
 
     fleetControlState =
-        AppCheckPtr_(RK_MODULE_ALLOC(&fleetControlModule,
+        AppCheckPtr_(RK_DOMAIN_ALLOC(&fleetControlDomain,
                                      FleetControlState));
     fleetCommsState =
-        AppCheckPtr_(RK_MODULE_ALLOC(&fleetCommsModule, FleetCommsState));
+        AppCheckPtr_(RK_DOMAIN_ALLOC(&fleetCommsDomain, FleetCommsState));
 
-    AppCheck_(kModuleTaskInit(&fleetControlModule, &fleetPlannerHandle,
+    AppCheck_(kDomainTaskInit(&fleetControlDomain, &fleetPlannerHandle,
                               FleetPlannerTask, fleetControlState,
                               "Plan", TASK_STACK_WORDS,
                               PLANNER_PRIO, RK_PREEMPT));
-    AppCheck_(kModuleTaskInit(&fleetCommsModule, &fleetLinkHandle,
+    AppCheck_(kDomainTaskInit(&fleetCommsDomain, &fleetLinkHandle,
                               FleetLinkTask, fleetCommsState,
                               "Link", TASK_STACK_WORDS,
                               LINK_PRIO, RK_PREEMPT));
