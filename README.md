@@ -472,21 +472,6 @@ Use the narrowest public header that fits the code:
 | `kapi_trusted.h` | Privileged service setup and low-level trusted construction. |
 | `kapi.h` | Compatibility umbrella. |
 
-## Current Limits
-
-This public drop is useful for source review, experimentation and early board
-testing, but several areas still need release hardening:
-
-- generated configuration-specific memory maps;
-- a maintained public board-regression suite;
-- richer supervisor fault records;
-- measured SVC, PRIMASK, SysTick and PendSV budgets on hardware;
-- a final decision on which historical transition notes should become public
-  documentation;
-- broader target qualification.
-
-For now, use RK0 when you need the mature flat kernel documentation and RK01
-when you specifically want the MPU/SVC containment model.
 
 ## License
 
