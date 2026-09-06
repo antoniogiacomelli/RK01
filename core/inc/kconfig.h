@@ -227,11 +227,11 @@
 #endif
 
 #ifndef RK_CONF_DYNAMIC_MUTEXES_MAX
-#define RK_CONF_DYNAMIC_MUTEXES_MAX (2U)
+#define RK_CONF_DYNAMIC_MUTEXES_MAX (4U)
 #endif
 
 #ifndef RK_CONF_DYNAMIC_SLEEP_QUEUES_MAX
-#define RK_CONF_DYNAMIC_SLEEP_QUEUES_MAX (0)
+#define RK_CONF_DYNAMIC_SLEEP_QUEUES_MAX (4U)
 #endif
 
 #ifndef RK_CONF_DYNAMIC_MESG_QUEUES_MAX
@@ -239,11 +239,11 @@
 #endif
 
 #ifndef RK_CONF_DYNAMIC_TIMERS_MAX
-#define RK_CONF_DYNAMIC_TIMERS_MAX (0)
+#define RK_CONF_DYNAMIC_TIMERS_MAX (2U)
 #endif
 
 #ifndef RK_CONF_DYNAMIC_MRMS_MAX
-#define RK_CONF_DYNAMIC_MRMS_MAX (0)
+#define RK_CONF_DYNAMIC_MRMS_MAX (2U)
 #endif
 
 #ifndef RK_CONF_DYNAMIC_SHARED_MEMS_MAX
@@ -302,18 +302,6 @@ account.
  */
 #ifndef RK_CONF_ROUND_UP_MS_TO_TICKS
 #define RK_CONF_ROUND_UP_MS_TO_TICKS  (OFF)
-#endif
-
-/*
- * Test-only scheduler/syscall knobs.
- * Keep both OFF for the normal RTX-style exception priority model.
- */
-#ifndef RK_CONF_SYSTICK_ABOVE_SVC
-#define RK_CONF_SYSTICK_ABOVE_SVC (OFF)
-#endif
-
-#ifndef RK_CONF_SVC_DEFER_TEST
-#define RK_CONF_SVC_DEFER_TEST (OFF)
 #endif
 
 
