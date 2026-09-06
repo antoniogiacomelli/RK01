@@ -13,7 +13,6 @@ This adds substantial complexity to the design and to the analysis. The gain is 
 fault can be confined. Still, recovering from that fault is application-specific.
 
 This repository is the first public RK01 source drop. 
-Current version: 0.1.0.
 
 ## Major Changes
 
