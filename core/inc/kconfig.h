@@ -36,10 +36,11 @@
 #endif
 #endif
 
-/* RK01 keeps region 2 for the global shared aperture and leaves regions 3..7
- * available for explicitly mapped inter-domain regions. */
+/* RK01 keeps one region for domain RAM, one for the private task stack, one
+ * for the global shared aperture and leaves the remaining regions for
+ * explicitly mapped inter-domain regions. */
 #ifndef RK_CONF_DOMAIN_SHARED_REGIONS
-#define RK_CONF_DOMAIN_SHARED_REGIONS (5U)
+#define RK_CONF_DOMAIN_SHARED_REGIONS (4U)
 #endif
 
 /* Default to containing unprivileged MPU task faults so the runtime can retire

@@ -20,6 +20,7 @@
 
 RK_DECLARE_TYPED_DOMAIN(recordDomain, recordDomainRam,
                         RECORD_DOMAIN_RAM, RECORD_DOMAIN_BYTES)
+RK_DECLARE_DOMAIN_TASK_STACK(recordServerStack, RECORD_TASK_STACK_WORDS)
 
 RK_ERR RecordDomainBoot(RECORD_DOMAIN_EXPORTS *exportsPtr)
 {
@@ -42,7 +43,7 @@ RK_ERR RecordDomainBoot(RECORD_DOMAIN_EXPORTS *exportsPtr)
     }
 
     err = kTaskInitDomain(&ramPtr->serverHandle, RecordTask, ramPtr,
-                          "Record", ramPtr->serverStack,
+                          "Record", recordServerStack,
                           RECORD_TASK_STACK_WORDS, RECORD_TASK_PRIO,
                           RK_PREEMPT, &recordDomain);
     if (err != RK_ERR_SUCCESS)

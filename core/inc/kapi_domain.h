@@ -67,7 +67,7 @@ RK_ERR kSharedMemGet(RK_SHARED_MEM_HANDLE const sharedMemHandle,
 
 #ifndef RK_ISOLATED_TASK_STACK_ATTR
 #define RK_ISOLATED_TASK_STACK_ATTR(NWORDS)                                   \
-    RK_STACK_ALIGN(NWORDS) RK_SECTION_DOMAIN_RAM
+    RK_STACK_ALIGN(NWORDS) RK_SECTION_TASK_STACK
 #endif
 
 #ifndef RK_DOMAIN_RAM_ATTR
@@ -102,10 +102,6 @@ RK_ERR kSharedMemGet(RK_SHARED_MEM_HANDLE const sharedMemHandle,
 
 #ifndef RK_DOMAIN_RAM_ARRAY
 #define RK_DOMAIN_RAM_ARRAY(TYPE, NAME, COUNT) TYPE NAME[COUNT];
-#endif
-
-#ifndef RK_DOMAIN_RAM_STACK
-#define RK_DOMAIN_RAM_STACK(NAME, NWORDS) _Alignas(8) RK_STACK NAME[NWORDS];
 #endif
 
 #ifndef RK_DOMAIN_RAM_TASK_HANDLE
@@ -168,6 +164,11 @@ RK_ERR kSharedMemGet(RK_SHARED_MEM_HANDLE const sharedMemHandle,
     RK_DECLARE_GLOBAL_TASK_HANDLE(HANDLE)
 #endif
 
+#ifndef RK_DECLARE_DOMAIN_TASK_STACK
+#define RK_DECLARE_DOMAIN_TASK_STACK(STACKBUF, NWORDS)                        \
+    RK_STACK STACKBUF[NWORDS] RK_TASK_STACK_ATTR(NWORDS);
+#endif
+
 #ifndef RK_DECLARE_ISOLATED_TASK
 #define RK_DECLARE_ISOLATED_TASK(HANDLE, TASKENTRY, STACKBUF, NWORDS)         \
     VOID TASKENTRY(VOID *args);                                               \
@@ -185,11 +186,6 @@ RK_ERR kSharedMemGet(RK_SHARED_MEM_HANDLE const sharedMemHandle,
     ((TYPE *)kDomainAlloc((DOMAINPTR),                                       \
                           sizeof(TYPE) * (ULONG)(COUNT),                     \
                           (ULONG)_Alignof(TYPE)))
-#endif
-
-#ifndef RK_DOMAIN_ALLOC_STACK
-#define RK_DOMAIN_ALLOC_STACK(DOMAINPTR, NWORDS)                             \
-    kDomainStackAlloc((DOMAINPTR), (NWORDS))
 #endif
 
 #ifdef __cplusplus

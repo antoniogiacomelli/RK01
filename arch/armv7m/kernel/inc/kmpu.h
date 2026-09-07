@@ -23,12 +23,14 @@ extern "C"
 #define RK_MPU_N_REGIONS (8U)
 #endif
 
-/* RK0-reserved region slots. Region 0 is static; task/shared slots are loaded
- * from the incoming TCB during startup and PendSV context switches. */
+/* RK01-reserved region slots. Region 0 is static. The domain-map slots are
+ * loaded only when dispatch crosses to a different immutable domain map; the
+ * private stack slot follows the incoming task. */
 #define RK_MPU_REGION_USER_FLASH (0U)
-#define RK_MPU_REGION_TASK_RAM (1U)
-#define RK_MPU_REGION_SHARED_RAM (2U)
-#define RK_MPU_REGION_EXPLICIT_SHARED_BASE (3U)
+#define RK_MPU_REGION_DOMAIN_RAM (1U)
+#define RK_MPU_REGION_TASK_STACK (2U)
+#define RK_MPU_REGION_SHARED_RAM (3U)
+#define RK_MPU_REGION_EXPLICIT_SHARED_BASE (4U)
 
 #if (RK_CONF_DOMAIN_SHARED_REGIONS >                                      \
      (RK_MPU_N_REGIONS - RK_MPU_REGION_EXPLICIT_SHARED_BASE))
@@ -140,8 +142,8 @@ extern volatile RK_MPU_FAULT_INFO RK_gMpuFaultInfo;
 /* Initialise the MPU global state and permanent user FLASH region. */
 VOID kMpuInit(VOID);
 
-/* Load the current RK_gRunPtr task's per-task MPU regions. Called from task
- * startup and context-switch assembly. */
+/* Load the current RK_gRunPtr task's MPU view. Called from task startup and
+ * context-switch assembly. */
 VOID kMpuLoadRunTask(VOID);
 
 /* Save/restore CONTROL across context switches so each task resumes with its
@@ -156,8 +158,9 @@ RK_ERR kMpuBuildRegion(RK_MPU_REGION *const regionPtr,
                        ULONG const regionSize,
                        ULONG const attributes);
 
-/* Validate and reserve the task's domain RAM mapping. A NULL domain in
- * RK_TASK_MEMORY creates the private domain used by explicit isolated tasks. */
+/* Validate and reserve the task's domain RAM plus private-stack mapping.
+ * A NULL domain in RK_TASK_MEMORY creates the private domain used by explicit
+ * isolated tasks. */
 RK_BOOL kMpuTaskMemoryValid(RK_TASK_MEMORY const *const memoryPtr);
 RK_ERR kMpuTaskMemoryReserve(RK_TCB *const taskPtr,
                              RK_TASK_MEMORY const *const memoryPtr);
@@ -180,7 +183,7 @@ RK_BOOL kMpuUserWriteValid(RK_TCB const *const taskPtr,
 RK_BOOL kMpuUserFunctionValid(VOID const *const funPtr);
 
 /* Validate domain RAM: the statically declared writable-authority region used
- * by member tasks. Each member's stack must live inside this region. */
+ * by member tasks. Member stacks are private task regions outside this window. */
 RK_BOOL kMpuDomainMemoryValid(RK_DOMAIN const *const domainPtr);
 RK_ERR kMpuDomainMemoryReserve(RK_DOMAIN *const domainPtr);
 

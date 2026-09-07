@@ -2177,7 +2177,7 @@ RK_ERR kTimerDestroy(RK_TIMER_HANDLE *const timerHandlePtr)
         return (RK_ERR_INVALID_OBJ);
     }
 
-    err = kTimerCancel(timerPtr);
+    err = kTimerCancel(*timerHandlePtr);
     if (err != RK_ERR_SUCCESS)
     {
         RK_CR_EXIT

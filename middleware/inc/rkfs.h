@@ -63,8 +63,6 @@ typedef struct
 
 typedef struct
 {
-    RK_STACK serverStack[RKFS_STACK_WORDS]
-        RK_STACK_ALIGN(RKFS_STACK_WORDS);
     lfs_t lfs;
     struct lfs_config cfg;
     BYTE readCache[RKFS_CACHE_BYTES];
@@ -72,8 +70,7 @@ typedef struct
     BYTE fileCache[RKFS_CACHE_BYTES];
     BYTE lookahead[RKFS_LOOKAHEAD_BYTES];
     BYTE reserved[RKFS_DOMAIN_BYTES -
-                  ((RKFS_STACK_WORDS * sizeof(RK_STACK)) +
-                   sizeof(lfs_t) +
+                  (sizeof(lfs_t) +
                    sizeof(struct lfs_config) +
                    (3U * RKFS_CACHE_BYTES) +
                    RKFS_LOOKAHEAD_BYTES)];

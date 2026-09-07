@@ -289,7 +289,7 @@ static inline RK_TICK RK_MS_TO_TICKS(RK_TICK ms)
 
 #ifndef RK_TASK_STACK_ATTR
 #define RK_TASK_STACK_ATTR(NWORDS)                                            \
-    RK_STACK_ALIGN(NWORDS) RK_SECTION_APP_RAM
+    RK_STACK_ALIGN(NWORDS) RK_SECTION_TASK_STACK
 #endif
 
 #ifndef RK_TASK_HANDLE_ATTR

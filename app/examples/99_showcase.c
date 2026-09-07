@@ -240,6 +240,10 @@ RK_DECLARE_DOMAIN_TASK(fleetPlannerHandle, FleetPlannerTask)
 RK_DECLARE_DOMAIN_TASK(fleetTelemetryHandle, FleetTelemetryTask)
 RK_DECLARE_DOMAIN_TASK(fleetLinkTxHandle, FleetLinkTxTask)
 RK_DECLARE_DOMAIN_TASK(fleetSupervisorHandle, FleetSupervisorTask)
+RK_DECLARE_DOMAIN_TASK_STACK(fleetPlannerStack, FLEET_STACK_WORDS)
+RK_DECLARE_DOMAIN_TASK_STACK(fleetTelemetryStack, FLEET_STACK_WORDS)
+RK_DECLARE_DOMAIN_TASK_STACK(fleetLinkTxStack, FLEET_STACK_WORDS)
+RK_DECLARE_DOMAIN_TASK_STACK(fleetSupervisorStack, FLEET_STACK_WORDS)
 
 static FleetControlState *fleetControlState;
 static FleetCommsState *fleetCommsState;
@@ -376,22 +380,25 @@ static VOID AppCreateTasks_(VOID)
     AppCheck_(kMesgCopyEndpointInit(isoBetaHandle));
     AppCheck_(kMesgCopyEndpointInit(isoGammaHandle));
 
-    AppCheck_(kDomainTaskInit(&fleetControlDomain, &fleetPlannerHandle,
-                              FleetPlannerTask, fleetControlState,
-                              "FltPlan", FLEET_STACK_WORDS,
-                              PRIO_FLEET_PLANNER, RK_PREEMPT));
-    AppCheck_(kDomainTaskInit(&fleetControlDomain, &fleetTelemetryHandle,
-                              FleetTelemetryTask, fleetControlState,
-                              "FltTel", FLEET_STACK_WORDS,
-                              PRIO_FLEET_TELEMETRY, RK_PREEMPT));
-    AppCheck_(kDomainTaskInit(&fleetCommsDomain, &fleetLinkTxHandle,
-                              FleetLinkTxTask, fleetCommsState,
-                              "FltTx", FLEET_STACK_WORDS,
-                              PRIO_FLEET_LINK, RK_PREEMPT));
-    AppCheck_(kDomainTaskInit(&fleetCommsDomain, &fleetSupervisorHandle,
-                              FleetSupervisorTask, fleetCommsState,
-                              "FltSup", FLEET_STACK_WORDS,
-                              PRIO_FLEET_SUPERVISOR, RK_PREEMPT));
+    AppCheck_(kTaskInitDomain(&fleetPlannerHandle, FleetPlannerTask,
+                              fleetControlState, "FltPlan",
+                              fleetPlannerStack, FLEET_STACK_WORDS,
+                              PRIO_FLEET_PLANNER, RK_PREEMPT,
+                              &fleetControlDomain));
+    AppCheck_(kTaskInitDomain(&fleetTelemetryHandle, FleetTelemetryTask,
+                              fleetControlState, "FltTel",
+                              fleetTelemetryStack, FLEET_STACK_WORDS,
+                              PRIO_FLEET_TELEMETRY, RK_PREEMPT,
+                              &fleetControlDomain));
+    AppCheck_(kTaskInitDomain(&fleetLinkTxHandle, FleetLinkTxTask,
+                              fleetCommsState, "FltTx", fleetLinkTxStack,
+                              FLEET_STACK_WORDS, PRIO_FLEET_LINK, RK_PREEMPT,
+                              &fleetCommsDomain));
+    AppCheck_(kTaskInitDomain(&fleetSupervisorHandle, FleetSupervisorTask,
+                              fleetCommsState, "FltSup",
+                              fleetSupervisorStack, FLEET_STACK_WORDS,
+                              PRIO_FLEET_SUPERVISOR, RK_PREEMPT,
+                              &fleetCommsDomain));
 
     AppCheck_(kSynchMesgInit(fleetSupervisorHandle,
                              sizeof(FleetStatusReq)));

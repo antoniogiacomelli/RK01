@@ -1263,10 +1263,24 @@ static RK_ERR kTaskInitTcb_(RK_TCB *const tcbPtr, RK_TID const tid,
     if (protectedTask == RK_TRUE)
     {
         err = kMpuBuildRegion(
-            &tcbPtr->mpuRegion[RK_MPU_REGION_TASK_RAM],
-            RK_MPU_REGION_TASK_RAM,
+            &tcbPtr->mpuRegion[RK_MPU_REGION_DOMAIN_RAM],
+            RK_MPU_REGION_DOMAIN_RAM,
             (ULONG)(UINTPTR)memoryPtr->regionBasePtr,
             memoryPtr->regionBytes,
+            RK_MPU_ATTR_USER_SRAM);
+
+        if (err != RK_ERR_SUCCESS)
+        {
+            kMpuTaskMemoryRelease(tcbPtr);
+            RK_MEMSET(tcbPtr, 0, sizeof(RK_TCB));
+            return (err);
+        }
+
+        err = kMpuBuildRegion(
+            &tcbPtr->mpuRegion[RK_MPU_REGION_TASK_STACK],
+            RK_MPU_REGION_TASK_STACK,
+            (ULONG)(UINTPTR)memoryPtr->stackBasePtr,
+            memoryPtr->stackWords * (ULONG)sizeof(RK_STACK),
             RK_MPU_ATTR_USER_SRAM);
 
         if (err != RK_ERR_SUCCESS)
@@ -2027,9 +2041,6 @@ RK_ERR kDomainTaskInit(RK_DOMAIN *const domainPtr,
                        const RK_PRIO priority,
                        const RK_OPTION preempt)
 {
-    RK_STACK *stackPtr;
-    ULONG allocMark;
-
     if (kSyscallRequired() == RK_TRUE)
     {
 #if (RK_CONF_ERR_CHECK == ON)
@@ -2089,22 +2100,15 @@ RK_ERR kDomainTaskInit(RK_DOMAIN *const domainPtr,
         return (RK_ERR_INVALID_PRIO);
     }
 
-    allocMark = domainPtr->allocBytes;
-    stackPtr = kDomainStackAlloc(domainPtr, stackWords);
-    if (stackPtr == NULL)
-    {
-        return (RK_ERR_INVALID_PARAM);
-    }
+    K_UNUSE(argsPtr);
+    K_UNUSE(taskHandlePtr);
+    K_UNUSE(taskFunc);
+    K_UNUSE(taskName);
 
-    RK_ERR const err = kTaskInitDomain(taskHandlePtr, taskFunc, argsPtr,
-                                       taskName, stackPtr, stackWords,
-                                       priority, preempt, domainPtr);
-    if (err != RK_ERR_SUCCESS)
-    {
-        domainPtr->allocBytes = allocMark;
-    }
-
-    return (err);
+#if (RK_CONF_ERR_CHECK == ON)
+    kErrHandler(RK_FAULT_INVALID_PARAM);
+#endif
+    return (RK_ERR_INVALID_PARAM);
 }
 
 RK_ERR kSharedRegionInit(RK_SHARED_REGION *const regionPtr,

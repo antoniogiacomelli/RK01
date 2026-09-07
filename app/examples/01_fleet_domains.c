@@ -44,6 +44,8 @@ RK_DECLARE_DOMAIN(fleetControlDomain, fleetControlRam, DOMAIN_BYTES)
 RK_DECLARE_DOMAIN(fleetCommsDomain, fleetCommsRam, DOMAIN_BYTES)
 RK_DECLARE_DOMAIN_TASK(fleetPlannerHandle, FleetPlannerTask)
 RK_DECLARE_DOMAIN_TASK(fleetLinkHandle, FleetLinkTask)
+RK_DECLARE_DOMAIN_TASK_STACK(fleetPlannerStack, TASK_STACK_WORDS)
+RK_DECLARE_DOMAIN_TASK_STACK(fleetLinkStack, TASK_STACK_WORDS)
 
 static FleetControlState *fleetControlState;
 static FleetCommsState *fleetCommsState;
@@ -102,14 +104,13 @@ VOID kApplicationInit(VOID)
     fleetCommsState =
         AppCheckPtr_(RK_DOMAIN_ALLOC(&fleetCommsDomain, FleetCommsState));
 
-    AppCheck_(kDomainTaskInit(&fleetControlDomain, &fleetPlannerHandle,
-                              FleetPlannerTask, fleetControlState,
-                              "Plan", TASK_STACK_WORDS,
-                              PLANNER_PRIO, RK_PREEMPT));
-    AppCheck_(kDomainTaskInit(&fleetCommsDomain, &fleetLinkHandle,
-                              FleetLinkTask, fleetCommsState,
-                              "Link", TASK_STACK_WORDS,
-                              LINK_PRIO, RK_PREEMPT));
+    AppCheck_(kTaskInitDomain(&fleetPlannerHandle, FleetPlannerTask,
+                              fleetControlState, "Plan", fleetPlannerStack,
+                              TASK_STACK_WORDS, PLANNER_PRIO, RK_PREEMPT,
+                              &fleetControlDomain));
+    AppCheck_(kTaskInitDomain(&fleetLinkHandle, FleetLinkTask, fleetCommsState,
+                              "Link", fleetLinkStack, TASK_STACK_WORDS,
+                              LINK_PRIO, RK_PREEMPT, &fleetCommsDomain));
     AppCheck_(kMesgCopyEndpointInit(fleetLinkHandle));
 }
 

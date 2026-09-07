@@ -26,12 +26,14 @@
 
 RK_DECLARE_DOMAIN(echoDomain, echoRam, ECHO_DOMAIN_BYTES)
 RK_DECLARE_DOMAIN_TASK(echoTaskHandle, EchoTask)
+RK_DECLARE_DOMAIN_TASK_STACK(echoStack, TASK_STACK_WORDS)
 RK_DECLARE_GLOBAL_SEMAPHORE(lineReadySemaHandle)
 
 #if defined(RK_MCU_F401RE)
 static RKFS_RAM fsRam RK_DOMAIN_RAM_ATTR(RKFS_DOMAIN_BYTES);
 static RK_DOMAIN fsDomain RK_DOMAIN_DESC_ATTR;
 RK_DECLARE_DOMAIN_TASK(fsTaskHandle, rkFsServerTask)
+RK_DECLARE_DOMAIN_TASK_STACK(fsServerStack, RKFS_STACK_WORDS)
 #endif
 
 static RECORD_DOMAIN_EXPORTS recordDomainExports RK_SHARED_RAM_ATTR;
@@ -78,7 +80,7 @@ VOID kApplicationInit(VOID)
      * isolated by exposing it only through copied call/reply.
      */
     AppCheck_(kTaskInitPrivileged(&fsTaskHandle, rkFsServerTask, &fsRam,
-                                  "FS", fsRam.serverStack, RKFS_STACK_WORDS,
+                                  "FS", fsServerStack, RKFS_STACK_WORDS,
                                   FS_TASK_PRIO, RK_PREEMPT));
     AppCheck_(kSynchMesgInit(fsTaskHandle, sizeof(RKFS_REQUEST)));
 #endif
@@ -87,9 +89,9 @@ VOID kApplicationInit(VOID)
 
     AppCheck_(kSemaphoreCreateGlobalScope(&lineReadySemaHandle, "LineRdy", 0U,
                                           APP_LINE_READY_MAX));
-    AppCheck_(kDomainTaskInit(&echoDomain, &echoTaskHandle, EchoTask,
-                              &recordDomainExports, "Echo",
-                              TASK_STACK_WORDS, ECHO_TASK_PRIO, RK_PREEMPT));
+    AppCheck_(kTaskInitDomain(&echoTaskHandle, EchoTask, &recordDomainExports,
+                              "Echo", echoStack, TASK_STACK_WORDS,
+                              ECHO_TASK_PRIO, RK_PREEMPT, &echoDomain));
     AppCheck_(kConsoleRxClaim(AppLineByteFromConsole_));
     AppCheck_(kSysMonInit());
 }

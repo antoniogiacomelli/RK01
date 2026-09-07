@@ -34,8 +34,8 @@
  *
  * @param stackBufPtr     Pointer to the task stack (the array's name).
  *                        Must be declared with RK_DECLARE_TASK() or placed in
- *                        the App-domain RAM window. Must be aligned to an
- *                        8-byte boundary and must not be NULL.
+ *                        RK task-stack RAM. Must have MPU region geometry and
+ *                        must not be NULL.
  *
  * @param stackSize    Size of the task stack, in words. Must be at least
  *                     RK_MIN_STACKSIZE and even, so the initial stack frame
@@ -115,15 +115,18 @@ VOID *kDomainAlloc(RK_DOMAIN *const domainPtr,
                    ULONG const alignBytes);
 
 /**
- * @brief Allocate an 8-byte aligned task stack from a domain RAM window.
+ * @brief Allocate an 8-byte aligned domain RAM block with stack-like sizing.
+ *        This is not valid as a protected task stack under the private-stack
+ *        MPU model; use RK_DECLARE_DOMAIN_TASK_STACK() for task stacks.
  */
 RK_STACK *kDomainStackAlloc(RK_DOMAIN *const domainPtr,
                             ULONG const stackWords);
 
 /**
- * @brief Allocate a stack from a domain RAM window and create a task in that
- *        domain. This is the preferred BOOT-time spelling for domain tasks
- *        because the allocation and task construction happen as one operation.
+ * @brief Legacy domain-task constructor retained for source compatibility.
+ *        Protected domain tasks now require private stacks outside the domain
+ *        RAM window. Prefer RK_DECLARE_DOMAIN_TASK_STACK() with
+ *        kTaskInitDomain().
  */
 RK_ERR kDomainTaskInit(RK_DOMAIN *const domainPtr,
                        RK_TASK_HANDLE *taskHandlePtr,
@@ -196,8 +199,9 @@ RK_ERR kSharedMemGet(RK_SHARED_MEM_HANDLE const sharedMemHandle,
 /**
  * @brief Initialise a task that belongs to a domain. The task keeps its own
  *        scheduler identity while its MPU view includes the domain.
- *        Its stack must be inside domainPtr's RAM region. Other tasks in the
- *        same domain can access that RAM; tasks in other domains cannot.
+ *        Its stack must be a private MPU-shaped task-stack region outside
+ *        domainPtr's RAM. Tasks in the same domain share only the domain RAM
+ *        and explicit grants, not each other's stacks.
  */
 RK_ERR kTaskInitDomain(RK_TASK_HANDLE *taskHandlePtr,
                        const RK_TASKENTRY taskFunc,
@@ -230,7 +234,8 @@ RK_ERR kTaskInitIsolated(RK_TASK_HANDLE *taskHandlePtr,
  * @brief Initialise an unprivileged protected task from an explicit memory
  *        arena. If memoryPtr->domainPtr is NULL, the arena becomes a private
  *        isolated domain owned by this task. If domainPtr is set, the task
- *        joins that domain and its stack must live inside the domain RAM.
+ *        joins that domain and its stack must be a private task-stack region
+ *        outside the domain RAM.
  *
  *        A private isolated domain may be identical to the task stack:
  *        regionBasePtr == stackBasePtr and regionBytes == stackWords *
@@ -365,12 +370,12 @@ RK_ERR kObjPartitionsInit(VOID);
 
 #ifndef RK_TASK_STACK_ATTR
 #define RK_TASK_STACK_ATTR(NWORDS)                                            \
-    RK_STACK_ALIGN(NWORDS) RK_SECTION_APP_RAM
+    RK_STACK_ALIGN(NWORDS) RK_SECTION_TASK_STACK
 #endif
 
 #ifndef RK_ISOLATED_TASK_STACK_ATTR
 #define RK_ISOLATED_TASK_STACK_ATTR(NWORDS)                                   \
-    RK_STACK_ALIGN(NWORDS) RK_SECTION_DOMAIN_RAM
+    RK_STACK_ALIGN(NWORDS) RK_SECTION_TASK_STACK
 #endif
 
 #ifndef RK_PRIVILEGED_TASK_STACK_ATTR
@@ -628,10 +633,6 @@ RK_ERR kObjPartitionsInit(VOID);
 #define RK_DOMAIN_RAM_ARRAY(TYPE, NAME, COUNT) TYPE NAME[COUNT];
 #endif
 
-#ifndef RK_DOMAIN_RAM_STACK
-#define RK_DOMAIN_RAM_STACK(NAME, NWORDS) _Alignas(8) RK_STACK NAME[NWORDS];
-#endif
-
 #ifndef RK_DOMAIN_RAM_TASK_HANDLE
 #define RK_DOMAIN_RAM_TASK_HANDLE(NAME) RK_TASK_HANDLE NAME;
 #endif
@@ -698,11 +699,6 @@ RK_ERR kObjPartitionsInit(VOID);
                           (ULONG)_Alignof(TYPE)))
 #endif
 
-#ifndef RK_DOMAIN_ALLOC_STACK
-#define RK_DOMAIN_ALLOC_STACK(DOMAINPTR, NWORDS)                              \
-    kDomainStackAlloc((DOMAINPTR), (NWORDS))
-#endif
-
 /**
  * @brief Declare a low-level inter-domain shared region object and RAM block.
  *        Prefer RK_DECLARE_SHARED_MEM() in application code.
@@ -743,12 +739,20 @@ RK_ERR kObjPartitionsInit(VOID);
 #endif
 
 /**
- * @brief Declare a task that will use a stack carved from domain RAM.
+ * @brief Declare a domain member task handle.
  */
 #ifndef RK_DECLARE_DOMAIN_TASK
 #define RK_DECLARE_DOMAIN_TASK(HANDLE, TASKENTRY)                              \
     VOID TASKENTRY(VOID *args);                                                \
     RK_DECLARE_GLOBAL_TASK_HANDLE(HANDLE)
+#endif
+
+/**
+ * @brief Declare a private stack for a domain member task.
+ */
+#ifndef RK_DECLARE_DOMAIN_TASK_STACK
+#define RK_DECLARE_DOMAIN_TASK_STACK(STACKBUF, NWORDS)                         \
+    RK_STACK STACKBUF[NWORDS] RK_TASK_STACK_ATTR(NWORDS);
 #endif
 
 /**

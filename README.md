@@ -157,7 +157,8 @@ explicitly granted shared-memory or peripheral regions.
 | --- | --- |
 | Flash | User-readable and executable. On STM32F401RE this is `0x08000000..0x08040000`. |
 | FS_FLASH | STM32F401RE reserved flash at `0x08040000..0x08080000`, used by RKFS. Not user executable. |
-| Task/domain RAM | Writable only by tasks whose current MPU view maps that domain. |
+| Domain RAM | Writable only by tasks whose current MPU view maps that domain. |
+| Task stack RAM | Private stack storage mapped only for the active task that owns it. |
 | Global shared RAM | Small firmware-wide aperture mapped into ordinary tasks. |
 | Explicit shared memory | Boot-created shared segment attached only to selected domains. |
 | Kernel RAM | Privileged only. Contains TCBs, object pools, registries and privileged stacks. |
@@ -167,12 +168,17 @@ Typical MPU slot intent:
 | MPU slot | Meaning |
 | --- | --- |
 | Region 0 | User-readable executable Flash, installed once. |
-| Region 1 | Active task/domain RAM, rewritten on context switch. |
-| Region 2 | Global shared RAM, rewritten from the incoming TCB. |
-| Regions 3..7 | Explicit shared-memory segments, enabled only when attached. |
+| Region 1 | Active immutable domain RAM authority window. |
+| Region 2 | Active task's private stack. |
+| Region 3 | Global shared RAM. |
+| Regions 4..7 | Explicit shared-memory segments, enabled only when attached. |
 
 Privileged handler code keeps the default memory map through `PRIVDEFENA`.
 Unprivileged task code only sees the programmed user regions.
+The MPU is reprogrammed whenever dispatch crosses to a different immutable
+domain map. Tasks sharing the active domain map switch without rewriting
+domain/shared MPU authority regions; only the private stack slot follows the
+scheduled task.
 
 ## Domains
 
@@ -198,10 +204,12 @@ It is advisable to use more than a single domain only when there is a real fault
 ```c
 RK_DECLARE_DOMAIN(controlDomain, controlRam, 4096U)
 RK_DECLARE_DOMAIN_TASK(controlHandle, ControlTask)
+RK_DECLARE_DOMAIN_TASK_STACK(controlStack, 256U)
 
 kDomainInit(&controlDomain, controlRam, sizeof(controlRam), "Control");
-kDomainTaskInit(&controlDomain, &controlHandle, ControlTask, RK_NO_ARGS,
-                "Control", 256U, CONTROL_PRIO, RK_PREEMPT);
+kTaskInitDomain(&controlHandle, ControlTask, RK_NO_ARGS, "Control",
+                controlStack, 256U, CONTROL_PRIO, RK_PREEMPT,
+                &controlDomain);
 ```
 
 And for each domain create its .c and .h, like in the provided example:
@@ -219,13 +227,13 @@ the domain implementation a normal C struct view:
 
 ```c
 RK_DECLARE_DOMAIN_RAM(RECORD_DOMAIN_RAM,
-    RK_DOMAIN_RAM_STACK(serverStack, 256U)
     RK_DOMAIN_RAM_MEMBER(RecordState, recordState)
     RK_DOMAIN_RAM_TASK_HANDLE(serverHandle)
 )
 
 RK_DECLARE_TYPED_DOMAIN(recordDomain, recordDomainRam,
                         RECORD_DOMAIN_RAM, 2048U)
+RK_DECLARE_DOMAIN_TASK_STACK(recordServerStack, 256U)
 
 RK_ERR RecordDomainBoot(RECORD_DOMAIN_EXPORTS *exportsPtr)
 {
@@ -239,7 +247,7 @@ RK_ERR RecordDomainBoot(RECORD_DOMAIN_EXPORTS *exportsPtr)
     }
 
     err = kTaskInitDomain(&ramPtr->serverHandle, RecordTask, ramPtr, "Record",
-                          ramPtr->serverStack, 256U, RECORD_TASK_PRIO,
+                          recordServerStack, 256U, RECORD_TASK_PRIO,
                           RK_PREEMPT, &recordDomain);
     if (err != RK_ERR_SUCCESS)
     {
@@ -275,7 +283,6 @@ static ULONG counter; // bang
 /* you must speak up: */
 RK_DECLARE_DOMAIN_RAM(RECORD_DOMAIN_RAM,
     RK_DOMAIN_RAM_MEMBER(ULONG, counter)
-    RK_DOMAIN_RAM_STACK(serverStack, RECORD_TASK_STACK_WORDS)
     RK_DOMAIN_RAM_MEMBER(RecordState, recordState)
     RK_DOMAIN_RAM_TASK_HANDLE(serverHandle)
 )

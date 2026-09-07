@@ -32,11 +32,11 @@
  * RK01 uses a small, explicit user map for unprivileged tasks:
  *
  * - Region 0 is executable/readable FLASH and is installed once in kMpuInit().
- * - Region 1 is the currently running task's domain RAM. A private one-task
- *   domain is used only for explicit isolated tasks and low-level callers.
- * - Region 2 is the shared RAM window used for cross-task handles and other
+ * - Region 1 is the currently active domain RAM authority window.
+ * - Region 2 is the currently running task's private stack.
+ * - Region 3 is the shared RAM window used for cross-task handles and other
  *   deliberately shared application state.
- * - Regions 3..7 are optional explicit shared regions mapped only into the
+ * - Regions 4..7 are optional explicit shared regions mapped only into the
  *   domains that opt into them.
  *
  * Privileged code runs with MPU_CTRL.PRIVDEFENA set, so kernel handlers and
@@ -50,6 +50,8 @@ extern BYTE __rk_flash_begin;
 extern BYTE __rk_flash_end;
 extern BYTE __rk_task_ram_begin;
 extern BYTE __rk_task_ram_end;
+extern BYTE __rk_task_stack_begin;
+extern BYTE __rk_task_stack_end;
 extern BYTE __rk_shared_ram_begin;
 extern BYTE __rk_shared_ram_end;
 
@@ -68,6 +70,7 @@ typedef struct RK_STRUCT_MPU_SHARED_RESERVATION
 } RK_MPU_SHARED_RESERVATION;
 
 static RK_TCB *RK_gMpuActiveTaskPtr;
+static RK_DOMAIN *RK_gMpuActiveDomainMapPtr;
 static volatile RK_BOOL RK_gMpuLayoutFinalized = RK_FALSE;
 static RK_MPU_DOMAIN_RESERVATION RK_gMpuDomainReservation[RK_NTHREADS];
 static RK_MPU_SHARED_RESERVATION RK_gMpuSharedReservation[RK_NTHREADS];
@@ -268,6 +271,8 @@ RK_BOOL kMpuTaskMemoryValid(RK_TASK_MEMORY const *const memoryPtr)
     ULONG stackBytes;
     UINTPTR poolBegin;
     UINTPTR poolEnd;
+    UINTPTR stackPoolBegin;
+    UINTPTR stackPoolEnd;
     UINTPTR regionBegin;
     UINTPTR regionEnd;
     UINTPTR sharedBegin;
@@ -283,23 +288,9 @@ RK_BOOL kMpuTaskMemoryValid(RK_TASK_MEMORY const *const memoryPtr)
         return (RK_FALSE);
     }
 
-    /* A protected task gets one task-RAM MPU region. Low-level callers with no
-     * explicit domain create the private domain used by kTaskInitIsolated(). */
-    if ((memoryPtr->regionBasePtr == NULL) ||
-        (memoryPtr->stackBasePtr == NULL))
+    if (memoryPtr->stackBasePtr == NULL)
     {
         return (RK_FALSE);
-    }
-
-    if (domainTask == RK_TRUE)
-    {
-        if ((memoryPtr->domainPtr->init != RK_TRUE) ||
-            (memoryPtr->regionBasePtr != memoryPtr->domainPtr->regionBasePtr) ||
-            (memoryPtr->regionBytes != memoryPtr->domainPtr->regionBytes) ||
-            (kMpuDomainMemoryValid(memoryPtr->domainPtr) == RK_FALSE))
-        {
-            return (RK_FALSE);
-        }
     }
 
     if ((memoryPtr->stackWords < RK_MIN_STACKSIZE) ||
@@ -311,8 +302,72 @@ RK_BOOL kMpuTaskMemoryValid(RK_TASK_MEMORY const *const memoryPtr)
 
     stackBytes = memoryPtr->stackWords * (ULONG)sizeof(RK_STACK);
 
-    /* The task arena is directly represented as an MPU region. Keep its shape
-     * compatible with ARMv7-M region rules. */
+    if ((stackBytes < 32UL) ||
+        (kMpuIsPowerOfTwo_(stackBytes) == RK_FALSE))
+    {
+        return (RK_FALSE);
+    }
+
+    poolBegin = (UINTPTR)&__rk_task_ram_begin;
+    poolEnd = (UINTPTR)&__rk_task_ram_end;
+    stackPoolBegin = (UINTPTR)&__rk_task_stack_begin;
+    stackPoolEnd = (UINTPTR)&__rk_task_stack_end;
+    stackBegin = (UINTPTR)memoryPtr->stackBasePtr;
+
+    if ((stackBegin & ((UINTPTR)stackBytes - 1U)) != 0U)
+    {
+        return (RK_FALSE);
+    }
+
+    if ((stackBegin < stackPoolBegin) || (stackBegin >= stackPoolEnd))
+    {
+        return (RK_FALSE);
+    }
+
+    if ((UINTPTR)stackBytes > (stackPoolEnd - stackBegin))
+    {
+        return (RK_FALSE);
+    }
+
+    stackEnd = stackBegin + (UINTPTR)stackBytes;
+    sharedBegin = (UINTPTR)&__rk_shared_ram_begin;
+    sharedEnd = (UINTPTR)&__rk_shared_ram_end;
+
+    if ((sharedEnd > sharedBegin) &&
+        (stackBegin < sharedEnd) &&
+        (stackEnd > sharedBegin))
+    {
+        return (RK_FALSE);
+    }
+
+    if (domainTask == RK_TRUE)
+    {
+        if ((memoryPtr->regionBasePtr == NULL) ||
+            (memoryPtr->domainPtr->init != RK_TRUE) ||
+            (memoryPtr->regionBasePtr != memoryPtr->domainPtr->regionBasePtr) ||
+            (memoryPtr->regionBytes != memoryPtr->domainPtr->regionBytes) ||
+            (kMpuDomainMemoryValid(memoryPtr->domainPtr) == RK_FALSE))
+        {
+            return (RK_FALSE);
+        }
+
+        regionBegin = (UINTPTR)memoryPtr->regionBasePtr;
+        regionEnd = regionBegin + (UINTPTR)memoryPtr->regionBytes;
+
+        if ((stackBegin < regionEnd) && (stackEnd > regionBegin))
+        {
+            return (RK_FALSE);
+        }
+
+        return (RK_TRUE);
+    }
+
+    if (memoryPtr->regionBasePtr == NULL)
+    {
+        return (RK_FALSE);
+    }
+
+    /* A private one-task arena is directly represented as an MPU region. */
     if ((memoryPtr->regionBytes < stackBytes) ||
         (memoryPtr->regionBytes < 32UL) ||
         (kMpuIsPowerOfTwo_(memoryPtr->regionBytes) == RK_FALSE))
@@ -320,12 +375,8 @@ RK_BOOL kMpuTaskMemoryValid(RK_TASK_MEMORY const *const memoryPtr)
         return (RK_FALSE);
     }
 
-    poolBegin = (UINTPTR)&__rk_task_ram_begin;
-    poolEnd = (UINTPTR)&__rk_task_ram_end;
     regionBegin = (UINTPTR)memoryPtr->regionBasePtr;
-    stackBegin = (UINTPTR)memoryPtr->stackBasePtr;
 
-    /* Region base must be naturally aligned to the region size. */
     if ((regionBegin & ((UINTPTR)memoryPtr->regionBytes - 1U)) != 0U)
     {
         return (RK_FALSE);
@@ -342,11 +393,7 @@ RK_BOOL kMpuTaskMemoryValid(RK_TASK_MEMORY const *const memoryPtr)
     }
 
     regionEnd = regionBegin + (UINTPTR)memoryPtr->regionBytes;
-    sharedBegin = (UINTPTR)&__rk_shared_ram_begin;
-    sharedEnd = (UINTPTR)&__rk_shared_ram_end;
 
-    /* Shared RAM is exposed through its own MPU region. Domain RAM must not
-     * overlap it, otherwise the domain region would widen access. */
     if ((sharedEnd > sharedBegin) &&
         (regionBegin < sharedEnd) &&
         (regionEnd > sharedBegin))
@@ -364,16 +411,7 @@ RK_BOOL kMpuTaskMemoryValid(RK_TASK_MEMORY const *const memoryPtr)
         return (RK_FALSE);
     }
 
-    stackEnd = stackBegin + (UINTPTR)stackBytes;
-
-    /* Private task arenas keep the stack at the region top. Domain tasks can
-     * have several stacks inside one shared address space. */
-    if ((domainTask != RK_TRUE) && (stackEnd != regionEnd))
-    {
-        return (RK_FALSE);
-    }
-
-    return (RK_TRUE);
+    return ((stackEnd == regionEnd) ? RK_TRUE : RK_FALSE);
 }
 
 RK_BOOL kMpuDomainMemoryValid(RK_DOMAIN const *const domainPtr)
@@ -694,6 +732,13 @@ static RK_BOOL kMpuTaskDataRangeValid_(RK_TCB const *const taskPtr,
         return (RK_TRUE);
     }
 
+    if (kMpuRangeWithin_(begin, end, taskPtr->stackBufPtr,
+                         taskPtr->stackSize *
+                         (ULONG)sizeof(RK_STACK)) == RK_TRUE)
+    {
+        return (RK_TRUE);
+    }
+
     if ((sharedEnd > sharedBegin) &&
         (begin >= sharedBegin) &&
         (end <= sharedEnd))
@@ -828,7 +873,9 @@ static RK_BOOL kMpuTaskStackOverlapsLive_(RK_TCB const *const skipTaskPtr,
     UINTPTR const stackBytes = (UINTPTR)stackWords * sizeof(RK_STACK);
     UINTPTR const stackEnd = stackBegin + stackBytes;
 
-    if ((domainPtr == NULL) || (stackBasePtr == NULL) ||
+    K_UNUSE(domainPtr);
+
+    if ((stackBasePtr == NULL) ||
         (stackWords > (RK_ULONG_MAX / (ULONG)sizeof(RK_STACK))) ||
         (stackEnd < stackBegin))
     {
@@ -840,8 +887,8 @@ static RK_BOOL kMpuTaskStackOverlapsLive_(RK_TCB const *const skipTaskPtr,
         RK_TCB const *const taskPtr = RK_gTaskHandleByPid[idx];
 
         if ((taskPtr == NULL) || (taskPtr == skipTaskPtr) ||
-            (taskPtr->init != RK_TRUE) || (taskPtr->domainPtr != domainPtr) ||
-            (taskPtr->stackBufPtr == NULL) || (taskPtr->stackSize == 0UL))
+            (taskPtr->init != RK_TRUE) || (taskPtr->stackBufPtr == NULL) ||
+            (taskPtr->stackSize == 0UL))
         {
             continue;
         }
@@ -1063,6 +1110,9 @@ static RK_ERR kMpuLayoutValidateSharedReservations_(VOID)
 static RK_ERR kMpuLayoutValidateTask_(RK_TCB const *const taskPtr)
 {
     RK_TASK_MEMORY memory;
+    RK_BOOL const privateDomainTask =
+        ((taskPtr != NULL) && (taskPtr->domainPtr == &taskPtr->privateDomain)) ?
+        RK_TRUE : RK_FALSE;
 
     if ((taskPtr == NULL) || (taskPtr->init != RK_TRUE))
     {
@@ -1103,10 +1153,16 @@ static RK_ERR kMpuLayoutValidateTask_(RK_TCB const *const taskPtr)
     memory.regionBytes = taskPtr->taskMemoryBytes;
     memory.stackBasePtr = taskPtr->stackBufPtr;
     memory.stackWords = taskPtr->stackSize;
-    memory.domainPtr = taskPtr->domainPtr;
+    memory.domainPtr = (privateDomainTask == RK_TRUE) ? NULL :
+                       taskPtr->domainPtr;
 
     if ((kMpuDomainReserved_(taskPtr->domainPtr) != RK_TRUE) ||
-        (kMpuTaskMemoryValid(&memory) == RK_FALSE) ||
+        (kMpuTaskMemoryValid(&memory) == RK_FALSE))
+    {
+        return (RK_ERR_INVALID_OBJ);
+    }
+
+    if ((privateDomainTask != RK_TRUE) &&
         (kMpuDomainSharedMappingsValid_(taskPtr->domainPtr) == RK_FALSE))
     {
         return (RK_ERR_INVALID_OBJ);
@@ -1350,7 +1406,6 @@ RK_ERR kMpuTaskMemoryReserve(RK_TCB *const taskPtr,
 
         taskPtr->privateDomain.init = RK_TRUE;
         domainPtr = &taskPtr->privateDomain;
-        taskMemory.domainPtr = domainPtr;
     }
 
     if (kMpuDomainReserved_(domainPtr) != RK_TRUE)
@@ -1523,6 +1578,7 @@ VOID kMpuInit(VOID)
     RK_REG_SCB_SHCSR |= RK_SCB_SHCSR_MEMFAULTENA;
     RK_REG_MPU_CTRL = RK_MPU_CTRL_PRIVDEFENA | RK_MPU_CTRL_ENABLE;
     RK_gMpuActiveTaskPtr = NULL;
+    RK_gMpuActiveDomainMapPtr = NULL;
 
     RK_DSB
     RK_ISB
@@ -1531,6 +1587,10 @@ VOID kMpuInit(VOID)
 VOID kMpuLoadRunTask(VOID)
 {
     RK_TCB *const taskPtr = RK_gRunPtr;
+    RK_BOOL const sameDomainMap =
+        ((taskPtr != NULL) &&
+         (taskPtr->domainPtr == RK_gMpuActiveDomainMapPtr)) ?
+        RK_TRUE : RK_FALSE;
 
     if (taskPtr == NULL)
     {
@@ -1538,7 +1598,7 @@ VOID kMpuLoadRunTask(VOID)
     }
 
     /* PendSV/startup may ask to load the same task repeatedly. Avoid rewriting
-     * MPU registers when the active per-task map is already correct. */
+     * MPU registers when the active task map is already correct. */
     if (taskPtr == RK_gMpuActiveTaskPtr)
     {
         return;
@@ -1546,23 +1606,45 @@ VOID kMpuLoadRunTask(VOID)
 
     RK_DSB
 
-    /* Region 0 is the static FLASH region. Regions 1..7 are per-task entries
-     * saved in the TCB; disabled slots are explicitly cleared to avoid stale
-     * access from a previous task. */
-    for (UINT regionNumber = 1U; regionNumber < RK_MPU_N_REGIONS;
-         regionNumber++)
+    if (sameDomainMap != RK_TRUE)
     {
-        RK_MPU_REGION const *const regionPtr =
-            &taskPtr->mpuRegion[regionNumber];
-
-        RK_REG_MPU_RNR = regionNumber;
-        RK_REG_MPU_RASR = 0UL;
-
-        if (regionPtr->rasr != 0UL)
+        /* Region 0 is static FLASH. Region 2 is task-private stack. The
+         * remaining slots form the immutable domain authority map. */
+        for (UINT regionNumber = 1U; regionNumber < RK_MPU_N_REGIONS;
+             regionNumber++)
         {
-            RK_REG_MPU_RBAR = regionPtr->rbar;
-            RK_REG_MPU_RASR = regionPtr->rasr;
+            RK_MPU_REGION const *regionPtr;
+
+            if (regionNumber == RK_MPU_REGION_TASK_STACK)
+            {
+                continue;
+            }
+
+            regionPtr = &taskPtr->mpuRegion[regionNumber];
+
+            RK_REG_MPU_RNR = regionNumber;
+            RK_REG_MPU_RASR = 0UL;
+
+            if (regionPtr->rasr != 0UL)
+            {
+                RK_REG_MPU_RBAR = regionPtr->rbar;
+                RK_REG_MPU_RASR = regionPtr->rasr;
+            }
         }
+
+        RK_gMpuActiveDomainMapPtr = taskPtr->domainPtr;
+    }
+
+    RK_MPU_REGION const *const stackRegionPtr =
+        &taskPtr->mpuRegion[RK_MPU_REGION_TASK_STACK];
+
+    RK_REG_MPU_RNR = RK_MPU_REGION_TASK_STACK;
+    RK_REG_MPU_RASR = 0UL;
+
+    if (stackRegionPtr->rasr != 0UL)
+    {
+        RK_REG_MPU_RBAR = stackRegionPtr->rbar;
+        RK_REG_MPU_RASR = stackRegionPtr->rasr;
     }
 
     RK_gMpuActiveTaskPtr = taskPtr;

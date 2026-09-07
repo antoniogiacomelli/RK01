@@ -40,7 +40,6 @@ typedef struct
 } RecordState;
 
 RK_DECLARE_DOMAIN_RAM(RECORD_DOMAIN_RAM,
-    RK_DOMAIN_RAM_STACK(serverStack, RECORD_TASK_STACK_WORDS)
     RK_DOMAIN_RAM_MEMBER(RecordState, recordState)
     RK_DOMAIN_RAM_TASK_HANDLE(serverHandle)
 )

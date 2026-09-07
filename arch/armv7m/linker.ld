@@ -8,7 +8,7 @@
 /******************************************************************************/
 
 ENTRY(Reset_Handler)
-_Min_Heap_Size  = 0x00000200; /* u can use the heap to place partition pools */
+_Min_Heap_Size  = 0x00000100; /* minimum newlib heap reserve; RK01 uses static pools */
 _Min_Stack_Size = 0x00000800; /* required amount of stack */
 /* Define memory layout */
 MEMORY
@@ -72,7 +72,6 @@ SECTIONS
     . = ALIGN(8);
     __rk_app_domain_bss_begin = .;
     *(.rk_app_ram*)
-    *(.rk_task_stack*)
     *app/src/*.o(.bss* .sbss* COMMON)
     */app/src/*.o(.bss* .sbss* COMMON)
     *app/examples/*.o(.bss* .sbss* COMMON)
@@ -82,8 +81,6 @@ SECTIONS
     ASSERT((__rk_app_domain_bss_end - __rk_app_domain_begin) <= 0x4000, "RK implicit application domain exceeds 16K");
     . = __rk_app_domain_begin + 0x4000;
     __rk_app_domain_end = .;
-    __rk_task_stack_begin = __rk_app_domain_begin;
-    __rk_task_stack_end = __rk_app_domain_bss_end;
   } > TASK_RAM
 
   .rk_domain_ram (NOLOAD) :
@@ -95,6 +92,15 @@ SECTIONS
     *(.rk_task_ram*)
     . = ALIGN(8);
     __rk_domain_ram_end = .;
+  } > TASK_RAM
+
+  .rk_task_stack (NOLOAD) :
+  {
+    . = ALIGN(32);
+    __rk_task_stack_begin = .;
+    KEEP(*(.rk_task_stack*))
+    . = ALIGN(32);
+    __rk_task_stack_end = .;
   } > TASK_RAM
 
   .rk_task_noinit (NOLOAD) :
