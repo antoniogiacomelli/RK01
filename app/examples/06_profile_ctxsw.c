@@ -30,7 +30,7 @@
 #define PROFILE_DURATION_MS (10000UL)
 #endif
 
-#define PROFILE_PENDSV_COMP_CYCLES (7UL)
+#define PROFILE_PENDSV_COMP_EST_CYCLES (7UL)
 #define STACKSIZE (128U)
 #define DOMAIN_BYTES (1024U)
 #define PROFILE_RUN_EVENT RK_EVENT_1
@@ -119,10 +119,10 @@ static VOID ProfileCycleCounterEnable_(VOID)
     RK_PROFILE_DWT_CTRL |= RK_PROFILE_DWT_CTRL_CYCCNTENA;
 }
 
-static ULONG ProfileAdjustedCycles_(ULONG const rawCycles)
+static ULONG ProfileEstimatedAdjustedCycles_(ULONG const rawCycles)
 {
-    return ((rawCycles > PROFILE_PENDSV_COMP_CYCLES)
-                ? (rawCycles - PROFILE_PENDSV_COMP_CYCLES)
+    return ((rawCycles > PROFILE_PENDSV_COMP_EST_CYCLES)
+                ? (rawCycles - PROFILE_PENDSV_COMP_EST_CYCLES)
                 : 0UL);
 }
 
@@ -157,12 +157,12 @@ static VOID ProfileStatsReset_(ProfileStats *const statsPtr)
     statsPtr->rawMax = 0UL;
 }
 
-static VOID ProfileRecordCtxSwitch_(ProfileStats *const statsPtr)
-{
 #if (RK_CONF_PROFILE_PENDSV == 1)
-    ULONG const rawCycles = rkProfilePendSvCycles;
-
-    if (rkProfilePendSvSamples == 0UL)
+static VOID ProfileRecordCtxSwitch_(ProfileStats *const statsPtr,
+                                    ULONG const rawCycles,
+                                    ULONG const sampleTotal)
+{
+    if (sampleTotal == 0UL)
     {
         return;
     }
@@ -177,25 +177,28 @@ static VOID ProfileRecordCtxSwitch_(ProfileStats *const statsPtr)
         statsPtr->rawMax = rawCycles;
     }
     statsPtr->sampleCount++;
-#else
-    K_UNUSE(statsPtr);
-#endif
 }
+#endif
 
 static VOID ProfileRecordIfActive_(VOID)
 {
-    kPreemptDisable();
+#if (RK_CONF_PROFILE_PENDSV == 1)
+    ULONG const rawCycles = rkProfilePendSvCycles;
+    ULONG const sampleTotal = rkProfilePendSvSamples;
+
     if (profilePhase == PROFILE_PHASE_ACTIVE)
     {
-        ProfileRecordCtxSwitch_(&profileStats);
+        ProfileRecordCtxSwitch_(&profileStats, rawCycles, sampleTotal);
     }
-    kPreemptEnable();
+#endif
 }
 
 static VOID ProfileReport_(CHAR const *const classNamePtr,
                            ProfileStats const *const statsPtr,
                            RK_TICK const time0,
-                           RK_TICK const time1)
+                           RK_TICK const time1,
+                           ULONG const pendsvStart,
+                           ULONG const pendsvEnd)
 {
     ULONG const counter1 = statsPtr->counter1;
     ULONG const counter2 = statsPtr->counter2;
@@ -209,18 +212,25 @@ static VOID ProfileReport_(CHAR const *const classNamePtr,
     kPuts(classNamePtr);
     ProfilePrintField_(" elapsed_ms=", time1 - time0);
     ProfilePrintField_(" tick_ms=", RK_TICK_INTERVAL_MS);
-    ProfilePrintField_(" c1=", counter1);
-    ProfilePrintField_(" c2=", counter2);
+    ProfilePrintField_(" loops1=", counter1);
+    ProfilePrintField_(" loops2=", counter2);
     ProfilePrintField_(" samples=", samples);
     ProfilePrintField_(" raw_last=", last);
     ProfilePrintField_(" raw_min=", min);
     ProfilePrintField_(" raw_max=", max);
-    ProfilePrintField_(" adj_last=", ProfileAdjustedCycles_(last));
-    ProfilePrintField_(" adj_min=", ProfileAdjustedCycles_(min));
-    ProfilePrintField_(" adj_max=", ProfileAdjustedCycles_(max));
+    ProfilePrintField_(" est_comp=", PROFILE_PENDSV_COMP_EST_CYCLES);
+    ProfilePrintField_(" est_adj_last=",
+                       ProfileEstimatedAdjustedCycles_(last));
+    ProfilePrintField_(" est_adj_min=",
+                       ProfileEstimatedAdjustedCycles_(min));
+    ProfilePrintField_(" est_adj_max=",
+                       ProfileEstimatedAdjustedCycles_(max));
 #if (RK_CONF_PROFILE_PENDSV == 1)
-    ProfilePrintField_(" pendsv_samples=", rkProfilePendSvSamples);
+    ProfilePrintField_(" pendsv_delta=", pendsvEnd - pendsvStart);
+    ProfilePrintField_(" pendsv_total=", pendsvEnd);
 #else
+    K_UNUSE(pendsvStart);
+    K_UNUSE(pendsvEnd);
     kPuts(" pendsv=disabled");
 #endif
     kPuts("\r\n");
@@ -257,10 +267,15 @@ static VOID ProfileRunPhase_(VOID)
 {
     RK_TICK time0;
     RK_TICK time1;
+    ULONG pendsvStart = 0UL;
+    ULONG pendsvEnd = 0UL;
 
     ProfileWaitParked_();
     ProfileStatsReset_(&profileStats);
     profileParkMask = 0UL;
+#if (RK_CONF_PROFILE_PENDSV == 1)
+    pendsvStart = rkProfilePendSvSamples;
+#endif
     profilePhase = PROFILE_PHASE_ACTIVE;
     RK_BARRIER
     AppCheck_(kEventSet(profileTask1Handle, PROFILE_RUN_EVENT));
@@ -269,13 +284,17 @@ static VOID ProfileRunPhase_(VOID)
     time0 = kTickGetMs();
     AppCheck_(kSleep(RK_MS_TO_TICKS(PROFILE_DURATION_MS)));
     time1 = kTickGetMs();
+#if (RK_CONF_PROFILE_PENDSV == 1)
+    pendsvEnd = rkProfilePendSvSamples;
+#endif
 
     profilePhase = PROFILE_PHASE_IDLE;
     RK_BARRIER
     AppCheck_(kEventSet(profileTask1Handle, PROFILE_RUN_EVENT));
     AppCheck_(kEventSet(profileTask2Handle, PROFILE_RUN_EVENT));
     ProfileWaitParked_();
-    ProfileReport_(PROFILE_CLASS_NAME, &profileStats, time0, time1);
+    ProfileReport_(PROFILE_CLASS_NAME, &profileStats, time0, time1,
+                   pendsvStart, pendsvEnd);
 }
 
 static VOID ProfileWorkerLoop_(ULONG const workerMask,
