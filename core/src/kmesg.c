@@ -10,7 +10,7 @@
 /*
  * File intent:
  *   Asynchronous message primitives. The legacy direct path transfers
- *   application-owned RK_MESG buffers by reference in memory visible to both
+ *   application-owned RK_MESG buffers by reference between same-domain
  *   endpoints. The copy path transfers task-addressed payloads by value through
  *   a bounded kernel-owned RK_MESG pool, which is safe across MPU domain
  *   boundaries.
@@ -19,8 +19,7 @@
  *   - A message buffer is either free, allocated, queued or received.
  *   - A non-free message has one logical owner for cleanup and priority
  *     ceiling accounting.
- *   - Direct by-reference transfer requires receiver access to the message
- *     pool memory under MPU.
+ *   - Direct by-reference transfer requires same-domain endpoints under MPU.
  *   - Copy-message RK_MESG blocks are freed by the kernel after delivery or
  *     cleanup.
  *   - A blocked copy receiver is woken only if the payload fits its advertised

@@ -293,6 +293,7 @@ help:
 	    '  make -j4 APP_EXAMPLE=03-watchdog' \
 	    '  make -j4 APP_EXAMPLE=04-sysmon' \
 	    '  make -j4 APP_EXAMPLE=05-profile-preempt EXTRA_DEFS="-DNDEBUG -DRK_CONF_SYSTICK_DIV=1000"' \
+	    '  make -j4 APP_EXAMPLE=05-profile-preempt EXTRA_DEFS="-DNDEBUG -DRK_CONF_SYSTICK_DIV=1000 -DPROFILE_PREEMPT_CLASS=PROFILE_PREEMPT_CLASS_PER_TASK_DOMAIN"' \
 	    '  make -j4 APP_EXAMPLE=06-profile-ctxsw EXTRA_DEFS="-DNDEBUG"' \
 	    '  make -j4 APP_EXAMPLE=06-profile-ctxsw EXTRA_DEFS="-DNDEBUG -DPROFILE_CTXSW_CLASS=PROFILE_CTXSW_CLASS_INTER_DOMAIN"' \
 	    '  make -j4 APP_EXAMPLE=99-showcase' \

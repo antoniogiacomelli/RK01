@@ -1565,11 +1565,9 @@ RK_ERR kMesgQueueBroadcastRecv(RK_HANDLE const queueHandle,
  * receiver obtains the message pointer with kMesgWait() and returns it to the
  * originating pool with kMesgFree().
  *
- * With the MPU enabled, by-reference direct async messages are valid only when
- * sender and receiver can both access the message pool memory. Same-domain or
- * explicitly shared memory is the normal fit. Use kMesgQueueSend() /
- * kMesgQueueRecv() when a queue is the shared rendezvous point and payloads
- * should be copied. Use
+ * With the MPU enabled, by-reference direct async messages are same-domain
+ * only. Use kMesgQueueSend() / kMesgQueueRecv() when a queue is the shared
+ * rendezvous point and payloads should be copied. Use
  * kMesgSendCopy() / kMesgRecvCopy() when the receiver task itself is the
  * endpoint: the kernel allocates an internal RK_MESG block, copies the payload,
  * accounts for delivery, and frees the internal block after receive or cleanup.

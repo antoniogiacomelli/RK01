@@ -3,29 +3,31 @@
 RK01 is the RK0 kernel line with a Cortex-M MPU and an explicit kernel/user
 boundary.
 
-RK0 remains a flat real-time executive; with all the benefits this provides for real-time, and drawbacks when it comes to corruption/fault containment.
+RK0 remains a flat real-time executive, with the real-time benefits and the
+corruption/fault-containment drawbacks that come with that model.
 
-RK01 keeps the RK0 real-time model, but changes what happens when ordinary task code is wrong: task code runs
-unprivileged, kernel services are reached _through a system call, and domain-owned
-writable state is enforced by the MPU._
+RK01 keeps the RK0 real-time model, but changes what happens when ordinary task
+code is wrong: task code runs unprivileged, kernel services are reached through
+system calls, and domain-owned writable state is enforced by the MPU.
 
-This adds substantial complexity to the design and to the analysis. The gain is with bounded memory regions a
-fault can be confined. Still, recovering from that fault is application-specific.
+This adds substantial complexity to the design and to the analysis. The gain is
+that bounded memory regions can confine a fault. Recovering from that fault is
+still application-specific.
 
-This repository is the first public RK01 source drop. 
+This repository is the first public RK01 source drop.
 
 ## Major Changes
 
-RK01 is not a 'better' RK0; neither an embedded RTOS trying to be a GPOS. I
-t is still one statically linked firmware image for a microcontroller. The kernel, startup
+RK01 is not a "better RK0" or an embedded RTOS trying to be a GPOS. It is still
+one statically linked firmware image for a microcontroller. The kernel, startup
 code, board port, privileged service tasks and build are trusted. Ordinary
-application tasks are treated as possibly defective after dispatch -- and if it fails, 
-it will be confined and then handled the best it can. 
+application tasks are treated as possibly defective after dispatch. If one
+fails, the fault is confined and then handled as well as the application can.
 
 Immediate differences from RK0:
 
-|Aspect|K0|K01|
-|---|---|---|
+| Aspect | RK0 | RK01 |
+| --- | --- | --- |
 | Kernel boundary | Kernel and application code share privileged address space. | Ordinary tasks run with no privilege at all. Kernel services are 'supervisor calls' -- software interrupts. |
 | Memory protection | Cooperative discipline. | Cortex-M MPU regions protect kernel RAM, domain RAM and shared apertures. |
 | Application grouping | Tasks can directly share C globals. | Tasks share memory only inside their domain, global shared RAM or explicit shared memory. |
@@ -35,7 +37,7 @@ Immediate differences from RK0:
 | Fault handling | Serious task faults usually become system faults. | Unprivileged MemManage faults can be contained, marked `FAULT_PENDING` and cleaned by PostProc. |
 
 
--`RK0` is flat trusted real-time firmware; 
+- `RK0` is flat trusted real-time firmware;
 - `RK01` is RK0-style real-time with user space/kernel space.
 
 ## Architecture Sketch
@@ -56,20 +58,24 @@ Its protection boundary is practical and local:
   PostProc.
 
 The trusted base remains the kernel, startup code, board port, privileged
-service tasks, build, DMA setup, debug access and physical device access. 
+service tasks, build, DMA setup, debug access and physical device access.
 
 RK01 focuses on preventing defective unprivileged task code from corrupting kernel
 RAM and another domain's writable state or privileged service state.
 
 ## Delivered Supported Targets
 
-RK0 sweet spot are Cortex M0, M3. M4F when FPU work is intense. M7 is probably too much.
+RK0's sweet spot is Cortex-M0, M3 and M4F when FPU work is intense. M7 is
+probably too much.
 
-RK01 sweet spot is M4F and M7 chips with MPU. ARMv8M chips are supported but would be underused.
+RK01's sweet spot is M4F and M7 chips with MPU. ARMv8M chips are supported but
+would be underused.
 
-This repo delivers a build environment to run on Nucleo STM32F401RE M4F, and a QEMU environment for MPS2 Cortex-M33. RK01 does not use the _Trusted Environment_ .
+This repo delivers a build environment to run on Nucleo STM32F401RE M4F, and a
+QEMU environment for MPS2 Cortex-M33. RK01 does not use the _Trusted
+Environment_.
 
-Although Cortex-M0+ chips have MPUs, RK01 does not support ARMv6M. 
+Although Cortex-M0+ chips have MPUs, RK01 does not support ARMv6M.
 
 
 ## Repository Layout
@@ -90,15 +96,17 @@ Although Cortex-M0+ chips have MPUs, RK01 does not support ARMv6M.
 
 ## Build Requirements
 
-- Unlike RK0, which old-fashioned, stays aligned with C99, RK01 requires at least C11.C11 introduces useful memory-alignment features that would otherwise be cumbersome or infeasible in C99.
-- 
+- Unlike RK0, which stays aligned with C99, RK01 requires at least C11. C11
+  introduces memory-alignment features that would otherwise be cumbersome or
+  infeasible in C99.
+
 Required for firmware builds:
 
 - GNU Make (C11/GNU11)
 - `arm-none-eabi-gcc`
 - `arm-none-eabi-objcopy`
 - `arm-none-eabi-size`
-- 
+
 ## Quick Start
 
 Build the default STM32F401RE image:
@@ -131,7 +139,14 @@ Build with source-stepping-friendly optimisation:
 make -j4 ARCH=armv7m PLATFORM=stm32f401re OPT=-Og
 make -j4 ARCH=armv8m PLATFORM=mps2-an505 OPT=-Og
 ```
- 
+
+Build the STM32F401RE preemption profiles with `RK_CONF_SYSTICK_DIV=1000`:
+
+```sh
+make -j4 ARCH=armv7m PLATFORM=stm32f401re APP_EXAMPLE=05-profile-preempt EXTRA_DEFS="-DNDEBUG -DRK_CONF_SYSTICK_DIV=1000"
+make -j4 ARCH=armv7m PLATFORM=stm32f401re APP_EXAMPLE=05-profile-preempt EXTRA_DEFS="-DNDEBUG -DRK_CONF_SYSTICK_DIV=1000 -DPROFILE_PREEMPT_CLASS=PROFILE_PREEMPT_CLASS_PER_TASK_DOMAIN"
+```
+
 ## Execution Model
 
 Startup remains simple: `Reset_Handler` enters `main()`, which calls
@@ -304,10 +319,12 @@ dispatcher validates:
 
 ![User API call through SVC](docs/readme_svc_call.svg)
 
-Kernel objects representation and usage is probably the most radical change when compared to RK0.
-RK0 tried to keep objects creation and access the less opaque the less indirect possible. In RK01 objects are fully
-opaque -- they are indeed a _number_ the kernel resolves. Every kernel object is a `RK_HANDLE` 'sub-class'; objects
-slots are allocated and deallocated from pools which maximum size is declared on compile time.
+Kernel object representation and usage are probably the most radical changes
+compared with RK0. RK0 tried to keep object creation and access as direct as
+possible. In RK01, objects are fully opaque: a handle is a number the kernel
+resolves. Every kernel object is an `RK_HANDLE` subclass; object slots are
+allocated and deallocated from pools whose maximum size is declared at compile
+time.
 
 ```c
 /* ready sema is visible for every task in this domain */
@@ -325,13 +342,13 @@ Start with the RK0 interaction, then apply the RK01 memory rule.
 
 | Interaction | RK01 rule |
 | --- | --- |
-| Shared memory | Direct load/store is allowed only where the MPU maps the same RAM into the participating tasks. Coordinate access for shared-memory between domains. |
-| Asynchronous direct message | Transfers message ownership. By-reference messages require memory both sides can access; copied async messages can cross non-shared domain boundaries. Priority ceilings apply to this ownership contract. |
+| Shared memory | Direct load/store is allowed only where the MPU maps the same RAM into the participating tasks. Coordinate shared-memory access between domains. |
+| Asynchronous direct message | Transfers message ownership. By-reference direct messages are same-domain only; copied async messages can cross non-shared domain boundaries. Priority ceilings apply to the by-reference ownership contract. |
 | Synchronous send/receive | Blocking copy rendezvous: the sender waits until the receiver copies the payload. There is no reply and no receiver priority substitution. |
 | Synchronous call/reply | Extended rendezvous: the caller waits for a reply and the server runs at caller effective priority while the call is queued or active. Syscall validation lets copied payloads cross non-shared domain boundaries. |
 | Cross-domain notification | Task events or indirect messages. |
-| Cross-domain payload through indirect messages | Message queues and mailboxes need to be declared with global scope so they can be seen by tasks of different domains.
-| Named message-passing synchronous send/receive, synchronous call/reply or task-addressed copy messages. |
+| Cross-domain payload through indirect messages | Message queues and mailboxes need global scope so tasks in different domains can resolve the same handle. |
+| Named task-backed message passing | Synchronous send/receive, synchronous call/reply and task-addressed copy messages copy payloads through the syscall boundary. |
 | Latest value | MRM is domain-local because leases are pointers. Use copied payloads or a small `RK_SHARED_MEM` snapshot across domains. |
 
 RK01 deliberately keeps both shared-state services and message-passing services. _It does not force every local interaction into an actor model, you know better._
