@@ -24,7 +24,8 @@ it will be confined and then handled the best it can.
 
 Immediate differences from RK0:
 
-
+|Aspect|K0|K01|
+|---|---|---|
 | Kernel boundary | Kernel and application code share privileged address space. | Ordinary tasks run with no privilege at all. Kernel services are 'supervisor calls' -- software interrupts. |
 | Memory protection | Cooperative discipline. | Cortex-M MPU regions protect kernel RAM, domain RAM and shared apertures. |
 | Application grouping | Tasks can directly share C globals. | Tasks share memory only inside their domain, global shared RAM or explicit shared memory. |
