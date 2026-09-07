@@ -918,12 +918,85 @@ static RK_BOOL kMpuDomainIsTaskPrivate_(RK_DOMAIN const *const domainPtr,
 }
 
 static RK_BOOL
-kMpuAuthorityRegionOverlapsLiveStack_(RK_DOMAIN const *const domainPtr,
+kMpuDomainIsExactPrivateStack_(RK_DOMAIN const *const domainPtr,
+                               BYTE const *const regionBasePtr,
+                               ULONG const regionBytes)
+{
+    RK_TCB const *ownerPtr = NULL;
+    ULONG stackBytes;
+
+    if (domainPtr == NULL)
+    {
+        return (RK_FALSE);
+    }
+
+    for (UINT idx = 0U; idx < RK_NTHREADS; idx++)
+    {
+        RK_TCB const *const taskPtr = RK_gTaskHandleByPid[idx];
+
+        if ((taskPtr == NULL) || (taskPtr->init != RK_TRUE) ||
+            (taskPtr->domainPtr != domainPtr))
+        {
+            continue;
+        }
+
+        if (ownerPtr != NULL)
+        {
+            return (RK_FALSE);
+        }
+
+        ownerPtr = taskPtr;
+    }
+
+    if ((ownerPtr == NULL) || (domainPtr != &ownerPtr->privateDomain) ||
+        (domainPtr->taskCount != 1UL) || (ownerPtr->stackBufPtr == NULL) ||
+        (ownerPtr->stackSize == 0UL) ||
+        (ownerPtr->stackSize > (RK_ULONG_MAX / (ULONG)sizeof(RK_STACK))))
+    {
+        return (RK_FALSE);
+    }
+
+    stackBytes = ownerPtr->stackSize * (ULONG)sizeof(RK_STACK);
+
+    return (((regionBasePtr == (BYTE const *)ownerPtr->stackBufPtr) &&
+             (regionBytes == stackBytes) &&
+             ((BYTE const *)domainPtr->regionBasePtr == regionBasePtr) &&
+             (domainPtr->regionBytes == regionBytes)) ?
+            RK_TRUE : RK_FALSE);
+}
+
+static RK_BOOL
+kMpuAuthorityRegionOverlapsTaskStack_(RK_DOMAIN const *const domainPtr,
                                       BYTE const *const regionBasePtr,
                                       ULONG const regionBytes)
 {
-    /* A domain/shared authority window must not expose a live task stack. The
-     * isolated-task private domain is the one intentional self-overlap. */
+    RK_BOOL const exactPrivateStack =
+        kMpuDomainIsExactPrivateStack_(domainPtr, regionBasePtr, regionBytes);
+    UINTPTR const stackPoolBegin = (UINTPTR)&__rk_task_stack_begin;
+    UINTPTR const stackPoolEnd = (UINTPTR)&__rk_task_stack_end;
+
+    /* A domain/shared authority window must not expose any allocated or future
+     * task stack. The isolated-task private domain is the one intentional
+     * exact self-overlap. */
+    if (stackPoolEnd < stackPoolBegin)
+    {
+        return (RK_TRUE);
+    }
+
+    if (stackPoolEnd > stackPoolBegin)
+    {
+        UINTPTR const stackPoolBytes = stackPoolEnd - stackPoolBegin;
+
+        if ((stackPoolBytes > (UINTPTR)RK_ULONG_MAX) ||
+            ((exactPrivateStack != RK_TRUE) &&
+             (kMpuRangesOverlap_(regionBasePtr, regionBytes,
+                                 (BYTE const *)stackPoolBegin,
+                                 (ULONG)stackPoolBytes) == RK_TRUE)))
+        {
+            return (RK_TRUE);
+        }
+    }
+
     for (UINT idx = 0U; idx < RK_NTHREADS; idx++)
     {
         RK_TCB const *const taskPtr = RK_gTaskHandleByPid[idx];
@@ -944,7 +1017,8 @@ kMpuAuthorityRegionOverlapsLiveStack_(RK_DOMAIN const *const domainPtr,
                                taskPtr->stackSize *
                                    (ULONG)sizeof(RK_STACK)) == RK_TRUE)
         {
-            if (kMpuDomainIsTaskPrivate_(domainPtr, taskPtr) == RK_TRUE)
+            if ((exactPrivateStack == RK_TRUE) &&
+                (kMpuDomainIsTaskPrivate_(domainPtr, taskPtr) == RK_TRUE))
             {
                 continue;
             }
@@ -1047,7 +1121,7 @@ static RK_ERR kMpuLayoutValidateDomainReservations_(VOID)
             return (RK_ERR_INVALID_PARAM);
         }
 
-        if (kMpuAuthorityRegionOverlapsLiveStack_(resPtr->domainPtr,
+        if (kMpuAuthorityRegionOverlapsTaskStack_(resPtr->domainPtr,
                                                   resPtr->regionBasePtr,
                                                   resPtr->regionBytes) ==
             RK_TRUE)
@@ -1137,7 +1211,7 @@ static RK_ERR kMpuLayoutValidateSharedReservations_(VOID)
             return (RK_ERR_INVALID_PARAM);
         }
 
-        if (kMpuAuthorityRegionOverlapsLiveStack_(NULL,
+        if (kMpuAuthorityRegionOverlapsTaskStack_(NULL,
                                                   resPtr->regionBasePtr,
                                                   resPtr->regionBytes) ==
             RK_TRUE)

@@ -148,8 +148,8 @@ state.
 ## Memory Model
 
 RK01 separates memory by privilege first and by domain ownership second. A
-task's effective MPU configuration combines its domain, private stack and
-explicitly granted shared-memory or peripheral regions.
+task's effective MPU configuration combines its domain, private stack, global
+shared RAM and any explicit shared-memory segments attached to that domain.
 
 ![STM32F401RE memory domains](docs/readme_memory_model.svg)
 
@@ -157,10 +157,10 @@ explicitly granted shared-memory or peripheral regions.
 | --- | --- |
 | Flash | User-readable and executable. On STM32F401RE this is `0x08000000..0x08040000`. |
 | FS_FLASH | STM32F401RE reserved flash at `0x08040000..0x08080000`, used by RKFS. Not user executable. |
-| Domain RAM | Writable only by tasks whose current MPU view maps that domain. |
+| Domain RAM | Writable only by tasks whose current MPU view maps that domain; ordinary task stacks live outside this window. |
 | Task stack RAM | Private stack storage mapped only for the active task that owns it. |
 | Global shared RAM | Small firmware-wide aperture mapped into ordinary tasks. |
-| Explicit shared memory | Boot-created shared segment attached only to selected domains. |
+| Explicit shared memory | Boot-created TASK_RAM segment attached only to selected domains. |
 | Kernel RAM | Privileged only. Contains TCBs, object pools, registries and privileged stacks. |
 
 Typical MPU slot intent:
@@ -231,7 +231,7 @@ RK_DECLARE_DOMAIN_RAM(RECORD_DOMAIN_RAM,
 )
 
 RK_DECLARE_TYPED_DOMAIN(recordDomain, recordDomainRam,
-                        RECORD_DOMAIN_RAM, 2048U)
+                        RECORD_DOMAIN_RAM, 1024U)
 RK_DECLARE_DOMAIN_TASK_STACK(recordServerStack, 256U)
 
 RK_ERR RecordDomainBoot(RECORD_DOMAIN_EXPORTS *exportsPtr)
@@ -262,7 +262,7 @@ RK_ERR RecordDomainBoot(RECORD_DOMAIN_EXPORTS *exportsPtr)
 `.rk_domain_ram`; it does not enumerate domain object files.
 
 - BOOT validation still enforces TASK_RAM placement, **power-of-two size, natural alignment,
-overlap checks, stack containment and topology finalisation before dispatch.**
+overlap checks, stack placement and separation, and topology finalisation before dispatch.**
 
 `DOMAIN_IMPL_SRCS` declares files should not define unexpected writable globals in sections like:
 ```

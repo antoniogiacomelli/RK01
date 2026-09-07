@@ -9,10 +9,14 @@
 
 /*
  * Profiling example 06: same-priority yield context switch test.
- * Reports same-domain and inter-domain dispatch classes separately.
+ * Build one dispatch class per binary so the PendSV sample stream is not mixed.
  *
  * Conditions matching the RK0 profiling page:
  *   make APP_EXAMPLE=06-profile-ctxsw FPU=OFF EXTRA_DEFS="-DNDEBUG"
+ *
+ * Inter-domain mode:
+ *   make APP_EXAMPLE=06-profile-ctxsw FPU=OFF \
+ *     EXTRA_DEFS="-DNDEBUG -DPROFILE_CTXSW_CLASS=PROFILE_CTXSW_CLASS_INTER_DOMAIN"
  */
 
 #include <kapi_domain.h>
@@ -25,13 +29,38 @@
 #ifndef PROFILE_DURATION_MS
 #define PROFILE_DURATION_MS (10000UL)
 #endif
+
 #define PROFILE_PENDSV_COMP_CYCLES (7UL)
 #define STACKSIZE (128U)
 #define DOMAIN_BYTES (1024U)
 #define PROFILE_RUN_EVENT RK_EVENT_1
+#define PROFILE_PARK_EVENT RK_EVENT_2
 #define PROFILE_PHASE_IDLE (0UL)
-#define PROFILE_PHASE_SAME_DOMAIN (1UL)
-#define PROFILE_PHASE_INTER_DOMAIN (2UL)
+#define PROFILE_PHASE_ACTIVE (1UL)
+#define PROFILE_WORKER_1_MASK (1UL << 0U)
+#define PROFILE_WORKER_2_MASK (1UL << 1U)
+#define PROFILE_WORKER_ALL_MASK (PROFILE_WORKER_1_MASK | PROFILE_WORKER_2_MASK)
+#define PROFILE_CTXSW_CLASS_SAME_DOMAIN (1U)
+#define PROFILE_CTXSW_CLASS_INTER_DOMAIN (2U)
+
+#ifndef PROFILE_CTXSW_CLASS
+#define PROFILE_CTXSW_CLASS PROFILE_CTXSW_CLASS_SAME_DOMAIN
+#endif
+
+#if ((PROFILE_CTXSW_CLASS != PROFILE_CTXSW_CLASS_SAME_DOMAIN) &&             \
+     (PROFILE_CTXSW_CLASS != PROFILE_CTXSW_CLASS_INTER_DOMAIN))
+#error "PROFILE_CTXSW_CLASS must be PROFILE_CTXSW_CLASS_SAME_DOMAIN or PROFILE_CTXSW_CLASS_INTER_DOMAIN"
+#endif
+
+#if (PROFILE_CTXSW_CLASS == PROFILE_CTXSW_CLASS_SAME_DOMAIN)
+#define PROFILE_CLASS_NAME "same-domain"
+#define PROFILE_TASK_1_NAME "S0"
+#define PROFILE_TASK_2_NAME "S1"
+#else
+#define PROFILE_CLASS_NAME "inter-domain"
+#define PROFILE_TASK_1_NAME "X0"
+#define PROFILE_TASK_2_NAME "X1"
+#endif
 
 #define RK_PROFILE_DEMCR (*(volatile ULONG *)0xE000EDFCUL)
 #define RK_PROFILE_DWT_CTRL (*(volatile ULONG *)0xE0001000UL)
@@ -54,20 +83,22 @@ typedef struct
     volatile ULONG rawMax;
 } ProfileStats;
 
-RK_DECLARE_TASK(sameTask1Handle, SameTask1, sameStack1, STACKSIZE)
-RK_DECLARE_TASK(sameTask2Handle, SameTask2, sameStack2, STACKSIZE)
-RK_DECLARE_TASK(reportTaskHandle, ReportTask, reportStack, STACKSIZE)
-
+#if (PROFILE_CTXSW_CLASS == PROFILE_CTXSW_CLASS_SAME_DOMAIN)
+RK_DECLARE_TASK(profileTask1Handle, ProfileTask1, profileStack1, STACKSIZE)
+RK_DECLARE_TASK(profileTask2Handle, ProfileTask2, profileStack2, STACKSIZE)
+#else
 RK_DECLARE_DOMAIN(crossDomain1, crossDomainRam1, DOMAIN_BYTES)
 RK_DECLARE_DOMAIN(crossDomain2, crossDomainRam2, DOMAIN_BYTES)
-RK_DECLARE_DOMAIN_TASK(crossTask1Handle, CrossTask1)
-RK_DECLARE_DOMAIN_TASK(crossTask2Handle, CrossTask2)
-RK_DECLARE_DOMAIN_TASK_STACK(crossStack1, STACKSIZE)
-RK_DECLARE_DOMAIN_TASK_STACK(crossStack2, STACKSIZE)
+RK_DECLARE_DOMAIN_TASK(profileTask1Handle, ProfileTask1)
+RK_DECLARE_DOMAIN_TASK(profileTask2Handle, ProfileTask2)
+RK_DECLARE_DOMAIN_TASK_STACK(profileStack1, STACKSIZE)
+RK_DECLARE_DOMAIN_TASK_STACK(profileStack2, STACKSIZE)
+#endif
+RK_DECLARE_TASK(reportTaskHandle, ReportTask, reportStack, STACKSIZE)
 
 static volatile ULONG profilePhase K_ALIGN(4) RK_SECTION_SHARED_BSS;
-static ProfileStats sameStats K_ALIGN(4) RK_SECTION_SHARED_BSS;
-static ProfileStats crossStats K_ALIGN(4) RK_SECTION_SHARED_BSS;
+static volatile ULONG profileParkMask K_ALIGN(4) RK_SECTION_SHARED_BSS;
+static ProfileStats profileStats K_ALIGN(4) RK_SECTION_SHARED_BSS;
 
 static VOID AppCheck_(RK_ERR const err)
 {
@@ -151,11 +182,23 @@ static VOID ProfileRecordCtxSwitch_(ProfileStats *const statsPtr)
 #endif
 }
 
+static VOID ProfileRecordIfActive_(VOID)
+{
+    kPreemptDisable();
+    if (profilePhase == PROFILE_PHASE_ACTIVE)
+    {
+        ProfileRecordCtxSwitch_(&profileStats);
+    }
+    kPreemptEnable();
+}
+
 static VOID ProfileReport_(CHAR const *const classNamePtr,
                            ProfileStats const *const statsPtr,
                            RK_TICK const time0,
                            RK_TICK const time1)
 {
+    ULONG const counter1 = statsPtr->counter1;
+    ULONG const counter2 = statsPtr->counter2;
     ULONG const samples = statsPtr->sampleCount;
     ULONG const last = statsPtr->rawLast;
     ULONG const min = statsPtr->rawMin;
@@ -166,8 +209,8 @@ static VOID ProfileReport_(CHAR const *const classNamePtr,
     kPuts(classNamePtr);
     ProfilePrintField_(" elapsed_ms=", time1 - time0);
     ProfilePrintField_(" tick_ms=", RK_TICK_INTERVAL_MS);
-    ProfilePrintField_(" c1=", statsPtr->counter1);
-    ProfilePrintField_(" c2=", statsPtr->counter2);
+    ProfilePrintField_(" c1=", counter1);
+    ProfilePrintField_(" c2=", counter2);
     ProfilePrintField_(" samples=", samples);
     ProfilePrintField_(" raw_last=", last);
     ProfilePrintField_(" raw_min=", min);
@@ -183,35 +226,68 @@ static VOID ProfileReport_(CHAR const *const classNamePtr,
     kPuts("\r\n");
 }
 
-static VOID ProfileWaitPhase_(ULONG const phase)
+static VOID ProfileParkWorker_(ULONG const workerMask)
 {
-    while (profilePhase != phase)
+    profileParkMask |= workerMask;
+    RK_BARRIER
+    AppCheck_(kEventSet(reportTaskHandle, PROFILE_PARK_EVENT));
+}
+
+static VOID ProfileWaitActive_(ULONG const workerMask)
+{
+    while (profilePhase != PROFILE_PHASE_ACTIVE)
     {
+        ProfileParkWorker_(workerMask);
         AppCheck_(kEventGet(PROFILE_RUN_EVENT, RK_OPT_EVENT_ANY,
                             NULL, RK_WAIT_FOREVER));
     }
 }
 
-static VOID ProfileRunPhase_(ULONG const phase,
-                             RK_TASK_HANDLE const task1Handle,
-                             RK_TASK_HANDLE const task2Handle,
-                             ProfileStats *const statsPtr,
-                             CHAR const *const classNamePtr)
+static VOID ProfileWaitParked_(VOID)
+{
+    while ((profileParkMask & PROFILE_WORKER_ALL_MASK) !=
+           PROFILE_WORKER_ALL_MASK)
+    {
+        AppCheck_(kEventGet(PROFILE_PARK_EVENT, RK_OPT_EVENT_ANY,
+                            NULL, RK_WAIT_FOREVER));
+    }
+}
+
+static VOID ProfileRunPhase_(VOID)
 {
     RK_TICK time0;
     RK_TICK time1;
 
-    ProfileStatsReset_(statsPtr);
-    profilePhase = phase;
-    AppCheck_(kEventSet(task1Handle, PROFILE_RUN_EVENT));
-    AppCheck_(kEventSet(task2Handle, PROFILE_RUN_EVENT));
+    ProfileWaitParked_();
+    ProfileStatsReset_(&profileStats);
+    profileParkMask = 0UL;
+    profilePhase = PROFILE_PHASE_ACTIVE;
+    RK_BARRIER
+    AppCheck_(kEventSet(profileTask1Handle, PROFILE_RUN_EVENT));
+    AppCheck_(kEventSet(profileTask2Handle, PROFILE_RUN_EVENT));
 
     time0 = kTickGetMs();
     AppCheck_(kSleep(RK_MS_TO_TICKS(PROFILE_DURATION_MS)));
     time1 = kTickGetMs();
 
     profilePhase = PROFILE_PHASE_IDLE;
-    ProfileReport_(classNamePtr, statsPtr, time0, time1);
+    RK_BARRIER
+    AppCheck_(kEventSet(profileTask1Handle, PROFILE_RUN_EVENT));
+    AppCheck_(kEventSet(profileTask2Handle, PROFILE_RUN_EVENT));
+    ProfileWaitParked_();
+    ProfileReport_(PROFILE_CLASS_NAME, &profileStats, time0, time1);
+}
+
+static VOID ProfileWorkerLoop_(ULONG const workerMask,
+                               volatile ULONG *const counterPtr)
+{
+    while (1)
+    {
+        ProfileWaitActive_(workerMask);
+        (*counterPtr)++;
+        kYield();
+        ProfileRecordIfActive_();
+    }
 }
 
 int main(void)
@@ -230,87 +306,42 @@ VOID kApplicationInit(VOID)
     ProfileCycleCounterEnable_();
     AppCheck_(kConsoleServiceInit());
 
+#if (PROFILE_CTXSW_CLASS == PROFILE_CTXSW_CLASS_INTER_DOMAIN)
     AppCheck_(kDomainInit(&crossDomain1, crossDomainRam1,
                           sizeof(crossDomainRam1), "X0"));
     AppCheck_(kDomainInit(&crossDomain2, crossDomainRam2,
                           sizeof(crossDomainRam2), "X1"));
 
-    AppCheck_(kTaskInit(&sameTask1Handle, SameTask1, RK_NO_ARGS, "S0",
-                        sameStack1, STACKSIZE, 2U, RK_PREEMPT));
-    AppCheck_(kTaskInit(&sameTask2Handle, SameTask2, RK_NO_ARGS, "S1",
-                        sameStack2, STACKSIZE, 2U, RK_PREEMPT));
-    AppCheck_(kTaskInitDomain(&crossTask1Handle, CrossTask1, RK_NO_ARGS,
-                              "X0", crossStack1, STACKSIZE, 2U, RK_PREEMPT,
-                              &crossDomain1));
-    AppCheck_(kTaskInitDomain(&crossTask2Handle, CrossTask2, RK_NO_ARGS,
-                              "X1", crossStack2, STACKSIZE, 2U, RK_PREEMPT,
-                              &crossDomain2));
+    AppCheck_(kTaskInitDomain(&profileTask1Handle, ProfileTask1, RK_NO_ARGS,
+                              PROFILE_TASK_1_NAME, profileStack1, STACKSIZE,
+                              2U, RK_PREEMPT, &crossDomain1));
+    AppCheck_(kTaskInitDomain(&profileTask2Handle, ProfileTask2, RK_NO_ARGS,
+                              PROFILE_TASK_2_NAME, profileStack2, STACKSIZE,
+                              2U, RK_PREEMPT, &crossDomain2));
+#else
+    AppCheck_(kTaskInit(&profileTask1Handle, ProfileTask1, RK_NO_ARGS,
+                        PROFILE_TASK_1_NAME, profileStack1, STACKSIZE,
+                        2U, RK_PREEMPT));
+    AppCheck_(kTaskInit(&profileTask2Handle, ProfileTask2, RK_NO_ARGS,
+                        PROFILE_TASK_2_NAME, profileStack2, STACKSIZE,
+                        2U, RK_PREEMPT));
+#endif
     AppCheck_(kTaskInit(&reportTaskHandle, ReportTask, RK_NO_ARGS, "REP",
                         reportStack, STACKSIZE, 1U, RK_PREEMPT));
 }
 
-VOID SameTask1(VOID *args)
+VOID ProfileTask1(VOID *args)
 {
     RK_UNUSEARGS
 
-    while (1)
-    {
-        ProfileWaitPhase_(PROFILE_PHASE_SAME_DOMAIN);
-        sameStats.counter1++;
-        kYield();
-        if (profilePhase == PROFILE_PHASE_SAME_DOMAIN)
-        {
-            ProfileRecordCtxSwitch_(&sameStats);
-        }
-    }
+    ProfileWorkerLoop_(PROFILE_WORKER_1_MASK, &profileStats.counter1);
 }
 
-VOID SameTask2(VOID *args)
+VOID ProfileTask2(VOID *args)
 {
     RK_UNUSEARGS
 
-    while (1)
-    {
-        ProfileWaitPhase_(PROFILE_PHASE_SAME_DOMAIN);
-        sameStats.counter2++;
-        kYield();
-        if (profilePhase == PROFILE_PHASE_SAME_DOMAIN)
-        {
-            ProfileRecordCtxSwitch_(&sameStats);
-        }
-    }
-}
-
-VOID CrossTask1(VOID *args)
-{
-    RK_UNUSEARGS
-
-    while (1)
-    {
-        ProfileWaitPhase_(PROFILE_PHASE_INTER_DOMAIN);
-        crossStats.counter1++;
-        kYield();
-        if (profilePhase == PROFILE_PHASE_INTER_DOMAIN)
-        {
-            ProfileRecordCtxSwitch_(&crossStats);
-        }
-    }
-}
-
-VOID CrossTask2(VOID *args)
-{
-    RK_UNUSEARGS
-
-    while (1)
-    {
-        ProfileWaitPhase_(PROFILE_PHASE_INTER_DOMAIN);
-        crossStats.counter2++;
-        kYield();
-        if (profilePhase == PROFILE_PHASE_INTER_DOMAIN)
-        {
-            ProfileRecordCtxSwitch_(&crossStats);
-        }
-    }
+    ProfileWorkerLoop_(PROFILE_WORKER_2_MASK, &profileStats.counter2);
 }
 
 VOID ReportTask(VOID *args)
@@ -319,11 +350,6 @@ VOID ReportTask(VOID *args)
 
     while (1)
     {
-        ProfileRunPhase_(PROFILE_PHASE_SAME_DOMAIN,
-                         sameTask1Handle, sameTask2Handle,
-                         &sameStats, "same-domain");
-        ProfileRunPhase_(PROFILE_PHASE_INTER_DOMAIN,
-                         crossTask1Handle, crossTask2Handle,
-                         &crossStats, "inter-domain");
+        ProfileRunPhase_();
     }
 }
