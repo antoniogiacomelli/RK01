@@ -36,6 +36,7 @@ Immediate differences from RK0:
 | Bad syscall pointers | A bad pointer can become a privileged fault if unchecked. | SVC validates user read/write/function ranges before privileged code dereferences them. |
 | Fault handling | Serious task faults usually become system faults. | Unprivileged MemManage faults can be contained, marked `FAULT_PENDING` and cleaned by PostProc. |
 
+>💡 The Real-Time Model that makes the interaction-based service design meaningful has not changed.
 
 - `RK0` is flat trusted real-time firmware;
 - `RK01` is RK0-style real-time with user space/kernel space.
