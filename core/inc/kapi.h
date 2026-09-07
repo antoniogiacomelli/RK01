@@ -123,21 +123,6 @@ RK_STACK *kDomainStackAlloc(RK_DOMAIN *const domainPtr,
                             ULONG const stackWords);
 
 /**
- * @brief Legacy domain-task constructor retained for source compatibility.
- *        Protected domain tasks now require private stacks outside the domain
- *        RAM window. Prefer RK_DECLARE_DOMAIN_TASK_STACK() with
- *        kTaskInitDomain().
- */
-RK_ERR kDomainTaskInit(RK_DOMAIN *const domainPtr,
-                       RK_TASK_HANDLE *taskHandlePtr,
-                       const RK_TASKENTRY taskFunc,
-                       VOID *argsPtr,
-                       RK_STRING taskName,
-                       const ULONG stackWords,
-                       const RK_PRIO priority,
-                       const RK_OPTION preempt);
-
-/**
  * @brief Low-level MPU shared-region descriptor initialisation.
  *        Prefer kSharedMemCreate()/kSharedMemAttach() in application code.
  */
