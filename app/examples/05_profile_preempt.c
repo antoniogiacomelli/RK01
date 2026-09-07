@@ -9,6 +9,8 @@
 
 /*
  * Profiling example 05: ThreadX-style preemptive scheduling counter test.
+ * All application tasks use the implicit App domain, so this is a same-domain
+ * preemption profile.
  *
  * Conditions matching the RK0 profiling page:
  *   make APP_EXAMPLE=05-profile-preempt FPU=OFF \
@@ -116,7 +118,7 @@ static VOID ProfileReport_(RK_TICK const time0, RK_TICK const time1)
         error++;
     }
 
-    kPuts("\r\nRK01 PROFILE PREEMPT ");
+    kPuts("\r\nRK01 PROFILE PREEMPT class=same-domain ");
     ProfilePrintField_("round=", roundn);
     ProfilePrintField_(" elapsed_ms=", time1 - time0);
     ProfilePrintField_(" tick_ms=", RK_TICK_INTERVAL_MS);

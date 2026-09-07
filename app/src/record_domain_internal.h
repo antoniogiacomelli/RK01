@@ -17,7 +17,7 @@ extern "C"
 {
 #endif
 
-#define RECORD_DOMAIN_BYTES (2048U)
+#define RECORD_DOMAIN_BYTES (1024U)
 #define RECORD_TASK_STACK_WORDS (256U)
 #define RECORD_TASK_PRIO (2)
 #define RECORD_SLOT_COUNT (4UL)

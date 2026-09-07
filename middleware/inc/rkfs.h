@@ -18,7 +18,7 @@ extern "C"
 {
 #endif
 
-#define RKFS_DOMAIN_BYTES (8192U)
+#define RKFS_DOMAIN_BYTES (4096U)
 #define RKFS_STACK_WORDS (1024U)
 #define RKFS_PATH_BYTES (32U)
 #define RKFS_RECORD_BYTES (64U)

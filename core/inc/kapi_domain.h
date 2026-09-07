@@ -25,8 +25,6 @@ RK_ERR kDomainInit(RK_DOMAIN *const domainPtr,
 VOID *kDomainAlloc(RK_DOMAIN *const domainPtr,
                    ULONG const nBytes,
                    ULONG const alignBytes);
-RK_STACK *kDomainStackAlloc(RK_DOMAIN *const domainPtr,
-                            ULONG const stackWords);
 RK_ERR kTaskInitDomain(RK_TASK_HANDLE *taskHandlePtr,
                        const RK_TASKENTRY taskFunc,
                        VOID *argsPtr,

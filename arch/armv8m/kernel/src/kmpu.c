@@ -884,6 +884,54 @@ static RK_BOOL kMpuTaskStackOverlapsLive_(RK_TCB const *const skipTaskPtr,
     return (RK_FALSE);
 }
 
+static RK_BOOL kMpuDomainIsTaskPrivate_(RK_DOMAIN const *const domainPtr,
+                                        RK_TCB const *const taskPtr)
+{
+    return (((domainPtr != NULL) && (taskPtr != NULL) &&
+             (taskPtr->domainPtr == domainPtr) &&
+             (domainPtr == &taskPtr->privateDomain)) ?
+            RK_TRUE : RK_FALSE);
+}
+
+static RK_BOOL
+kMpuAuthorityRegionOverlapsLiveStack_(RK_DOMAIN const *const domainPtr,
+                                      BYTE const *const regionBasePtr,
+                                      ULONG const regionBytes)
+{
+    /* A domain/shared authority window must not expose a live task stack. The
+     * isolated-task private domain is the one intentional self-overlap. */
+    for (UINT idx = 0U; idx < RK_NTHREADS; idx++)
+    {
+        RK_TCB const *const taskPtr = RK_gTaskHandleByPid[idx];
+
+        if ((taskPtr == NULL) || (taskPtr->init != RK_TRUE) ||
+            (taskPtr->stackBufPtr == NULL) || (taskPtr->stackSize == 0UL))
+        {
+            continue;
+        }
+
+        if (taskPtr->stackSize > (RK_ULONG_MAX / (ULONG)sizeof(RK_STACK)))
+        {
+            return (RK_TRUE);
+        }
+
+        if (kMpuRangesOverlap_(regionBasePtr, regionBytes,
+                               (BYTE const *)taskPtr->stackBufPtr,
+                               taskPtr->stackSize *
+                                   (ULONG)sizeof(RK_STACK)) == RK_TRUE)
+        {
+            if (kMpuDomainIsTaskPrivate_(domainPtr, taskPtr) == RK_TRUE)
+            {
+                continue;
+            }
+
+            return (RK_TRUE);
+        }
+    }
+
+    return (RK_FALSE);
+}
+
 static ULONG kMpuLiveTaskCountForDomain_(RK_DOMAIN const *const domainPtr)
 {
     ULONG count = 0UL;
@@ -975,6 +1023,14 @@ static RK_ERR kMpuLayoutValidateDomainReservations_(VOID)
             return (RK_ERR_INVALID_PARAM);
         }
 
+        if (kMpuAuthorityRegionOverlapsLiveStack_(resPtr->domainPtr,
+                                                  resPtr->regionBasePtr,
+                                                  resPtr->regionBytes) ==
+            RK_TRUE)
+        {
+            return (RK_ERR_INVALID_OBJ);
+        }
+
         for (UINT nextIdx = idx + 1U; nextIdx < RK_NTHREADS; nextIdx++)
         {
             RK_MPU_DOMAIN_RESERVATION const *const nextPtr =
@@ -1055,6 +1111,14 @@ static RK_ERR kMpuLayoutValidateSharedReservations_(VOID)
         if (kMpuSharedRegionMemoryValid(resPtr->regionPtr) == RK_FALSE)
         {
             return (RK_ERR_INVALID_PARAM);
+        }
+
+        if (kMpuAuthorityRegionOverlapsLiveStack_(NULL,
+                                                  resPtr->regionBasePtr,
+                                                  resPtr->regionBytes) ==
+            RK_TRUE)
+        {
+            return (RK_ERR_INVALID_OBJ);
         }
 
         for (UINT nextIdx = idx + 1U; nextIdx < RK_NTHREADS; nextIdx++)

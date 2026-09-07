@@ -175,10 +175,9 @@ Typical MPU slot intent:
 
 Privileged handler code keeps the default memory map through `PRIVDEFENA`.
 Unprivileged task code only sees the programmed user regions.
-The MPU is reprogrammed whenever dispatch crosses to a different immutable
-domain map. Tasks sharing the active domain map switch without rewriting
-domain/shared MPU authority regions; only the private stack slot follows the
-scheduled task.
+On every dispatch to a different task, RK01 replaces the task-private stack MPU
+region. When dispatch also crosses a domain boundary, it replaces the domain RAM
+and shared-authority regions. Scheduling semantics remain unchanged.
 
 ## Domains
 

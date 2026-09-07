@@ -2014,24 +2014,6 @@ VOID *kDomainAlloc(RK_DOMAIN *const domainPtr,
     return ((VOID *)&domainPtr->regionBasePtr[alignedOffset]);
 }
 
-RK_STACK *kDomainStackAlloc(RK_DOMAIN *const domainPtr,
-                            ULONG const stackWords)
-{
-    if ((stackWords < RK_MIN_STACKSIZE) ||
-        ((stackWords & 1UL) != 0UL) ||
-        (stackWords > (RK_ULONG_MAX / (ULONG)sizeof(RK_STACK))))
-    {
-#if (RK_CONF_ERR_CHECK == ON)
-        kErrHandler(RK_FAULT_INVALID_PARAM);
-#endif
-        return (NULL);
-    }
-
-    return ((RK_STACK *)kDomainAlloc(domainPtr,
-                                    stackWords * (ULONG)sizeof(RK_STACK),
-                                    8UL));
-}
-
 RK_ERR kSharedRegionInit(RK_SHARED_REGION *const regionPtr,
                          BYTE *const regionBasePtr,
                          ULONG const regionBytes)

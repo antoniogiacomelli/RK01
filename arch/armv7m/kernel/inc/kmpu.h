@@ -23,9 +23,9 @@ extern "C"
 #define RK_MPU_N_REGIONS (8U)
 #endif
 
-/* RK01-reserved region slots. Region 0 is static. The domain-map slots are
- * loaded only when dispatch crosses to a different immutable domain map; the
- * private stack slot follows the incoming task. */
+/* RK01-reserved region slots. Region 0 is static. The private stack slot is
+ * replaced on every different-task dispatch; domain/shared slots are replaced
+ * only on a domain boundary. */
 #define RK_MPU_REGION_USER_FLASH (0U)
 #define RK_MPU_REGION_DOMAIN_RAM (1U)
 #define RK_MPU_REGION_TASK_STACK (2U)

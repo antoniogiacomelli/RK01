@@ -17,7 +17,7 @@
 #include "record_domain.h"
 
 /* Static construction parameters for this tiny example. */
-#define ECHO_DOMAIN_BYTES (2048U)
+#define ECHO_DOMAIN_BYTES (1024U)
 #define TASK_STACK_WORDS (256U)
 #define APP_LOG_PRIO (10U)
 #define ECHO_TASK_PRIO (1)

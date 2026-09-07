@@ -115,14 +115,6 @@ VOID *kDomainAlloc(RK_DOMAIN *const domainPtr,
                    ULONG const alignBytes);
 
 /**
- * @brief Allocate an 8-byte aligned domain RAM block with stack-like sizing.
- *        This is not valid as a protected task stack under the private-stack
- *        MPU model; use RK_DECLARE_DOMAIN_TASK_STACK() for task stacks.
- */
-RK_STACK *kDomainStackAlloc(RK_DOMAIN *const domainPtr,
-                            ULONG const stackWords);
-
-/**
  * @brief Low-level MPU shared-region descriptor initialisation.
  *        Prefer kSharedMemCreate()/kSharedMemAttach() in application code.
  */
