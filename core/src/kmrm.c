@@ -269,7 +269,7 @@ static RK_MRM_BUF *kMRMBufferAlloc_(RK_MRM *const kobj)
     if (allocPtr->mrmData == NULL)
     {
         allocPtr->mrmData = NULL;
-        (VOID)kMemPartitionFree(&kobj->mrmMem, allocPtr);
+        kMemPartitionFree(&kobj->mrmMem, allocPtr);
         return (NULL);
     }
 
@@ -831,7 +831,7 @@ RK_MRM_BUF *kMRMReserve(RK_MRM_HANDLE const mrmHandle)
         {
             if (allocPtr != kobj->currBufPtr)
             {
-                (VOID)kMRMReleaseBuffer_(kobj, allocPtr);
+                kMRMReleaseBuffer_(kobj, allocPtr);
             }
             allocPtr = NULL;
         }

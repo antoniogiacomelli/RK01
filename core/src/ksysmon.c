@@ -196,7 +196,7 @@ static VOID kSysMonConsoleRx_(BYTE const ch)
     {
         if ((sysMonTaskHandle != NULL) && (kKernelRunning() == RK_TRUE))
         {
-            (VOID)kEventSet(sysMonTaskHandle, RK_SYSMON_RX_EVENT);
+            kEventSet(sysMonTaskHandle, RK_SYSMON_RX_EVENT);
         }
     }
 }
@@ -389,7 +389,7 @@ static VOID kSysMonObjectListsEnsure_(VOID)
     {
         for (UINT i = 0U; i < (UINT)RK_SYSMON_FAMILY_COUNT; i++)
         {
-            (VOID)kListInit(&sysMonObjectLists[i]);
+            kListInit(&sysMonObjectLists[i]);
         }
         sysMonObjectListsInit = RK_TRUE;
     }
@@ -756,7 +756,7 @@ VOID kSysMonObjectUnregister(RK_KOBJ *const objPtr)
         (objPtr->sysMonNode.nextPtr != NULL) &&
         (objPtr->sysMonNode.prevPtr != NULL))
     {
-        (VOID)kListRemove(&sysMonObjectLists[family],
+        kListRemove(&sysMonObjectLists[family],
                           &objPtr->sysMonNode);
     }
     objPtr->sysMonNode.nextPtr = NULL;
@@ -1335,7 +1335,7 @@ RK_ERR kSysMonCommand(CHAR const *const linePtr, ULONG const lineBytes)
     RK_ERR const err = kSysMonRxWriteCommand_(linePtr, lineBytes);
     if (err == RK_ERR_SUCCESS)
     {
-        (VOID)kEventSet(sysMonTaskHandle, RK_SYSMON_RX_EVENT);
+        kEventSet(sysMonTaskHandle, RK_SYSMON_RX_EVENT);
     }
 
     return (err);
@@ -1348,7 +1348,7 @@ static VOID kSysMonTask_(VOID *args)
     while (1)
     {
         kSysMonPoll();
-        (VOID)kEventGet(RK_SYSMON_RX_EVENT, RK_OPT_EVENT_ANY, NULL,
+        kEventGet(RK_SYSMON_RX_EVENT, RK_OPT_EVENT_ANY, NULL,
                         (RK_TICK)RK_CONF_SYSMON_POLL_TICKS);
     }
 }

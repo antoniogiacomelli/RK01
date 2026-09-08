@@ -335,7 +335,7 @@ RK_ERR kMesgQueueBroadcastWake(RK_MESG_QUEUE *const kobj,
     RK_ERR const readyErr = kMesgQueueReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kMesgQueueReportErr_(readyErr);
+        kMesgQueueReportErr_(readyErr);
         RK_CR_EXIT
         return (readyErr);
     }
@@ -545,7 +545,7 @@ RK_ERR kMesgQueueInstallSendCbk(RK_MESG_QUEUE_HANDLE const queueHandle,
     RK_ERR const readyErr = kMesgQueueReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kMesgQueueReportErr_(readyErr);
+        kMesgQueueReportErr_(readyErr);
         RK_CR_EXIT
         return (readyErr);
     }
@@ -583,7 +583,7 @@ RK_ERR kMesgQueueSend(RK_MESG_QUEUE_HANDLE const queueHandle,
     RK_ERR const readyErr = kMesgQueueReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kMesgQueueReportErr_(readyErr);
+        kMesgQueueReportErr_(readyErr);
         RK_CR_EXIT
         return (readyErr);
     }
@@ -702,7 +702,7 @@ RK_ERR kMesgQueueSendSyscall(RK_EXCEPTION_FRAME *const framePtr,
     RK_ERR const readyErr = kMesgQueueReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kMesgQueueReportErr_(readyErr);
+        kMesgQueueReportErr_(readyErr);
         RK_CR_EXIT
         kSyscallTaskClear(RK_gRunPtr);
         return (readyErr);
@@ -821,7 +821,7 @@ RK_ERR kMesgQueueRecv(RK_MESG_QUEUE_HANDLE const queueHandle,
     RK_ERR const readyErr = kMesgQueueReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kMesgQueueReportErr_(readyErr);
+        kMesgQueueReportErr_(readyErr);
         RK_CR_EXIT
         return (readyErr);
     }
@@ -945,7 +945,7 @@ RK_ERR kMesgQueueRecvSyscall(RK_EXCEPTION_FRAME *const framePtr,
     RK_ERR const readyErr = kMesgQueueReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kMesgQueueReportErr_(readyErr);
+        kMesgQueueReportErr_(readyErr);
         RK_CR_EXIT
         kSyscallTaskClear(RK_gRunPtr);
         return (readyErr);
@@ -1061,7 +1061,7 @@ RK_ERR kMesgQueuePeek(RK_MESG_QUEUE_HANDLE const queueHandle,
     RK_ERR const readyErr = kMesgQueueReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kMesgQueueReportErr_(readyErr);
+        kMesgQueueReportErr_(readyErr);
         RK_CR_EXIT
         return (readyErr);
     }
@@ -1124,7 +1124,7 @@ RK_ERR kMesgQueueJam(RK_MESG_QUEUE_HANDLE const queueHandle,
     RK_ERR const readyErr = kMesgQueueReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kMesgQueueReportErr_(readyErr);
+        kMesgQueueReportErr_(readyErr);
         RK_CR_EXIT
         return (readyErr);
     }
@@ -1247,7 +1247,7 @@ RK_ERR kMesgQueueJamSyscall(RK_EXCEPTION_FRAME *const framePtr,
     RK_ERR const readyErr = kMesgQueueReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kMesgQueueReportErr_(readyErr);
+        kMesgQueueReportErr_(readyErr);
         RK_CR_EXIT
         kSyscallTaskClear(RK_gRunPtr);
         return (readyErr);
@@ -1367,7 +1367,7 @@ RK_ERR kMesgQueueQuery(RK_MESG_QUEUE_HANDLE const queueHandle,
     RK_ERR const readyErr = kMesgQueueReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kMesgQueueReportErr_(readyErr);
+        kMesgQueueReportErr_(readyErr);
         RK_CR_EXIT
         return (readyErr);
     }
@@ -1422,7 +1422,7 @@ RK_ERR kMesgQueueReset(RK_MESG_QUEUE_HANDLE const queueHandle)
     RK_ERR const readyErr = kMesgQueueReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kMesgQueueReportErr_(readyErr);
+        kMesgQueueReportErr_(readyErr);
         RK_CR_EXIT
         return (readyErr);
     }
@@ -1527,7 +1527,7 @@ RK_ERR kMesgQueuePostOvw(RK_MESG_QUEUE_HANDLE const queueHandle,
     RK_ERR const readyErr = kMesgQueueReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kMesgQueueReportErr_(readyErr);
+        kMesgQueueReportErr_(readyErr);
         RK_CR_EXIT
         return (readyErr);
     }
@@ -1622,7 +1622,7 @@ RK_ERR kMesgQueueBroadcast(RK_MESG_QUEUE_HANDLE const queueHandle,
     RK_ERR const readyErr = kMesgQueueReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kMesgQueueReportErr_(readyErr);
+        kMesgQueueReportErr_(readyErr);
         RK_CR_EXIT
         return (readyErr);
     }
@@ -1742,7 +1742,7 @@ RK_ERR kMesgQueueBroadcastRecv(RK_MESG_QUEUE_HANDLE const queueHandle,
     RK_ERR const readyErr = kMesgQueueReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kMesgQueueReportErr_(readyErr);
+        kMesgQueueReportErr_(readyErr);
         RK_CR_EXIT
         return (readyErr);
     }
@@ -1872,7 +1872,7 @@ RK_ERR kMesgQueueBroadcastRecvSyscall(RK_EXCEPTION_FRAME *const framePtr,
     RK_ERR const readyErr = kMesgQueueReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kMesgQueueReportErr_(readyErr);
+        kMesgQueueReportErr_(readyErr);
         RK_CR_EXIT
         kSyscallTaskClear(RK_gRunPtr);
         return (readyErr);

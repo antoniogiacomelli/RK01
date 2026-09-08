@@ -138,7 +138,7 @@ void kErrHandler(RK_FAULT fault) /* generic error handler */
 {
     if (kSyscallRequired() == RK_TRUE)
     {
-        (VOID)kSyscallInvoke4(RK_SYSCALL_ERR_HANDLER, (ULONG)fault,
+        kSyscallInvoke4(RK_SYSCALL_ERR_HANDLER, (ULONG)fault,
                               0UL, 0UL, 0UL);
         return;
     }

@@ -1,0 +1,170 @@
+@startuml
+title RK01 black-box class architecture
+left to right direction
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+
+package "Application black box" {
+  class Application <<client firmware>> {
+    +constructBootGraph()
+    +startTasks()
+  }
+
+  class Domain <<writable authority>> {
+    +allocate()
+    +attachSharedMemory()
+  }
+
+  class Task <<unprivileged actor>> {
+    +run()
+    +callKernelApi()
+  }
+
+  class DomainRam <<persistent state>> {
+    +sameDomainReadWrite()
+  }
+
+  class TaskStack <<private state>> {
+    +mappedForOwnerOnly()
+  }
+
+  class SharedMemory <<explicit aperture>> {
+    +attach(domain)
+    +getRegion()
+  }
+}
+
+package "Public boundary" {
+  class KernelApi <<k* facade>> {
+    +createTask()
+    +createDomain()
+    +createObject()
+    +sendMessage()
+    +sleepOrDelay()
+    +logOrDiagnose()
+  }
+
+  class SyscallGateway <<SVC boundary>> {
+    +validateOrigin()
+    +validateHandle()
+    +validateUserBuffers()
+    +enterPrivilegedService()
+  }
+}
+
+package "Privileged RK01 core" {
+  class Kernel <<trusted core>> {
+    +initialize()
+    +dispatch()
+    +applyMpuView()
+  }
+
+  class Scheduler <<service>> {
+    +selectNextTask()
+    +blockOrReady()
+  }
+
+  class ObjectRegistry <<service>> {
+    +resolveHandle()
+    +trackGeneration()
+  }
+
+  class IpcServices <<service>> {
+    +copyPayload()
+    +queueMessage()
+    +callReply()
+  }
+
+  class SyncServices <<service>> {
+    +lockMutex()
+    +pendSemaphore()
+    +sleepQueue()
+  }
+
+  class TimerServices <<service>> {
+    +scheduleTimeout()
+    +runCallout()
+  }
+
+  class FaultServices <<service>> {
+    +recordFault()
+    +containTaskFault()
+    +postProcessCleanup()
+  }
+
+  class Diagnostics <<service>> {
+    +nameObjects()
+    +snapshotTrace()
+  }
+}
+
+package "Trusted platform and services" {
+  class BoardPort <<trusted port>> {
+    +startup()
+    +configureClock()
+    +configureMpu()
+    +handleExceptions()
+  }
+
+  class ConsoleService <<privileged service>> {
+    +writeBounded()
+    +ownForegroundRx()
+  }
+
+  class FileSystemService <<optional middleware>> {
+    +mount()
+    +read()
+    +write()
+  }
+}
+
+Application "1" o-- "1..*" Domain : declares
+Domain "1" *-- "1..*" Task : schedules members
+Domain "1" *-- "1" DomainRam : maps writable window
+Task "1" *-- "1" TaskStack : owns private stack
+Domain "0..*" o-- "0..*" SharedMemory : explicit attachment
+
+Application --> KernelApi : public construction and runtime calls
+Task --> KernelApi : k* calls
+KernelApi --> SyscallGateway : unprivileged callers cross SVC
+SyscallGateway --> Kernel : checked privileged operation
+
+Kernel *-- Scheduler
+Kernel *-- ObjectRegistry
+Kernel *-- IpcServices
+Kernel *-- SyncServices
+Kernel *-- TimerServices
+Kernel *-- FaultServices
+Kernel *-- Diagnostics
+
+Kernel --> BoardPort : HAL and MPU hooks
+ConsoleService --> BoardPort : UART/device access
+FileSystemService --> BoardPort : flash backend
+Application --> ConsoleService : optional trusted endpoint
+Application --> FileSystemService : optional RKFS facade
+
+Task ..> DomainRam : direct only in same domain
+Task ..> SharedMemory : direct only when attached
+Task ..> Task : copied IPC, events, call/reply
+IpcServices --> ObjectRegistry : resolve handles
+SyncServices --> ObjectRegistry : resolve handles
+TimerServices --> ObjectRegistry : resolve handles
+FaultServices --> Scheduler : remove faulted task
+Diagnostics --> ObjectRegistry : inspect named objects
+
+note top of KernelApi
+  This is the stable black-box surface:
+  public k* APIs hide kernel object storage.
+end note
+
+note right of Domain
+  A domain is a writable-authority boundary,
+  not a process, loader, or file-table namespace.
+end note
+
+note bottom of SyscallGateway
+  SVC validation checks handles, caller mode,
+  buffers and function pointers before privileged use.
+end note
+@enduml

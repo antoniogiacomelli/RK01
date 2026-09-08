@@ -261,7 +261,7 @@ static VOID kConsoleServiceSignal_(RK_TASK_EVENT const event)
     if ((kConsoleServiceTaskHandle_ != NULL) &&
         (kKernelRunning() == RK_TRUE))
     {
-        (VOID)kEventSet(kConsoleServiceTaskHandle_, event);
+        kEventSet(kConsoleServiceTaskHandle_, event);
     }
 }
 
@@ -417,7 +417,7 @@ static RK_BOOL kConsoleServiceAcceptTx_(RK_TICK const timeout)
         }
     }
 
-    (VOID)kSynchMesgReply(&call, &reply, (ULONG)sizeof(reply));
+    kSynchMesgReply(&call, &reply, (ULONG)sizeof(reply));
     return (RK_TRUE);
 }
 
@@ -427,10 +427,10 @@ static VOID kConsoleServiceTask_(VOID *args)
 
     while (1)
     {
-        (VOID)kConsoleServiceDrainRx_();
-        (VOID)kEventGet(RK_CONSOLE_SERVICE_RX_EVENT, RK_OPT_EVENT_ANY,
+        kConsoleServiceDrainRx_();
+        kEventGet(RK_CONSOLE_SERVICE_RX_EVENT, RK_OPT_EVENT_ANY,
                         NULL, RK_NO_WAIT);
-        (VOID)kConsoleServiceAcceptTx_(
+        kConsoleServiceAcceptTx_(
             RK_CONF_CONSOLE_SERVICE_POLL_TICKS);
     }
 }
@@ -650,7 +650,7 @@ RK_ERR kConsoleRxRelease(RK_CONSOLE_RX_CBK const cbk)
 
 void kBoardConsoleRxIsrEnable(RK_CONSOLE_RX_ISR_CBK const cbk)
 {
-    (VOID)kConsoleRxClaim(cbk);
+    kConsoleRxClaim(cbk);
 }
 
 static VOID kConsoleRawPutc_(CHAR const c)
@@ -731,7 +731,7 @@ void kPutc(char const c)
 {
     if (kSyscallRequired() == RK_TRUE)
     {
-        (VOID)kConsoleWrite(&c, 1UL);
+        kConsoleWrite(&c, 1UL);
         return;
     }
 

@@ -366,7 +366,7 @@ VOID kTimerReload(RK_TIMER_HANDLE const timerHandle, RK_TICK delay)
 {
     if (kSyscallRequired() == RK_TRUE)
     {
-        (VOID)kSyscallInvoke4(RK_SYSCALL_TIMER_RELOAD,
+        kSyscallInvoke4(RK_SYSCALL_TIMER_RELOAD,
                               (ULONG)(UINTPTR)timerHandle, (ULONG)delay,
                               0UL, 0UL);
         return;
@@ -376,14 +376,14 @@ VOID kTimerReload(RK_TIMER_HANDLE const timerHandle, RK_TICK delay)
     RK_ERR const resolveErr = kTimerResolve_(timerHandle, &kobj);
     if (resolveErr != RK_ERR_SUCCESS)
     {
-        (VOID)kTimerReportErr_(resolveErr);
+        kTimerReportErr_(resolveErr);
         return;
     }
 
     RK_ERR const readyErr = kTimerReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kTimerReportErr_(readyErr);
+        kTimerReportErr_(readyErr);
         return;
     }
 
@@ -391,7 +391,7 @@ VOID kTimerReload(RK_TIMER_HANDLE const timerHandle, RK_TICK delay)
     RK_ERR const err = kTimeoutNodeAdd(&kobj->timeoutNode, delay);
     if (err != RK_ERR_SUCCESS)
     {
-        (VOID)kTimerReportErr_(err);
+        kTimerReportErr_(err);
         return;
     }
     K_ASSERT(err == RK_ERR_SUCCESS);

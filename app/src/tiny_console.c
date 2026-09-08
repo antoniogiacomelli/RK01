@@ -514,7 +514,7 @@ static VOID AppLineSubmitFromConsole_(BYTE const terminator)
     {
         if (lineReadySemaHandle != RK_NULL_HANDLE)
         {
-            (VOID)kSemaphorePost(lineReadySemaHandle);
+            kSemaphorePost(lineReadySemaHandle);
         }
     }
 

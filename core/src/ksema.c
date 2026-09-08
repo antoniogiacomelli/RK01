@@ -219,7 +219,7 @@ RK_ERR kSemaphorePend(RK_SEMAPHORE_HANDLE const semaHandle,
     RK_ERR const readyErr = kSemaphoreReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kSemaphoreReportErr_(readyErr);
+        kSemaphoreReportErr_(readyErr);
         RK_CR_EXIT
         return (readyErr);
     }
@@ -319,7 +319,7 @@ RK_ERR kSemaphorePendSyscall(RK_EXCEPTION_FRAME *const framePtr,
     RK_ERR const readyErr = kSemaphoreReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kSemaphoreReportErr_(readyErr);
+        kSemaphoreReportErr_(readyErr);
         RK_CR_EXIT
         return (readyErr);
     }
@@ -408,7 +408,7 @@ RK_ERR kSemaphorePost(RK_SEMAPHORE_HANDLE const semaHandle)
     RK_ERR const readyErr = kSemaphoreReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kSemaphoreReportErr_(readyErr);
+        kSemaphoreReportErr_(readyErr);
         RK_CR_EXIT
         return (readyErr);
     }
@@ -487,7 +487,7 @@ RK_ERR kSemaphoreQuery(RK_SEMAPHORE_HANDLE const semaHandle,
     RK_ERR const readyErr = kSemaphoreReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kSemaphoreReportErr_(readyErr);
+        kSemaphoreReportErr_(readyErr);
         RK_CR_EXIT
         return (readyErr);
     }

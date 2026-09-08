@@ -250,7 +250,7 @@ RK_ERR kMutexLock(RK_MUTEX_HANDLE const mutexHandle, RK_TICK const timeout)
     RK_ERR const readyErr = kMutexReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kMutexReportErr_(readyErr);
+        kMutexReportErr_(readyErr);
         RK_CR_EXIT
         return (readyErr);
     }
@@ -405,7 +405,7 @@ RK_ERR kMutexLockSyscallContinue(RK_EXCEPTION_FRAME *const framePtr,
     RK_ERR const readyErr = kMutexReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kMutexReportErr_(readyErr);
+        kMutexReportErr_(readyErr);
         RK_CR_EXIT
         return (readyErr);
     }
@@ -553,7 +553,7 @@ RK_ERR kMutexUnlock(RK_MUTEX_HANDLE const mutexHandle)
     RK_ERR const readyErr = kMutexReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kMutexReportErr_(readyErr);
+        kMutexReportErr_(readyErr);
         RK_CR_EXIT
         return (readyErr);
     }
@@ -659,7 +659,7 @@ RK_ERR kMutexQuery(RK_MUTEX_HANDLE const mutexHandle, UINT *const statePtr)
     RK_ERR const readyErr = kMutexReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kMutexReportErr_(readyErr);
+        kMutexReportErr_(readyErr);
         RK_CR_EXIT
         return (readyErr);
     }

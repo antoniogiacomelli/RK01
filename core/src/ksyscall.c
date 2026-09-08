@@ -1142,7 +1142,7 @@ static VOID kSyscallDispatchActive_(RK_EXCEPTION_FRAME *const framePtr)
                  (kMpuUserWriteValid(RK_gRunPtr, allocPtr,
                                      partPtr->blkSize) != RK_TRUE)))
             {
-                (VOID)kMemPartitionFree(partPtr, allocPtr);
+                kMemPartitionFree(partPtr, allocPtr);
                 allocPtr = NULL;
             }
 

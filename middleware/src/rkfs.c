@@ -613,7 +613,7 @@ VOID rkFsServerTask(VOID *args)
             rkFsHandle_(fsPtr, &req, &reply);
         }
 
-        (VOID)kSynchMesgReply(&call, &reply, sizeof(reply));
+        kSynchMesgReply(&call, &reply, sizeof(reply));
 
         kLog("FS LittleFS command=%lu path=%s status=%lu bytes=%lu count=%lu",
              req.command, req.path, reply.status, reply.bytes, reply.count);

@@ -358,7 +358,7 @@ VOID *kMemPartitionAlloc(RK_MEM_PARTITION *const kobj)
     RK_ERR const readyErr = kMemPartitionReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kMemPartitionReportReadyErr_(readyErr);
+        kMemPartitionReportReadyErr_(readyErr);
         RK_CR_EXIT
         return (NULL);
     }
@@ -423,7 +423,7 @@ RK_ERR kMemPartitionFree(RK_MEM_PARTITION *const kobj, VOID *blockPtr)
     RK_ERR const readyErr = kMemPartitionReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kMemPartitionReportReadyErr_(readyErr);
+        kMemPartitionReportReadyErr_(readyErr);
         RK_CR_EXIT
         return (readyErr);
     }

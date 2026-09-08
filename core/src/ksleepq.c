@@ -200,7 +200,7 @@ RK_ERR kSleepQueueSleep(RK_SLEEP_QUEUE_HANDLE const sleepqHandle,
     RK_ERR const readyErr = kSleepQueueReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kSleepQueueReportErr_(readyErr);
+        kSleepQueueReportErr_(readyErr);
         RK_CR_EXIT
         return (readyErr);
     }
@@ -284,7 +284,7 @@ RK_ERR kSleepQueueSleepSyscall(RK_EXCEPTION_FRAME *const framePtr,
     RK_ERR const readyErr = kSleepQueueReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kSleepQueueReportErr_(readyErr);
+        kSleepQueueReportErr_(readyErr);
         RK_CR_EXIT
         return (readyErr);
     }
@@ -350,7 +350,7 @@ RK_ERR kSleepQueueSignal(RK_SLEEP_QUEUE_HANDLE const sleepqHandle)
     RK_ERR const readyErr = kSleepQueueReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kSleepQueueReportErr_(readyErr);
+        kSleepQueueReportErr_(readyErr);
         RK_CR_EXIT
         return (readyErr);
     }
@@ -407,7 +407,7 @@ RK_ERR kSleepQueueReady(RK_SLEEP_QUEUE_HANDLE const sleepqHandle,
     RK_ERR const readyErr = kSleepQueueReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kSleepQueueReportErr_(readyErr);
+        kSleepQueueReportErr_(readyErr);
         RK_CR_EXIT
         return (readyErr);
     }
@@ -477,7 +477,7 @@ RK_ERR kSleepQueueQuery(RK_SLEEP_QUEUE_HANDLE const sleepqHandle,
     RK_ERR const readyErr = kSleepQueueReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kSleepQueueReportErr_(readyErr);
+        kSleepQueueReportErr_(readyErr);
         RK_CR_EXIT
         return (readyErr);
     }
@@ -522,7 +522,7 @@ RK_ERR kSleepQueueWake(RK_SLEEP_QUEUE_HANDLE const sleepqHandle, UINT nTasks,
     RK_ERR const readyErr = kSleepQueueReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kSleepQueueReportErr_(readyErr);
+        kSleepQueueReportErr_(readyErr);
         RK_CR_EXIT
         return (readyErr);
     }
@@ -655,7 +655,7 @@ RK_ERR kSleepQueueUnready(RK_SLEEP_QUEUE_HANDLE const sleepqHandle,
     RK_ERR const readyErr = kSleepQueueReadyErr_(kobj);
     if (readyErr != RK_ERR_SUCCESS)
     {
-        (VOID)kSleepQueueReportErr_(readyErr);
+        kSleepQueueReportErr_(readyErr);
         RK_CR_EXIT
         return (readyErr);
     }
@@ -763,7 +763,7 @@ RK_ERR kCondVarWait(RK_SLEEP_QUEUE_HANDLE const cond,
         RK_ERR const readyErr = kSleepQueueReadyErr_(condPtr);
         if (readyErr != RK_ERR_SUCCESS)
         {
-            (VOID)kSleepQueueReportErr_(readyErr);
+            kSleepQueueReportErr_(readyErr);
             RK_CR_EXIT
             return (readyErr);
         }
@@ -912,7 +912,7 @@ RK_ERR kCondVarWaitSyscall(RK_EXCEPTION_FRAME *const framePtr,
             RK_ERR const readyErr = kSleepQueueReadyErr_(cond);
             if (readyErr != RK_ERR_SUCCESS)
             {
-                (VOID)kSleepQueueReportErr_(readyErr);
+                kSleepQueueReportErr_(readyErr);
                 RK_CR_EXIT
                 kPreemptEnable();
                 kSyscallTaskClear(RK_gRunPtr);

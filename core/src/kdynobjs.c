@@ -2040,7 +2040,7 @@ static RK_ERR kTimerCreateWithAttr_(
     {
         if (kTimeoutNodeIsArmed(&timerPtr->timeoutNode) == RK_TRUE)
         {
-            (VOID)kTimeoutNodeDisarm(&timerPtr->timeoutNode);
+            kTimeoutNodeDisarm(&timerPtr->timeoutNode);
         }
         kTraceUnregisterObject(timerPtr);
         RK_MEMSET(timerPtr, 0, sizeof(RK_TIMER));
@@ -2055,7 +2055,7 @@ static RK_ERR kTimerCreateWithAttr_(
     {
         if (kTimeoutNodeIsArmed(&timerPtr->timeoutNode) == RK_TRUE)
         {
-            (VOID)kTimeoutNodeDisarm(&timerPtr->timeoutNode);
+            kTimeoutNodeDisarm(&timerPtr->timeoutNode);
         }
         kTraceUnregisterObject(timerPtr);
         RK_MEMSET(timerPtr, 0, sizeof(RK_TIMER));

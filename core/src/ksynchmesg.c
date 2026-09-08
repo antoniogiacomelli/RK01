@@ -19,7 +19,8 @@
  *     list and points back to that receiver.
  *   - A pending send cached on the receiver must name the same sender at the
  *     head of the sender queue.
- *   - Only call/accept/reply carries caller priority to the server.
+ *   - Queued plain senders can raise receiver priority until consumed.
+ *   - Accepted call/reply substitutes caller priority until reply.
  *   - At most one extended call is active per server.
  *   - Timeout and cleanup paths must clear both sides of every TCB link.
  */
@@ -156,9 +157,9 @@ static inline VOID kSynchMesgDisarmTimeout_(RK_TCB *const taskPtr)
     }
 }
 
-static VOID kSynchMesgUpdateServerPrio_(RK_TCB *const serverPtr)
+static VOID kSynchMesgUpdateReceiverPrio_(RK_TCB *const receiverPtr)
 {
-    kTaskUpdateEffectivePrioChain(serverPtr);
+    kTaskUpdateEffectivePrioChain(receiverPtr);
 }
 
 static VOID kSynchMesgWakeAcceptor_(RK_TCB *const serverPtr)
@@ -324,6 +325,7 @@ static RK_ERR kSynchMesgConsumePendingSend_(RK_TCB *const receiverPtr,
     kSynchMesgClearSender_(senderPtr);
 
     kSynchMesgPromoteNext_(receiverPtr);
+    kSynchMesgUpdateReceiverPrio_(receiverPtr);
 
     err = kReadySwtch(senderPtr);
     if (err < 0)
@@ -354,6 +356,7 @@ VOID kSynchMesgTimeoutSend(RK_TCB *const senderPtr)
 
     kSynchMesgClearSender_(senderPtr);
     kSynchMesgPromoteNext_(receiverPtr);
+    kSynchMesgUpdateReceiverPrio_(receiverPtr);
 }
 
 VOID kSynchMesgTimeoutCall(RK_TCB *const callerPtr)
@@ -370,7 +373,7 @@ VOID kSynchMesgTimeoutCall(RK_TCB *const callerPtr)
         RK_ERR err = kTCBQRem(&serverPtr->synchMesgCallers, &remPtr);
         K_ASSERT(err == RK_ERR_SUCCESS);
         kSynchMesgClearCall_(callerPtr);
-        kSynchMesgUpdateServerPrio_(serverPtr);
+        kSynchMesgUpdateReceiverPrio_(serverPtr);
         return;
     }
 
@@ -384,7 +387,7 @@ VOID kSynchMesgTimeoutCall(RK_TCB *const callerPtr)
         callerPtr->synchMesgCallReplyMaxBytes = 0UL;
         callerPtr->synchMesgStatus = RK_ERR_TIMEOUT;
         callerPtr->synchMesgCallState = RK_SYNCH_CALL_ABANDONED;
-        kSynchMesgUpdateServerPrio_(serverPtr);
+        kSynchMesgUpdateReceiverPrio_(serverPtr);
     }
 }
 
@@ -398,7 +401,7 @@ static VOID kSynchMesgReadyWithStatus_(RK_TCB *const taskPtr,
 
     if (kTimeoutNodeIsArmed(&taskPtr->timeoutNode) == RK_TRUE)
     {
-        (VOID)kTimeoutNodeDisarm(&taskPtr->timeoutNode);
+        kTimeoutNodeDisarm(&taskPtr->timeoutNode);
     }
     else
     {
@@ -407,7 +410,7 @@ static VOID kSynchMesgReadyWithStatus_(RK_TCB *const taskPtr,
 
     taskPtr->timeOut = RK_FALSE;
     taskPtr->synchMesgStatus = status;
-    (VOID)kReadySwtch(taskPtr);
+    kReadySwtch(taskPtr);
 }
 
 VOID kSynchMesgTaskCleanup(RK_TCB *const taskPtr)
@@ -423,7 +426,7 @@ VOID kSynchMesgTaskCleanup(RK_TCB *const taskPtr)
     {
         RK_TCB *const serverPtr = taskPtr->synchMesgReceiverPtr;
         kSynchMesgClearActiveCall_(serverPtr);
-        kSynchMesgUpdateServerPrio_(serverPtr);
+        kSynchMesgUpdateReceiverPrio_(serverPtr);
         kSynchMesgClearCall_(taskPtr);
     }
     else if (taskPtr->synchMesgReceiverPtr != NULL)
@@ -767,6 +770,7 @@ RK_ERR kSynchSendWait(RK_TASK_HANDLE const taskHandle,
     }
 
     kSynchMesgPromoteNext_(taskPtr);
+    kSynchMesgUpdateReceiverPrio_(taskPtr);
     kPendCtxSwtch();
 
     RK_CR_EXIT
@@ -922,6 +926,7 @@ RK_ERR kSynchSendWaitSyscall(RK_EXCEPTION_FRAME *const framePtr,
     }
 
     kSynchMesgPromoteNext_(taskPtr);
+    kSynchMesgUpdateReceiverPrio_(taskPtr);
     kSyscallTaskSuspend(framePtr, RK_SYSCALL_SYNCH_SEND_WAIT,
                         (ULONG)(UINTPTR)taskHandle,
                         (ULONG)(UINTPTR)mesgPtr,
@@ -1310,7 +1315,7 @@ RK_ERR kSynchMesgCall(RK_TASK_HANDLE const taskHandle,
         return (enqErr);
     }
 
-    kSynchMesgUpdateServerPrio_(taskPtr);
+    kSynchMesgUpdateReceiverPrio_(taskPtr);
     kSynchMesgWakeAcceptor_(taskPtr);
     kPendCtxSwtch();
 
@@ -1497,7 +1502,7 @@ RK_ERR kSynchMesgCallSyscall(RK_EXCEPTION_FRAME *const framePtr,
         return (enqErr);
     }
 
-    kSynchMesgUpdateServerPrio_(taskPtr);
+    kSynchMesgUpdateReceiverPrio_(taskPtr);
     kSynchMesgWakeAcceptor_(taskPtr);
     kSyscallTaskSuspend(framePtr, RK_SYSCALL_SYNCH_MESG_CALL,
                         (ULONG)(UINTPTR)taskHandle,
@@ -1673,7 +1678,7 @@ RK_ERR kSynchMesgAccept(RK_SYNCH_CALL_DATA *const callPtr,
     callPtr->reqBytes = reqBytes;
     callPtr->replyMaxBytes = callerPtr->synchMesgCallReplyMaxBytes;
 
-    kSynchMesgUpdateServerPrio_(RK_gRunPtr);
+    kSynchMesgUpdateReceiverPrio_(RK_gRunPtr);
     RK_CR_EXIT
     return (RK_ERR_SUCCESS);
 }
@@ -1862,7 +1867,7 @@ RK_ERR kSynchMesgAcceptSyscall(RK_EXCEPTION_FRAME *const framePtr,
     callPtr->reqBytes = reqBytes;
     callPtr->replyMaxBytes = callerPtr->synchMesgCallReplyMaxBytes;
 
-    kSynchMesgUpdateServerPrio_(RK_gRunPtr);
+    kSynchMesgUpdateReceiverPrio_(RK_gRunPtr);
     RK_CR_EXIT
     kSyscallTaskClear(RK_gRunPtr);
     return (RK_ERR_SUCCESS);
@@ -1935,7 +1940,7 @@ RK_ERR kSynchMesgReply(RK_SYNCH_CALL_DATA const *const callPtr,
     {
         kSynchMesgClearActiveCall_(RK_gRunPtr);
         kSynchMesgClearCall_(callerPtr);
-        kSynchMesgUpdateServerPrio_(RK_gRunPtr);
+        kSynchMesgUpdateReceiverPrio_(RK_gRunPtr);
         RK_CR_EXIT
         return (RK_ERR_SUCCESS);
     }
@@ -1964,7 +1969,7 @@ RK_ERR kSynchMesgReply(RK_SYNCH_CALL_DATA const *const callPtr,
 
     kSynchMesgClearActiveCall_(RK_gRunPtr);
     kSynchMesgClearCall_(callerPtr);
-    kSynchMesgUpdateServerPrio_(RK_gRunPtr);
+    kSynchMesgUpdateReceiverPrio_(RK_gRunPtr);
 
     RK_ERR err = kSynchMesgPublicReadyErr_(kReadySwtch(callerPtr));
     RK_CR_EXIT

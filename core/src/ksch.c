@@ -482,7 +482,7 @@ VOID kSchLock(VOID)
 {
     if (kSyscallRequired() == RK_TRUE)
     {
-        (VOID)kSyscallInvoke4(RK_SYSCALL_SCH_LOCK, 0UL, 0UL, 0UL, 0UL);
+        kSyscallInvoke4(RK_SYSCALL_SCH_LOCK, 0UL, 0UL, 0UL, 0UL);
         return;
     }
 
@@ -503,7 +503,7 @@ VOID kSchUnlock(VOID)
 {
     if (kSyscallRequired() == RK_TRUE)
     {
-        (VOID)kSyscallInvoke4(RK_SYSCALL_SCH_UNLOCK, 0UL, 0UL, 0UL, 0UL);
+        kSyscallInvoke4(RK_SYSCALL_SCH_UNLOCK, 0UL, 0UL, 0UL, 0UL);
         return;
     }
 
@@ -720,35 +720,47 @@ static RK_PRIO kTaskOwnedMutexPipPrio_(RK_TCB *const ownerTcb,
 
 #if (RK_CONF_SYNCH_MESG == ON)
 /*
- * Synchronous call/reply priority contract.
+ * Synchronous rendezvous priority contracts.
  *
- * Plain kSynchSendWait()/kSyncRecv() is only a blocking copy rendezvous: the
- * sender waits until the receiver copies the payload, but that does not make the
- * receiver run at sender priority.
+ * Plain kSynchSendWait()/kSyncRecv() is a blocking copy rendezvous. If the
+ * sender has to queue because the receiver is not already waiting, the queued
+ * sender can raise the receiver's effective priority until the payload is
+ * copied, times out, or cleanup clears the send.
  *
  * kSynchMesgCall()/kSynchMesgAccept()/kSynchMesgReply() is the extended
- * rendezvous. ksynchmesg.c exposes queued callers through synchMesgCallers and
- * snapshots an accepted caller's effective priority in
- * synchMesgActiveCallerPrio. The server uses caller priority as the scheduling
- * base until reply, timeout, or cleanup clears the call. Lower numeric RK_PRIO
- * values are more urgent. Because this is substitution rather than
- * "min(nominal, caller)", the task can become less urgent than its nominal
- * priority while handling less-urgent call work. If several callers exist, the
- * most urgent caller wins.
+ * rendezvous. Accept snapshots the caller's effective priority in
+ * synchMesgActiveCallerPrio. The server uses that caller priority as the
+ * scheduling base until reply, timeout, or cleanup clears the active call.
+ * Because this is substitution rather than "min(nominal, caller)", the task can
+ * become less urgent than its nominal priority while handling less-urgent call
+ * work. Lower numeric RK_PRIO values are more urgent.
  */
-static RK_PRIO kTaskSynchCallPrio_(RK_TCB *const taskPtr,
-                                   RK_PRIO const currentPrio)
+static RK_PRIO kTaskSynchMesgBasePrio_(RK_TCB *const taskPtr,
+                                       RK_PRIO const currentPrio)
 {
-    RK_PRIO newPrio = currentPrio;
-    RK_BOOL hasCaller = RK_FALSE;
-    RK_PRIO callerPrio = currentPrio;
     RK_TCB const *const activeCallerPtr = taskPtr->synchMesgActiveCallerPtr;
 
     if ((activeCallerPtr != NULL) &&
         (activeCallerPtr->synchMesgCallState == RK_SYNCH_CALL_ACTIVE))
     {
-        callerPrio = taskPtr->synchMesgActiveCallerPrio;
-        hasCaller = RK_TRUE;
+        return (taskPtr->synchMesgActiveCallerPrio);
+    }
+
+    return (currentPrio);
+}
+
+static RK_PRIO kTaskSynchMesgWaiterPrio_(RK_TCB *const taskPtr,
+                                         RK_PRIO const currentPrio)
+{
+    RK_PRIO newPrio = currentPrio;
+
+    if (taskPtr->synchMesgSenders.size > 0UL)
+    {
+        RK_TCB *senderPtr = kTCBQPeek(&taskPtr->synchMesgSenders);
+        if (senderPtr != NULL)
+        {
+            newPrio = kTaskMinPrio_(newPrio, senderPtr->priority);
+        }
     }
 
     if (taskPtr->synchMesgCallers.size > 0UL)
@@ -756,16 +768,8 @@ static RK_PRIO kTaskSynchCallPrio_(RK_TCB *const taskPtr,
         RK_TCB *callerPtr = kTCBQPeek(&taskPtr->synchMesgCallers);
         if (callerPtr != NULL)
         {
-            callerPrio = (hasCaller == RK_TRUE)
-                             ? kTaskMinPrio_(callerPrio, callerPtr->priority)
-                             : callerPtr->priority;
-            hasCaller = RK_TRUE;
+            newPrio = kTaskMinPrio_(newPrio, callerPtr->priority);
         }
-    }
-
-    if (hasCaller == RK_TRUE)
-    {
-        newPrio = callerPrio;
     }
 
     return (newPrio);
@@ -806,10 +810,8 @@ static RK_PRIO kTaskAsynchMesgCeilingPrio_(RK_TCB *const taskPtr,
 #endif
 
 /*
- * Effective priority starts from the task's nominal priority unless a
- * call/reply caller is pending/active; in that case the caller priority becomes
- * the base. Other independent protocols can still impose stricter urgency
- * afterward.
+ * Effective priority is the highest scheduling priority required by every
+ * active protocol affecting this task.
  * E.g.: 1) asynch ceiling raises Task A
  *       2) Task A is blocked on mutex owned by Task B
  *       3) Task B may inherit Task A's raised priority
@@ -822,16 +824,20 @@ static RK_PRIO kTaskCalcEffectivePrio_(RK_TCB *const taskPtr)
 
 #if (RK_CONF_SYNCH_MESG == ON)
     /*
-     * Only the call/reply extended rendezvous substitutes server priority.
-     * Plain synchronous send/receive does not alter receiver priority.
-     * Mutex PI and async ceilings are separate contracts folded in below.
+     * During an active extended rendezvous, the server adopts the caller's
+     * priority as its scheduling base. This can raise or lower the server.
      */
-    newPrio = kTaskSynchCallPrio_(taskPtr, newPrio);
+    newPrio = kTaskSynchMesgBasePrio_(taskPtr, newPrio);
 #endif
 
 #if (RK_CONF_MUTEX == ON)
     /* Mutex priority inheritance can raise an owner to its highest waiter. */
     newPrio = kTaskOwnedMutexPipPrio_(taskPtr, newPrio);
+#endif
+
+#if (RK_CONF_SYNCH_MESG == ON)
+    /* Queued synchronous-message senders/callers can impose higher urgency. */
+    newPrio = kTaskSynchMesgWaiterPrio_(taskPtr, newPrio);
 #endif
 
 #if ((RK_CONF_ASYNCH_MESG == ON) && (RK_CONF_MESG_QUEUE == ON))
@@ -1006,7 +1012,7 @@ VOID kYield(VOID)
 {
     if (kSyscallRequired() == RK_TRUE)
     {
-        (VOID)kSyscallInvoke4(RK_SYSCALL_YIELD, 0UL, 0UL, 0UL, 0UL);
+        kSyscallInvoke4(RK_SYSCALL_YIELD, 0UL, 0UL, 0UL, 0UL);
         return;
     }
 
@@ -1628,7 +1634,7 @@ static VOID kTaskFaultReleaseOwnedMutexes_(RK_TCB *const taskPtr)
 
             if (kTimeoutNodeIsArmed(&waiterPtr->timeoutNode) == RK_TRUE)
             {
-                (VOID)kTimeoutNodeDisarm(&waiterPtr->timeoutNode);
+                kTimeoutNodeDisarm(&waiterPtr->timeoutNode);
             }
             else
             {
@@ -1638,7 +1644,7 @@ static VOID kTaskFaultReleaseOwnedMutexes_(RK_TCB *const taskPtr)
             waiterPtr->waitingForMutexPtr = NULL;
             waiterPtr->timeOut = RK_FALSE;
             waiterPtr->syscallWakeResult = RK_ERR_MUTEX_OWNER_FAULTED;
-            (VOID)kReadySwtch(waiterPtr);
+            kReadySwtch(waiterPtr);
         }
     }
 
@@ -1659,7 +1665,7 @@ static RK_ERR kTaskFaultUnlink_(RK_TCB *const taskPtr)
         if (kTaskNodeLinked_(taskPtr) == RK_TRUE)
         {
             RK_TCB *remPtr = taskPtr;
-            (VOID)kTCBQRem(&RK_gReadyQueue[taskPtr->priority], &remPtr);
+            kTCBQRem(&RK_gReadyQueue[taskPtr->priority], &remPtr);
         }
     }
     else if (taskPtr->timeoutNode.waitingQueuePtr != NULL)
@@ -1667,7 +1673,7 @@ static RK_ERR kTaskFaultUnlink_(RK_TCB *const taskPtr)
         if (kTaskNodeLinked_(taskPtr) == RK_TRUE)
         {
             RK_TCB *remPtr = taskPtr;
-            (VOID)kTCBQRem(taskPtr->timeoutNode.waitingQueuePtr, &remPtr);
+            kTCBQRem(taskPtr->timeoutNode.waitingQueuePtr, &remPtr);
         }
     }
 
@@ -2668,7 +2674,7 @@ RK_ERR kTaskInitProtected(RK_TCB *const taskPtr,
     {
         if (poolReserved == RK_TRUE)
         {
-            (void)kMemPartitionFree(&RK_gTaskPool, taskPtr);
+            kMemPartitionFree(&RK_gTaskPool, taskPtr);
         }
         RK_CR_EXIT
         return (RK_ERR_TASK_POOL_EMPTY);
@@ -2681,7 +2687,7 @@ RK_ERR kTaskInitProtected(RK_TCB *const taskPtr,
     {
         if (poolReserved == RK_TRUE)
         {
-            (void)kMemPartitionFree(&RK_gTaskPool, taskPtr);
+            kMemPartitionFree(&RK_gTaskPool, taskPtr);
         }
         RK_CR_EXIT
         return (err);
@@ -2699,7 +2705,7 @@ RK_ERR kTaskInitProtected(RK_TCB *const taskPtr,
         RK_MEMSET(taskPtr, 0, sizeof(RK_TCB));
         if (poolReserved == RK_TRUE)
         {
-            (void)kMemPartitionFree(&RK_gTaskPool, taskPtr);
+            kMemPartitionFree(&RK_gTaskPool, taskPtr);
         }
         RK_CR_EXIT
         return (err);
@@ -2719,7 +2725,7 @@ RK_ERR kTaskInitProtected(RK_TCB *const taskPtr,
             RK_MEMSET(taskPtr, 0, sizeof(RK_TCB));
             if (poolReserved == RK_TRUE)
             {
-                (void)kMemPartitionFree(&RK_gTaskPool, taskPtr);
+                kMemPartitionFree(&RK_gTaskPool, taskPtr);
             }
             pPid -= 1U;
             RK_CR_EXIT

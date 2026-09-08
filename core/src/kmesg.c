@@ -285,7 +285,7 @@ static VOID kMesgCopyFree_(RK_MESG *const mesgPtr)
     RK_MEMSET(mesgPtr, 0, RK_MESG_COPY_BLOCK_BYTES_);
     mesgPtr->state = RK_MESG_STATE_FREE;
     mesgPtr->objID = RK_INVALID_KOBJ;
-    (VOID)kListAddTail(&copyMesgFreeList_, &mesgPtr->mesgNode);
+    kListAddTail(&copyMesgFreeList_, &mesgPtr->mesgNode);
 }
 
 static inline RK_BOOL kMesgCopyWaitSenderMatches_(
@@ -472,7 +472,7 @@ static VOID kMesgCopyReadyWithStatus_(RK_TCB *const taskPtr,
 
     if (taskPtr->timeoutNode.timeoutType == RK_TIMEOUT_BLOCKING)
     {
-        (VOID)kTimeoutNodeDisarm(&taskPtr->timeoutNode);
+        kTimeoutNodeDisarm(&taskPtr->timeoutNode);
     }
     else
     {
@@ -482,7 +482,7 @@ static VOID kMesgCopyReadyWithStatus_(RK_TCB *const taskPtr,
     kMesgCopyClearWait_(taskPtr);
     taskPtr->asynchCopyMesgRecvStatus = status;
     taskPtr->timeOut = RK_FALSE;
-    (VOID)kReadySwtch(taskPtr);
+    kReadySwtch(taskPtr);
 }
 
 static VOID kMesgCopyCancelWaitersForSender_(RK_TCB const *const senderPtr)
@@ -797,7 +797,7 @@ static VOID kMesgReturnBufferFromCleanup_(RK_MESG *const mesgPtr)
         (poolPtr->init == RK_TRUE) &&
         (poolPtr->waitingQueue.size > 0UL))
     {
-        (VOID)kMesgHandoffToWaitingAllocator_(poolPtr, mesgPtr);
+        kMesgHandoffToWaitingAllocator_(poolPtr, mesgPtr);
         return;
     }
 
@@ -812,7 +812,7 @@ static VOID kMesgReturnBufferFromCleanup_(RK_MESG *const mesgPtr)
     if ((poolPtr->objID == RK_MEMALLOC_KOBJ_ID) &&
         (poolPtr->init == RK_TRUE))
     {
-        (VOID)kMemPartitionFree(poolPtr, mesgPtr);
+        kMemPartitionFree(poolPtr, mesgPtr);
     }
 }
 
@@ -868,13 +868,13 @@ VOID kMesgTaskCleanup(RK_TCB *const taskPtr)
 
         if (waiterPtr->timeoutNode.timeoutType == RK_TIMEOUT_BLOCKING)
         {
-            (VOID)kTimeoutNodeDisarm(&waiterPtr->timeoutNode);
+            kTimeoutNodeDisarm(&waiterPtr->timeoutNode);
         }
         waiterPtr->asynchMesgWaitStatus = RK_ERR_OBJ_NOT_INIT;
         waiterPtr->asynchMesgWaitSenderPtr = NULL;
         waiterPtr->asynchMesgWaitDestPtr = NULL;
         waiterPtr->timeOut = RK_TRUE;
-        (VOID)kReadySwtch(waiterPtr);
+        kReadySwtch(waiterPtr);
     }
 
     taskPtr->asynchMesgInit = RK_FALSE;
@@ -914,7 +914,7 @@ VOID kMesgTaskCleanup(RK_TCB *const taskPtr)
         {
             if (kTimeoutNodeIsArmed(&taskPtr->timeoutNode) == RK_TRUE)
             {
-                (VOID)kTimeoutNodeDisarm(&taskPtr->timeoutNode);
+                kTimeoutNodeDisarm(&taskPtr->timeoutNode);
             }
             else
             {

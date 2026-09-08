@@ -80,7 +80,7 @@ VOID ProducerTask(VOID *args)
         monitorState.seq++;
         monitorState.value = (monitorState.seq * 7UL) & 0xFFUL;
 
-        (VOID)kSemaphorePost(updateSema);
+        kSemaphorePost(updateSema);
         kLog("sysmon demo seq=%lu value=%lu",
              monitorState.seq, monitorState.value);
         kSleep(RK_MS_TO_TICKS(1000UL));

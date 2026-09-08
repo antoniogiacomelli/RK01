@@ -194,7 +194,7 @@ VOID kTraceInputSignalFromISR(VOID)
 {
     if (kSyscallRequired() == RK_TRUE)
     {
-        (VOID)kSyscallInvoke4(RK_SYSCALL_TRACE_INPUT_SIGNAL,
+        kSyscallInvoke4(RK_SYSCALL_TRACE_INPUT_SIGNAL,
                               0UL, 0UL, 0UL, 0UL);
         return;
     }
@@ -643,7 +643,7 @@ VOID kTraceRegisterObject(VOID *const objPtr, RK_ID const objID)
 {
     if (kSyscallRequired() == RK_TRUE)
     {
-        (VOID)kSyscallInvoke4(RK_SYSCALL_TRACE_REGISTER_OBJECT,
+        kSyscallInvoke4(RK_SYSCALL_TRACE_REGISTER_OBJECT,
                               (ULONG)(UINTPTR)objPtr, (ULONG)objID,
                               0UL, 0UL);
         return;
@@ -710,7 +710,7 @@ VOID kTraceUnregisterObject(VOID *const objPtr)
 {
     if (kSyscallRequired() == RK_TRUE)
     {
-        (VOID)kSyscallInvoke4(RK_SYSCALL_TRACE_UNREGISTER_OBJECT,
+        kSyscallInvoke4(RK_SYSCALL_TRACE_UNREGISTER_OBJECT,
                               (ULONG)(UINTPTR)objPtr, 0UL, 0UL, 0UL);
         return;
     }
@@ -810,7 +810,7 @@ VOID kTraceRecordObject(VOID *const objPtr, RK_TRACE_OP const op,
 {
     if (kSyscallRequired() == RK_TRUE)
     {
-        (VOID)kSyscallInvoke4(RK_SYSCALL_TRACE_RECORD_OBJECT,
+        kSyscallInvoke4(RK_SYSCALL_TRACE_RECORD_OBJECT,
                               (ULONG)(UINTPTR)objPtr, (ULONG)op,
                               (ULONG)result, value);
         return;
@@ -843,7 +843,7 @@ VOID kTraceRecordTaskPrio(RK_TASK_HANDLE const taskHandle,
 {
     if (kSyscallRequired() == RK_TRUE)
     {
-        (VOID)kSyscallInvoke4(RK_SYSCALL_TRACE_RECORD_TASK_PRIO,
+        kSyscallInvoke4(RK_SYSCALL_TRACE_RECORD_TASK_PRIO,
                               (ULONG)(UINTPTR)taskHandle,
                               (ULONG)oldPriority, (ULONG)newPriority, 0UL);
         return;
@@ -910,7 +910,7 @@ VOID kTraceRecordTaskOverrun(RK_TRACE_OVERRUN_KIND const kind,
 {
     if (kSyscallRequired() == RK_TRUE)
     {
-        (VOID)kSyscallInvoke4(RK_SYSCALL_TRACE_RECORD_TASK_OVERRUN,
+        kSyscallInvoke4(RK_SYSCALL_TRACE_RECORD_TASK_OVERRUN,
                               (ULONG)kind, (ULONG)period,
                               (ULONG)lateBy, skipped);
         return;
@@ -1737,7 +1737,7 @@ VOID RK_FUNC_WEAK kTraceOverflowPersist(
 {
     if (kSyscallRequired() == RK_TRUE)
     {
-        (VOID)kSyscallInvoke4(RK_SYSCALL_TRACE_OVERFLOW_PERSIST,
+        kSyscallInvoke4(RK_SYSCALL_TRACE_OVERFLOW_PERSIST,
                               (ULONG)(UINTPTR)infoPtr, 0UL, 0UL, 0UL);
         return;
     }
@@ -2882,7 +2882,7 @@ VOID kTracePoll(VOID)
 {
     if (kSyscallRequired() == RK_TRUE)
     {
-        (VOID)kSyscallInvoke4(RK_SYSCALL_TRACE_POLL, 0UL, 0UL, 0UL, 0UL);
+        kSyscallInvoke4(RK_SYSCALL_TRACE_POLL, 0UL, 0UL, 0UL, 0UL);
         return;
     }
 

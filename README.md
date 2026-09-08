@@ -45,6 +45,16 @@ Immediate differences from RK0:
 
 ![RK01 containment sketch](docs/readme_architecture_sketch.svg)
 
+## Black-Box Class Diagram
+
+RK01 is implemented in C, so this is a logical UML class view: classes represent
+architectural roles and public contracts, not private structs or language-level
+classes.
+
+![RK01 black-box class architecture](docs/readme_blackbox_class_diagram.svg)
+
+Source: [`docs/readme_blackbox_class_diagram.puml`](docs/readme_blackbox_class_diagram.puml).
+
 ## Containment Scope
 Its protection boundary is practical and local:
 
@@ -371,8 +381,8 @@ Start with the RK0 interaction, then apply the RK01 memory rule.
 | --- | --- |
 | Shared memory | Direct load/store is allowed only where the MPU maps the same RAM into the participating tasks. Coordinate shared-memory access between domains. |
 | Asynchronous direct message | Transfers message ownership. By-reference direct messages are same-domain only; copied async messages can cross non-shared domain boundaries. Priority ceilings apply to the by-reference ownership contract. |
-| Synchronous send/receive | Blocking copy rendezvous: the sender waits until the receiver copies the payload. There is no reply and no receiver priority substitution. |
-| Synchronous call/reply | Extended rendezvous: the caller waits for a reply and the server runs at caller effective priority while the call is queued or active. Syscall validation lets copied payloads cross non-shared domain boundaries. |
+| Synchronous send/receive | Blocking copy rendezvous: the sender waits until the receiver copies the payload. If the receiver is not already waiting, a queued sender can raise receiver priority until the send is consumed, times out or is cleaned up. There is no reply and no priority substitution. |
+| Synchronous call/reply | Extended rendezvous: the caller waits for a reply. After accept, the server runs at the accepted caller's effective priority until reply, timeout or cleanup; this can either raise or lower the server. Syscall validation lets copied payloads cross non-shared domain boundaries. |
 | Cross-domain notification | Task events or indirect messages. |
 | Cross-domain payload through indirect messages | Message queues and mailboxes need global scope so tasks in different domains can resolve the same handle. |
 | Named task-backed message passing | Synchronous send/receive, synchronous call/reply and task-addressed copy messages copy payloads through the syscall boundary. |

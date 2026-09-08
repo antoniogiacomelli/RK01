@@ -541,7 +541,7 @@ static VOID LoggerTask(VOID *args)
                    (((Log_t *)recvPtr)->level != LOG_LEVEL_FAULT) &&
                    (logNormalOutputEnabled == RK_FALSE))
             {
-                (VOID)kSleepDelay(1U);
+                kSleepDelay(1U);
             }
 
             RK_ERR err;

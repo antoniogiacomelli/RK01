@@ -425,11 +425,11 @@ Across domains, a pointer is meaningful only when both views map the referenced 
 
 |Synchronous send/receive
 |Blocking one-way rendezvous
-|The receiver copies the payload; there is no reply and no receiver priority substitution.
+|The receiver copies the payload; there is no reply. A queued sender can raise receiver priority until the send is consumed, times out or is cleaned up.
 
 |Synchronous call/accept/reply
 |Request/reply service
-|Copied request/reply with one active caller per server and caller-priority substitution while queued or active.
+|Copied request/reply with one active caller per server and caller-priority substitution after accept until reply, timeout or cleanup.
 
 |Global queue or mailbox
 |Named infrastructure shared by several domains
@@ -448,7 +448,7 @@ The policy is not “messages are good and shared memory is bad.” The policy i
 
 === Priority-aware service calls
 
-Call/reply is intended for a server that owns state or hardware on behalf of clients. While calls are queued or active, the server's effective priority reflects its most urgent caller. This limits priority inversion caused by a low nominal server priority. Timeout, reply and cleanup remove the relationship.
+Call/reply is intended for a server that owns state or hardware on behalf of clients. Once a call is accepted, the server's effective priority is substituted with the accepted caller's priority until reply, timeout or cleanup removes the relationship. Pending senders and queued callers can still raise a receiver/server before the rendezvous is accepted or consumed, but they do not substitute the base priority.
 
 Priority substitution does not make the service free. It makes the scheduling dependency explicit enough to analyse.
 
