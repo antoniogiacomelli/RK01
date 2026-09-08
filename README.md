@@ -16,53 +16,8 @@ still application-specific.
 
 This repository is the first public RK01 source drop.
 
-## Major Changes
-
-RK01 is not a "better RK0" or an embedded RTOS trying to be a GPOS. It is still
-one statically linked firmware image for a microcontroller. The kernel, startup
-code, board port, privileged service tasks and build are trusted. Ordinary
-application tasks are treated as possibly defective after dispatch. If one
-fails, the fault is confined and then handled as well as the application can.
-
-Immediate differences from RK0:
-
-| Aspect | RK0 | RK01 |
-| --- | --- | --- |
-| Kernel boundary | Kernel and application code share privileged address space. | Ordinary tasks run with no privilege at all. Kernel services are 'supervisor calls' -- software interrupts. |
-| Memory protection | Cooperative discipline. | Cortex-M MPU regions protect kernel RAM, domain RAM and shared apertures. |
-| Application grouping | Tasks can directly share C globals. | Tasks share memory only inside their domain, global shared RAM or explicit shared memory. |
-| Kernel objects | Raw/static objects are natural; pool-backed creation is optional. | Runtime objects are fixed-capacity kernel pool entries _encoded_ by opaque handles. That is, you cannot dereference a handle because it is not an address. |
-| IPC rule | Pointer transfer is fine when firmware agrees. | By-reference direct messages are same-domain only; cross-domain data should be copied. |
-| Bad syscall pointers | A bad pointer can become a privileged fault if unchecked. | SVC validates user read/write/function ranges before privileged code dereferences them. |
-| Fault handling | Serious task faults usually become system faults. | Unprivileged MemManage faults can be contained, marked `FAULT_PENDING` and cleaned by PostProc. |
-
->💡 The Real-Time Model that makes the interaction-based service design meaningful has not changed.
-
-- `RK0` is flat trusted real-time firmware;
-- `RK01` is RK0-style real-time with user space/kernel space.
-
-## Architecture Sketch
-
-![RK01 containment sketch](docs/readme_architecture_sketch.svg)
-
-## Containment Scope
-Its protection boundary is practical and local:
-
-- ordinary tasks run unprivileged and enter kernel services through Supervisor Calls;
-- kernel RAM, object pools, registries and privileged stacks remain
-  privileged-only;
-- each domain provides a statically declared writable-authority boundary shared
-  by one or more tasks;
-- cross-domain data moves through copied IPC, global shared RAM or explicitly
-  attached shared memory;
-- unprivileged MemManage faults can be recorded, contained and cleaned up by
-  PostProc.
-
-The trusted base remains the kernel, startup code, board port, privileged
-service tasks, build, DMA setup, debug access and physical device access.
-
-RK01 focuses on preventing defective unprivileged task code from corrupting kernel
-RAM and another domain's writable state or privileged service state.
+For design details read the [Whitepaper](RK01-white-paper.pdf) and/or the 
+[Blog](https://rkernel0.org/rk01-user-kernel-and-memory-domain-boundaries/).
 
 ## Delivered Supported Targets
 
