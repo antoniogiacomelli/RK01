@@ -1,21 +1,5 @@
 # RK01 Architectire Specification Document
 
-### Requirements notation
-
-- **Shall** marks a required design or integration behaviour.
-
-- **Should** marks the preferred implementation when a justified alternative is allowed.
-
-- **May** marks an allowed choice.
-
-- **Core baseline** identifies behaviour owned by the RK01 core design.
-
-- **Port** identifies work owned by the architecture or board port.
-
-- **Product** identifies a product/application decision that the kernel cannot make.
-
-- **Verification** identifies evidence that must be produced before a release claim is accepted.
-
 ### Acronyms and working terms
 
 | Acronym / term     | Meaning in this document                                             |
