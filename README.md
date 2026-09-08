@@ -21,18 +21,13 @@ For design details read the
 
 ## Delivered Supported Targets
 
-RK0's sweet spot is Cortex-M0, M3 and M4F when FPU work is intense. M7 is
-probably too much.
-
-RK01's sweet spot is M4F and M7 chips with MPU. ARMv8M chips are supported but
-would be underused.
+Cortex-M4(F)/M7 based MCUs with MPU are considered the most suitable targets for RK01. 
+ARMv8M chips are supported but would be underused.
+Although Cortex-M0+ chips have MPUs, RK01 does not support ARMv6M.
 
 This repo delivers a build environment to run on Nucleo STM32F401RE M4F, plus
 QEMU environments for MPS2 Cortex-M4 and Cortex-M33. RK01 does not use the
-_Trusted Environment_.
-
-Although Cortex-M0+ chips have MPUs, RK01 does not support ARMv6M.
-
+_Trusted Environment_ of ARMv8M.
 
 ## Repository Layout
 
