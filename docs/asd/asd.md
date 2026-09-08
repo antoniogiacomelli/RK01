@@ -170,9 +170,23 @@ Within TASK_RAM, the current ARMv7-M script reserves:
 
 Kernel `.data`, `.bss`, no-init data, object pools and privileged stacks go to KERNEL_RAM. Shared code remains in FLASH. The linker therefore acts as the build-time classifier of writable access.
 
+<a id="fig:rk01-two-domain-code-link-map"></a>
+
+![Two-domain source declarations beside the linker script and map-file view.](figures/rk01-two-domain-code-link-map.svg)
+
+*Figure 2A - Two-domain source syntax beside the linker script and map-file view.*
+
+For review, a two-domain design should be read in three columns:
+
+1.  The source declaration states the intended ownership: domain windows, domain-member tasks, private stacks and deliberately shared RAM.
+
+2.  The linker script classifies those objects into `.rk_domain_ram*`, `.rk_task_stack*` and `.rk_shared_bss*` inside TASK_RAM, then exports the bounds used by startup and MPU validation.
+
+3.  The final map file proves where each symbol landed. Source filenames are useful for review, but section placement and BOOT validation define the writable authority boundary.
+
 ### Required domain source-bundle pattern
 
-Expecte developer view:
+Expected developer view:
 
 | File                  | Responsibility                                                                                       |
 |:----------------------|:-----------------------------------------------------------------------------------------------------|
