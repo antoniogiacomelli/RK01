@@ -924,44 +924,6 @@ Before approving a service placement, record:
 
 7.  the supervisor or reset action that restores safe operation.
 
-### Console placement alternatives
-
-The current privileged Console task is the middle option in the following set:
-
-An unprivileged client calls `kConsoleWrite()` with a bounded request. SVC validates the request metadata and transfers it through synchronous call/reply. The privileged Console task accepts the operation, validates the original caller’s payload range, accesses USART2 and replies. The caller remains blocked until completion.
-
-On receive, the interrupt handler performs only bounded device-facing work: it obtains the available byte, appends it to a fixed ring and signals the Console task. The scheduled task drains the ring and performs the higher-level processing.
-
-This structure has the following service properties:
-
-- the client does not own the UART;
-
-- device access has one explicit owner;
-
-- requests cross a checked service boundary;
-
-- the interrupt handler remains small;
-
-- the driver executes as a schedulable task;
-
-- after accept, the server runs at the caller’s snapshotted effective priority until reply.
-
-The Console task remains privileged and trusted. The term “microkernel-like” refers only to its client/server structure. The driver remains privileged.
-
-A more strongly isolated design could split the service:
-
-1.  An unprivileged Console domain would implement framing, buffering and application-facing policy.
-
-2.  A small privileged USART endpoint would perform only bounded register access and ISR coordination.
-
-3.  The Console domain would call that endpoint through a narrow protocol.
-
-That decomposition would reduce the amount of privileged driver code, but it would add another service transition, more validation and possibly another pair of context switches. It is justified only if isolating the higher-level driver logic is worth that cost.
-
-The opposite design is also possible. A UART syscall could perform the complete bounded transmission inside the kernel without dispatching a Console task. This would reduce task-switch overhead, but it would place the operation and any polling delay directly in a privileged kernel path.
-
-RK01 permits all three arrangements. The current privileged Console task is the reference compromise between a kernel-resident driver and a split unprivileged driver stack.
-
 ### Cost rule
 
 A microkernel-like structure is not free. A direct syscall may require only SVC entry, validation, the kernel operation and exception return. A synchronous server invocation additionally requires request handling, dispatch to the server, server execution, reply processing and redispatch to the client.
@@ -1014,19 +976,14 @@ The OS/application layer owns:
 
 The MPU supplies a containment mechanism. Recovery remains product-specific.
 
-### Approved architecture statement
+## Timing, resource and performance requirements
+
 
 RK01 remains one statically linked, fixed-priority real-time kernel. A product may construct a microkernel-like OS around it by placing services in protected domains and retaining narrow privileged endpoints. The kernel does not impose that topology.
 
-> [!IMPORTANT]
-> **Approved wording**
->
+
 > RK01 supports service-oriented, microkernel-like system composition while retaining direct bounded kernel mechanisms where another service boundary would not justify its real-time cost.
 
-## Timing, resource and performance requirements
-
-> [!IMPORTANT]
-> **Development rule**
 >
 > SVC, validation, continuation, ITC and MPU installation shall be charged to the path that executes them. Report measurements by path class. Do not publish one universal “context-switch” number for RK01.
 
@@ -1105,46 +1062,7 @@ Bound each term for the selected target and configuration. Remove a term only wh
 | Blocking SVC             | Service waits then resumes              | Start, dispatch, wake and continuation costs                                   |
 | Call/reply               | Client and server run in stated domains | End-to-end latency plus each dispatch class                                    |
 | Fault cleanup            | Injected eligible task fault            | Handler time, time to schedule away, PostProc work and supervisor notification |
-
-### Existing preemption-chain evidence
-
-The available [ThreadX-style preemptive scheduling test](https://github.com/eclipse-threadx/threadx/blob/master/utility/benchmarks/thread_metric/thread_metric_readme.txt) uses five counter tasks arranged by priority. The lowest-priority task drives the chain; each intermediate task resumes the next higher-priority task and suspends itself; the highest task increments and suspends. A reporting task samples cumulative counters every 30 seconds.
-
-The reported build conditions were:
-
-- STM32F401RE Cortex-M4F at 80 MHz;
-
-- `-O2` optimisation;
-
-- `NDEBUG` enabled;
-
-- FPU disabled;
-
-- stack-overflow checking disabled;
-
-- debug symbols retained.
-
-After five 30-second intervals, the supplied measurements were:
-
-| Kernel | Total counter increments | Maximum counter spread | Test errors |
-|:-------|:-------------------------|:-----------------------|:------------|
-| RK0    | 26,766,655               | 0                      | 0           |
-| RK01   | 7,124,887                | 1                      | 0           |
-
-RK01 therefore achieved approximately 26.62% of RK0’s whole-chain throughput; conversely, RK0 completed approximately 3.76 times as many chain increments in the same interval.
-
-This is not evidence that an isolated RK01 context switch is universally 3.76 times slower. The chain includes event syscalls, exception entry and exit, handle and pointer checks, event-state transitions, blocking, wakeup, PendSV and the private-stack MPU update. All counter tasks use the implicit App domain, so the result does not include full inter-domain authority-map replacement.
-
-The one-count RK01 spread is not a numerical timing-jitter measurement. It is consistent with the reporting task interrupting the chain at adjacent states. Both kernels satisfy the test’s stated plus-or-minus-one counter criterion.
-
-<a id="fig:rk01-preemption-benchmark"></a>
-
-![Whole-chain throughput in the supplied five-round preemption benchmark.](figures/rk01-preemption-benchmark.svg)
-
-*Figure 11 — Whole-chain throughput in the supplied five-round preemption benchmark.*
-
-RK01’s dedicated context-switch profile builds same-domain and inter-domain pairs separately. Release evidence shall report raw cycle counts for each path, calibrate instrumentation overhead and record interrupt, FPU, cache and debug conditions.
-
+ 
 ### Hardware limits and RK01 choices
 
 | Constraint                                         | Hardware-derived               | RK01 policy                                 | Rationale                                                                                                             |
@@ -1185,19 +1103,7 @@ A task definition now has:
 - object scopes 
 - ITC contracts 
 - known recovery 
-
-### Ordered work packages
-
-| Work  | Depends on                | Required output                                                | Exit condition                                             |
-|:------|:--------------------------|:---------------------------------------------------------------|:-----------------------------------------------------------|
-| WP-01 | RK0 application inventory | Task/domain map, privileged-code list and ITC inventory        | Every task and writable state owner is assigned            |
-| WP-02 | WP-01                     | Named sections, linker layout, startup symbols and map audit   | All writable symbols are classified and fit                |
-| WP-03 | WP-02                     | BOOT construction, validation and frozen domain maps           | Negative topology tests pass                               |
-| WP-04 | WP-03                     | PendSV MPU programming and dispatch-class profiles             | Same-task, same-domain and inter-domain paths pass         |
-| WP-05 | WP-01                     | Opaque handles, scopes, SVC entries and blocking continuations | Service completion and invalid-input matrices pass         |
-| WP-06 | WP-05                     | ITC copy/reference rules and priority protocols                | PRI-002 through PRI-007 regression tests pass              |
-| WP-07 | WP-03, WP-05, WP-06       | Fault record, PostProc cleanup and product supervisor policy   | Injected-fault campaign reaches the specified safe outcome |
-| WP-08 | WP-04 through WP-07       | Target timing data and response-time budgets                   | Every critical path identifies and meets its budget        |
+ 
 
 ### Requirement ownership and verification matrix
 
