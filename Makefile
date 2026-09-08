@@ -20,6 +20,7 @@ TARGET ?= rk01_demo
 EXTRA_DEFINES ?=
 EXTRA_DEFS ?=
 APP_DEFS :=
+APP_EXAMPLE_ORIGIN := $(origin APP_EXAMPLE)
 APP_EXAMPLE ?= tiny
 RK_BUILD_COOKIE ?= $(shell date +%s)
 BUILD ?= debug
@@ -298,7 +299,7 @@ help:
 	    '  make objects                 Compile objects only.' \
 	    '  make audit-domain-writable   Warn on writable globals in DOMAIN_IMPL_SRCS.' \
 	    '  make size                    Print section sizes for the ELF.' \
-	    '  make flash                   Flash the current STM32 board build.' \
+	    '  make flash APP_EXAMPLE=name  Build and flash an explicit STM32 app profile.' \
 	    '  make qemu-m4                 Build and run the Cortex-M4 MPS2 AN386 QEMU target.' \
 	    '  make qemu-m4-debug           Run QEMU M4 halted on the GDB port.' \
 	    '  make qemu-m4-debug-start     Start halted QEMU M4 in the background for VS Code.' \
@@ -364,10 +365,10 @@ help:
 	    '  make qemu-m33' \
 	    '  make qemu-m33-debug' \
 	    'Flash examples:' \
-	    '  make flash PLATFORM=stm32f401re' \
-	    '  make flash PLATFORM=stm32f401re FLASH_TOOL=openocd' \
-	    '  make flash PLATFORM=stm32f401re FLASH_TOOL=stm32programmer' \
-	    '  make flash PLATFORM=stm32f401re FLASH_TOOL=jlink' \
+	    '  make flash PLATFORM=stm32f401re APP_EXAMPLE=tiny' \
+	    '  make flash PLATFORM=stm32f401re APP_EXAMPLE=04-sysmon FLASH_TOOL=openocd' \
+	    '  make flash PLATFORM=stm32f401re APP_EXAMPLE=03-watchdog FLASH_TOOL=stm32programmer' \
+	    '  make flash PLATFORM=stm32f401re APP_EXAMPLE=99-showcase FLASH_TOOL=jlink' \
 	    'Board harness examples:' \
 	    '  make board-run SERIAL_PORT=/dev/cu.usbmodemXXXX'
 
@@ -540,7 +541,8 @@ size: $(ELF)
 	$(SIZE) -A $<
 
 ifneq ($(filter $(PLATFORM),stm32f401re),)
-flash: $(ELF) $(BIN)
+flash: require-flash-app-example $(ELF) $(BIN)
+	@printf '%s\n' "Flashing APP_EXAMPLE=$(APP_EXAMPLE) image=$(ELF)"
 ifeq ($(FLASH_TOOL),st-flash)
 	st-flash $(ST_FLASH_FLAGS) write $(BIN) $(FLASH_ADDR)
 else ifeq ($(FLASH_TOOL),openocd)
@@ -561,6 +563,13 @@ else ifeq ($(FLASH_TOOL),jlink)
 	$(JLINK) -device "$(JLINK_DEVICE)" -if "$(JLINK_IF)" -speed "$(JLINK_SPEED)" -autoconnect 1 -CommanderScript "$(JLINK_SCRIPT)"
 else
 	$(error Unsupported FLASH_TOOL '$(FLASH_TOOL)')
+endif
+
+require-flash-app-example:
+ifeq ($(APP_EXAMPLE_ORIGIN),undefined)
+	$(error flash requires APP_EXAMPLE=<name>; plain 'make flash' would default to APP_EXAMPLE=tiny)
+else
+	@:
 endif
 else
 flash:

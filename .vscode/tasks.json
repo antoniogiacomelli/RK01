@@ -9,7 +9,7 @@
         "-j4",
         "ARCH=armv7m",
         "PLATFORM=stm32f401re",
-        "APP_EXAMPLE=tiny",
+        "APP_EXAMPLE=${input:appExample}",
         "BUILD=vscode-debug",
         "OPT=-Og",
         "FPU=OFF"
@@ -30,7 +30,7 @@
       "args": [
         "ARCH=armv7m",
         "PLATFORM=stm32f401re",
-        "APP_EXAMPLE=tiny",
+        "APP_EXAMPLE=${input:appExample}",
         "BUILD=vscode-debug",
         "OPT=-Og",
         "FPU=OFF",
@@ -44,6 +44,34 @@
         "RK01: build board debug"
       ],
       "problemMatcher": "$gcc"
+    },
+    {
+      "label": "RK01: build profile-preempt per-task-domain debug",
+      "type": "shell",
+      "command": "make",
+      "args": [
+        "-j4",
+        "ARCH=armv7m",
+        "PLATFORM=stm32f401re",
+        "APP_EXAMPLE=05-profile-preempt",
+        "EXTRA_DEFS=-DNDEBUG -DRK_CONF_SYSTICK_DIV=1000 -DPROFILE_PREEMPT_CLASS=PROFILE_PREEMPT_CLASS_PER_TASK_DOMAIN",
+        "BUILD=vscode-debug",
+        "OPT=-Og",
+        "FPU=OFF"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build",
+      "problemMatcher": "$gcc"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "appExample",
+      "type": "promptString",
+      "description": "RK01 APP_EXAMPLE to build/debug",
+      "default": "tiny"
     }
   ]
 }

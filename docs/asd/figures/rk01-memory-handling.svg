@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
+  <title id="title">RK01 memory construction and dispatch</title>
+  <desc id="desc">At build time source bundles become ordinary objects and one linker classifies flash, domain, shared, and kernel memory. At boot reset initializes memory and BOOT constructs, validates, and freezes the topology. At dispatch PendSV selects a task and applies the bounded update for its dispatch class.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#31516B"/>
+    </marker>
+    <style>
+      .title{font:700 31px Arial,Helvetica,sans-serif;fill:#10283F}
+      .subtitle{font:400 16px Arial,Helvetica,sans-serif;fill:#526879}
+      .band-title{font:700 14px Arial,Helvetica,sans-serif;fill:#31516B;letter-spacing:1.2px}
+      .node{fill:#FFFFFF;stroke:#AFC1CC;stroke-width:2}
+      .node-main{font:700 17px Arial,Helvetica,sans-serif;fill:#10283F;text-anchor:middle}
+      .node-copy{font:400 14px Arial,Helvetica,sans-serif;fill:#526879;text-anchor:middle}
+      .arrow{fill:none;stroke:#31516B;stroke-width:3;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1200" height="760" rx="22" fill="#F5F8FA"/>
+  <rect x="1" y="1" width="1198" height="758" rx="21" fill="none" stroke="#C9D6DF" stroke-width="2"/>
+  <text x="48" y="56" class="title">Memory authority is constructed before execution</text>
+  <text x="48" y="86" class="subtitle">One link, one frozen topology, one bounded MPU update selected by dispatch class</text>
+
+  <rect x="38" y="112" width="1124" height="172" rx="14" fill="#EAF0F5"/>
+  <text x="62" y="141" class="band-title">BUILD TIME</text>
+  <rect x="175" y="158" width="205" height="92" rx="10" class="node"/>
+  <text x="278" y="192" class="node-main"><tspan x="278">Domain bundles</tspan><tspan x="278" dy="22">+ kernel sources</tspan></text>
+  <rect x="430" y="158" width="205" height="92" rx="10" class="node"/>
+  <text x="533" y="192" class="node-main"><tspan x="533">Ordinary object</tspan><tspan x="533" dy="22">per translation unit</tspan></text>
+  <rect x="685" y="158" width="205" height="92" rx="10" class="node"/>
+  <text x="788" y="192" class="node-main"><tspan x="788">One final</tspan><tspan x="788" dy="22">link</tspan></text>
+  <rect x="940" y="145" width="190" height="118" rx="10" class="node"/>
+  <text x="1035" y="174" class="node-main">Classified image</text>
+  <text x="1035" y="201" class="node-copy"><tspan x="1035">RX flash · domain RAM</tspan><tspan x="1035" dy="20">shared RAM · kernel RAM</tspan><tspan x="1035" dy="20">exact aligned windows</tspan></text>
+  <path d="M380 204 H430" class="arrow"/><path d="M635 204 H685" class="arrow"/><path d="M890 204 H940" class="arrow"/>
+
+  <rect x="38" y="314" width="1124" height="172" rx="14" fill="#E7F4F2"/>
+  <text x="62" y="343" class="band-title">BOOT TIME</text>
+  <rect x="940" y="360" width="190" height="92" rx="10" class="node"/>
+  <text x="1035" y="393" class="node-main"><tspan x="1035">Reset copies</tspan><tspan x="1035" dy="22">and clears RAM</tspan></text>
+  <rect x="685" y="360" width="205" height="92" rx="10" class="node"/>
+  <text x="788" y="393" class="node-main"><tspan x="788">Construct domains,</tspan><tspan x="788" dy="22">tasks and objects</tspan></text>
+  <rect x="430" y="348" width="205" height="116" rx="10" class="node"/>
+  <text x="533" y="380" class="node-main">Validate</text>
+  <text x="533" y="407" class="node-copy"><tspan x="533">bounds · alignment · stacks</tspan><tspan x="533" dy="20">overlap · membership</tspan><tspan x="533" dy="20">shared attachments</tspan></text>
+  <rect x="175" y="360" width="205" height="92" rx="10" class="node"/>
+  <text x="278" y="393" class="node-main"><tspan x="278">Freeze immutable</tspan><tspan x="278" dy="22">topology</tspan></text>
+  <path d="M1035 263 V360" class="arrow"/>
+  <path d="M940 406 H890" class="arrow"/><path d="M685 406 H635" class="arrow"/><path d="M430 406 H380" class="arrow"/>
+
+  <rect x="38" y="516" width="1124" height="178" rx="14" fill="#EEF2F4"/>
+  <text x="62" y="545" class="band-title">DISPATCH TIME</text>
+  <rect x="175" y="562" width="205" height="92" rx="10" class="node"/>
+  <text x="278" y="595" class="node-main"><tspan x="278">Ready task</tspan><tspan x="278" dy="22">selected</tspan></text>
+  <rect x="430" y="562" width="205" height="92" rx="10" class="node"/>
+  <text x="533" y="595" class="node-main"><tspan x="533">PendSV loads</tspan><tspan x="533" dy="22">task metadata</tspan></text>
+  <rect x="685" y="562" width="205" height="92" rx="10" class="node"/>
+  <text x="788" y="595" class="node-main"><tspan x="788">Reuse domain map or</tspan><tspan x="788" dy="22">replace bounded slots</tspan></text>
+  <rect x="940" y="550" width="190" height="116" rx="10" class="node"/>
+  <text x="1035" y="579" class="node-main">Incoming view</text>
+  <text x="1035" y="606" class="node-copy"><tspan x="1035">shared RX + own domain</tspan><tspan x="1035" dy="20">+ approved shared RAM</tspan><tspan x="1035" dy="20">kernel/MMIO denied</tspan></text>
+  <path d="M278 452 V562" class="arrow"/>
+  <path d="M380 608 H430" class="arrow"/><path d="M635 608 H685" class="arrow"/><path d="M890 608 H940" class="arrow"/>
+
+  <text x="600" y="728" text-anchor="middle" class="subtitle">The scheduler switches tasks; the domain only defines the writable authority installed for that task.</text>
+</svg>

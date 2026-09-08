@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="820" viewBox="0 0 1200 820" role="img" aria-labelledby="title desc">
+  <title id="title">RK01 blocking service-call flow</title>
+  <desc id="desc">An unprivileged client enters SVC. The kernel validates origin, handles, scope, and memory. For a blocking call it stores a continuation and queues the client. PendSV selects the service task and restores the required execution state. The service runs at the caller's effective priority, replies, and the kernel wakes the caller.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#31516B"/>
+    </marker>
+    <style>
+      .title{font:700 31px Arial,Helvetica,sans-serif;fill:#10283F}
+      .subtitle{font:400 16px Arial,Helvetica,sans-serif;fill:#526879}
+      .lane{fill:#FFFFFF;stroke:#AFC1CC;stroke-width:2}
+      .lane-active{fill:#E7F4F2;stroke:#168A86;stroke-width:2}
+      .lane-title{font:700 18px Arial,Helvetica,sans-serif;fill:#10283F;text-anchor:middle}
+      .life{stroke:#9CB0BD;stroke-width:2;stroke-dasharray:7 7}
+      .arrow{fill:none;stroke:#31516B;stroke-width:3;marker-end:url(#arrow)}
+      .return{fill:none;stroke:#168A86;stroke-width:3;stroke-dasharray:8 6;marker-end:url(#arrow)}
+      .label{font:700 15px Arial,Helvetica,sans-serif;fill:#10283F;text-anchor:middle}
+      .small{font:400 14px Arial,Helvetica,sans-serif;fill:#526879;text-anchor:middle}
+      .step{fill:#FFFFFF;stroke:#AFC1CC;stroke-width:2}
+    </style>
+  </defs>
+  <rect width="1200" height="820" rx="22" fill="#F5F8FA"/>
+  <rect x="1" y="1" width="1198" height="818" rx="21" fill="none" stroke="#C9D6DF" stroke-width="2"/>
+  <text x="48" y="56" class="title">A blocking service call does not retain an SVC stack</text>
+  <text x="48" y="86" class="subtitle">The continuation becomes bounded task state; actual switches reload CONTROL and the MPU</text>
+
+  <rect x="60" y="116" width="300" height="64" rx="11" class="lane"/>
+  <text x="210" y="143" class="lane-title"><tspan x="210">Unprivileged client</tspan><tspan x="210" dy="22" class="small">PSP · client domain map</tspan></text>
+  <rect x="450" y="116" width="300" height="64" rx="11" class="lane-active"/>
+  <text x="600" y="143" class="lane-title"><tspan x="600">SVC and kernel</tspan><tspan x="600" dy="22" class="small">privileged MSP</tspan></text>
+  <rect x="840" y="116" width="300" height="64" rx="11" class="lane"/>
+  <text x="990" y="143" class="lane-title"><tspan x="990">Service task</tspan><tspan x="990" dy="22" class="small">Console is privileged</tspan></text>
+
+  <line x1="210" y1="180" x2="210" y2="748" class="life"/>
+  <line x1="600" y1="180" x2="600" y2="748" class="life"/>
+  <line x1="990" y1="180" x2="990" y2="748" class="life"/>
+
+  <path d="M210 222 H600" class="arrow"/>
+  <text x="405" y="210" class="label">1 · SVC: syscall number and arguments</text>
+
+  <rect x="470" y="250" width="260" height="104" rx="11" class="step"/>
+  <text x="600" y="280" class="label">Validate before use</text>
+  <text x="600" y="306" class="small"><tspan x="600">origin · caller · handle · scope</tspan><tspan x="600" dy="21">pointer range · copied descriptor</tspan></text>
+
+  <path d="M600 382 H210" class="return"/>
+  <text x="405" y="371" class="label">If complete: write result to saved R0</text>
+
+  <path d="M600 444 H210" class="arrow"/>
+  <text x="405" y="430" class="label">2 · Otherwise: save continuation and block caller</text>
+  <rect x="96" y="464" width="228" height="58" rx="10" class="step"/>
+  <text x="210" y="489" class="label"><tspan x="210">TCB holds syscall state</tspan><tspan x="210" dy="20" class="small">no privileged call chain retained</tspan></text>
+
+  <path d="M600 550 H990" class="arrow"/>
+  <text x="795" y="538" class="label">3 · PendSV selects server and restores required state</text>
+
+  <rect x="860" y="577" width="260" height="82" rx="11" class="step"/>
+  <text x="990" y="606" class="label"><tspan x="990">Accept at caller priority</tspan><tspan x="990" dy="24" class="small">perform bounded service work</tspan></text>
+
+  <path d="M990 688 H600" class="return"/>
+  <text x="795" y="676" class="label">4 · Reply and restore service priority</text>
+
+  <path d="M600 735 H210" class="return"/>
+  <text x="405" y="722" class="label">5 · Wake caller; PendSV restores client map</text>
+
+  <text x="600" y="785" class="subtitle" text-anchor="middle">The public wrapper still presents one ordinary blocking C call.</text>
+</svg>

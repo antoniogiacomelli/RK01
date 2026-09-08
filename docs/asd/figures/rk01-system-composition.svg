@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="780" viewBox="0 0 1200 780" role="img" aria-labelledby="title desc">
+  <title id="title">Three ways to compose a system around RK01</title>
+  <desc id="desc">A specialised application can call RK01 directly. Multiple application domains can use an integrated operating-system service layer. Or the system can opt into microkernel-like decomposition with separate server and driver tasks. All use one linked image and the same RK01 task scheduler.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#31516B"/>
+    </marker>
+    <style>
+      .title{font:700 31px Arial,Helvetica,sans-serif;fill:#10283F}
+      .subtitle{font:400 16px Arial,Helvetica,sans-serif;fill:#526879}
+      .panel{fill:#FFFFFF;stroke:#C9D6DF;stroke-width:2}
+      .panel-focus{fill:#FFFFFF;stroke:#168A86;stroke-width:3}
+      .panel-title{font:700 19px Arial,Helvetica,sans-serif;fill:#10283F;text-anchor:middle}
+      .node{fill:#EDF2F5;stroke:#AFC1CC;stroke-width:2}
+      .service{fill:#E7F4F2;stroke:#168A86;stroke-width:2}
+      .kernel{fill:#31516B;stroke:#31516B;stroke-width:2}
+      .node-text{font:700 16px Arial,Helvetica,sans-serif;fill:#10283F;text-anchor:middle}
+      .kernel-text{font:700 17px Arial,Helvetica,sans-serif;fill:#FFFFFF;text-anchor:middle}
+      .small{font:400 13px Arial,Helvetica,sans-serif;fill:#526879;text-anchor:middle}
+      .arrow{fill:none;stroke:#31516B;stroke-width:3;marker-end:url(#arrow)}
+      .boundary{stroke:#8095A3;stroke-width:2;stroke-dasharray:7 6}
+      .focus-label{font:700 14px Arial,Helvetica,sans-serif;fill:#0D706D;text-anchor:middle;letter-spacing:.4px}
+    </style>
+  </defs>
+  <rect width="1200" height="780" rx="22" fill="#F5F8FA"/>
+  <rect x="1" y="1" width="1198" height="778" rx="21" fill="none" stroke="#C9D6DF" stroke-width="2"/>
+  <text x="48" y="56" class="title">RK01 supplies mechanisms; the system chooses the structure</text>
+  <text x="48" y="86" class="subtitle">Domains are writable-authority boundaries. Tasks remain the scheduler entities in every composition.</text>
+
+  <rect x="32" y="112" width="350" height="580" rx="15" class="panel"/>
+  <text x="207" y="151" class="panel-title">A · No separate OS layer</text>
+  <rect x="75" y="200" width="264" height="100" rx="11" class="node"/>
+  <text x="207" y="239" class="node-text"><tspan x="207">Specialised application</tspan><tspan x="207" dy="23">tasks and domains</tspan></text>
+  <rect x="105" y="352" width="204" height="66" rx="10" class="service"/>
+  <text x="207" y="392" class="node-text">RK01 API and SVC</text>
+  <path d="M207 300 V352" class="arrow"/>
+  <line x1="58" y1="476" x2="356" y2="476" class="boundary"/>
+  <text x="78" y="466" class="small" text-anchor="start">task / kernel-core boundary</text>
+  <rect x="75" y="520" width="264" height="88" rx="11" class="kernel"/>
+  <text x="207" y="559" class="kernel-text"><tspan x="207">RK01 kernel</tspan><tspan x="207" dy="22">scheduler · objects · MPU</tspan></text>
+  <path d="M207 418 V520" class="arrow"/>
+  <text x="207" y="651" class="small">The application calls kernel mechanisms directly.</text>
+
+  <rect x="425" y="112" width="350" height="580" rx="15" class="panel"/>
+  <text x="600" y="151" class="panel-title">B · Integrated service layer</text>
+  <rect x="452" y="190" width="86" height="66" rx="9" class="node"/><text x="495" y="218" class="node-text"><tspan x="495">App A</tspan><tspan x="495" dy="19" class="small">domain</tspan></text>
+  <rect x="557" y="190" width="86" height="66" rx="9" class="node"/><text x="600" y="218" class="node-text"><tspan x="600">App B</tspan><tspan x="600" dy="19" class="small">domain</tspan></text>
+  <rect x="662" y="190" width="86" height="66" rx="9" class="node"/><text x="705" y="218" class="node-text"><tspan x="705">App C</tspan><tspan x="705" dy="19" class="small">domain</tspan></text>
+  <rect x="468" y="316" width="264" height="82" rx="11" class="service"/>
+  <text x="600" y="349" class="node-text"><tspan x="600">Integrated OS services</tspan><tspan x="600" dy="22" class="small">console · storage · protocols · drivers</tspan></text>
+  <path d="M495 256 V286 H600 V316" class="arrow"/><path d="M600 256 V316" class="arrow"/><path d="M705 256 V286 H600 V316" class="arrow"/>
+  <line x1="451" y1="476" x2="749" y2="476" class="boundary"/>
+  <text x="471" y="466" class="small" text-anchor="start">task / kernel-core boundary</text>
+  <rect x="468" y="520" width="264" height="88" rx="11" class="kernel"/>
+  <text x="600" y="559" class="kernel-text"><tspan x="600">RK01 kernel</tspan><tspan x="600" dy="22">same scheduler and protection</tspan></text>
+  <path d="M600 398 V520" class="arrow"/>
+  <text x="600" y="651" class="small">Higher-level facilities appear as one combined layer.</text>
+
+  <rect x="818" y="112" width="350" height="580" rx="15" class="panel-focus"/>
+  <text x="993" y="151" class="panel-title">C · Decomposed services</text>
+  <text x="993" y="176" class="focus-label">MICROKERNEL-LIKE COMPOSITION · OPT-IN</text>
+  <rect x="845" y="205" width="86" height="62" rx="9" class="node"/><text x="888" y="241" class="node-text">App A</text>
+  <rect x="950" y="205" width="86" height="62" rx="9" class="node"/><text x="993" y="241" class="node-text">App B</text>
+  <rect x="1055" y="205" width="86" height="62" rx="9" class="node"/><text x="1098" y="241" class="node-text">App C</text>
+  <rect x="858" y="307" width="270" height="58" rx="10" class="service"/>
+  <text x="993" y="343" class="node-text">Calls · messages · copied ITC</text>
+  <path d="M888 267 V287 H993 V307" class="arrow"/><path d="M993 267 V307" class="arrow"/><path d="M1098 267 V287 H993 V307" class="arrow"/>
+  <rect x="842" y="404" width="142" height="66" rx="10" class="service"/>
+  <text x="913" y="432" class="node-text"><tspan x="913">Server</tspan><tspan x="913" dy="20">tasks</tspan></text>
+  <rect x="1002" y="404" width="142" height="66" rx="10" class="service"/>
+  <text x="1073" y="424" class="node-text"><tspan x="1073">Driver tasks</tspan><tspan x="1073" dy="20" class="small">often privileged</tspan></text>
+  <path d="M950 365 L913 404" class="arrow"/><path d="M1036 365 L1073 404" class="arrow"/>
+  <line x1="844" y1="500" x2="1142" y2="500" class="boundary"/>
+  <text x="864" y="490" class="small" text-anchor="start">task / kernel-core boundary</text>
+  <rect x="861" y="536" width="264" height="88" rx="11" class="kernel"/>
+  <text x="993" y="575" class="kernel-text"><tspan x="993">RK01 kernel</tspan><tspan x="993" dy="22">scheduling · objects · ITC · MPU</tspan></text>
+  <path d="M913 470 V505 H960 V536" class="arrow"/><path d="M1073 470 V505 H1026 V536" class="arrow"/>
+  <text x="993" y="659" class="small">Boundaries are selected where ownership justifies cost.</text>
+
+  <text x="600" y="737" text-anchor="middle" class="subtitle">All three are one statically linked firmware image - no process loader and no separately scheduled "domain".</text>
+</svg>

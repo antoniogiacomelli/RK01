@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="650" viewBox="0 0 1200 650" role="img" aria-labelledby="title desc">
+  <title id="title">RK01 object lifecycle</title>
+  <desc id="desc">A bounded pool supplies object storage. Construction assigns type, scope, owner, and generation. A registry publishes an opaque handle. Each operation resolves and validates it. Destruction or fault cleanup invalidates the registry entry and advances the generation before storage is reused.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#31516B"/>
+    </marker>
+    <style>
+      .title{font:700 31px Arial,Helvetica,sans-serif;fill:#10283F}
+      .subtitle{font:400 16px Arial,Helvetica,sans-serif;fill:#526879}
+      .node{fill:#FFFFFF;stroke:#AFC1CC;stroke-width:2}
+      .node-title{font:700 19px Arial,Helvetica,sans-serif;fill:#10283F}
+      .node-copy{font:400 15px Arial,Helvetica,sans-serif;fill:#526879}
+      .num{fill:#168A86}
+      .num-text{font:700 16px Arial,Helvetica,sans-serif;fill:#FFFFFF;text-anchor:middle}
+      .arrow{fill:none;stroke:#31516B;stroke-width:3;marker-end:url(#arrow)}
+      .callout{font:700 17px Arial,Helvetica,sans-serif;fill:#0D706D;text-anchor:middle}
+    </style>
+  </defs>
+  <rect width="1200" height="650" rx="22" fill="#F5F8FA"/>
+  <rect x="1" y="1" width="1198" height="648" rx="21" fill="none" stroke="#C9D6DF" stroke-width="2"/>
+  <text x="52" y="58" class="title">Object identity has a lifecycle</text>
+  <text x="52" y="88" class="subtitle">Fixed capacity, checked authority and stale-handle rejection</text>
+
+  <g>
+    <rect x="55" y="135" width="300" height="120" rx="13" class="node"/>
+    <circle cx="88" cy="168" r="19" class="num"/><text x="88" y="174" class="num-text">1</text>
+    <text x="118" y="174" class="node-title">Bounded pool</text>
+    <text x="82" y="207" class="node-copy"><tspan x="82">Storage capacity is fixed by</tspan><tspan x="82" dy="22">the kernel configuration.</tspan></text>
+
+    <rect x="450" y="135" width="300" height="120" rx="13" class="node"/>
+    <circle cx="483" cy="168" r="19" class="num"/><text x="483" y="174" class="num-text">2</text>
+    <text x="513" y="174" class="node-title">Construct object</text>
+    <text x="477" y="207" class="node-copy"><tspan x="477">Assign kind, scope, owner</tspan><tspan x="477" dy="22">and current generation.</tspan></text>
+
+    <rect x="845" y="135" width="300" height="120" rx="13" class="node"/>
+    <circle cx="878" cy="168" r="19" class="num"/><text x="878" y="174" class="num-text">3</text>
+    <text x="908" y="174" class="node-title">Publish handle</text>
+    <text x="872" y="207" class="node-copy"><tspan x="872">Registry slot yields an opaque</tspan><tspan x="872" dy="22">tag + kind + generation + slot.</tspan></text>
+
+    <rect x="845" y="350" width="300" height="120" rx="13" class="node"/>
+    <circle cx="878" cy="383" r="19" class="num"/><text x="878" y="389" class="num-text">4</text>
+    <text x="908" y="389" class="node-title">Resolve every call</text>
+    <text x="872" y="422" class="node-copy"><tspan x="872">Check type, generation, state</tspan><tspan x="872" dy="22">and the caller's domain scope.</tspan></text>
+
+    <rect x="450" y="350" width="300" height="120" rx="13" class="node"/>
+    <circle cx="483" cy="383" r="19" class="num"/><text x="483" y="389" class="num-text">5</text>
+    <text x="513" y="389" class="node-title">Operate or wait</text>
+    <text x="477" y="422" class="node-copy"><tspan x="477">Kernel-owned state records</tspan><tspan x="477" dy="22">operations and queue links.</tspan></text>
+
+    <rect x="55" y="350" width="300" height="120" rx="13" class="node"/>
+    <circle cx="88" cy="383" r="19" class="num"/><text x="88" y="389" class="num-text">6</text>
+    <text x="118" y="389" class="node-title">Destroy or clean up</text>
+    <text x="82" y="422" class="node-copy"><tspan x="82">Invalidate first; then unlink</tspan><tspan x="82" dy="22">waits and reclaim storage.</tspan></text>
+  </g>
+
+  <path d="M355 195 H450" class="arrow"/>
+  <path d="M750 195 H845" class="arrow"/>
+  <path d="M995 255 V350" class="arrow"/>
+  <path d="M845 410 H750" class="arrow"/>
+  <path d="M450 410 H355" class="arrow"/>
+  <path d="M205 350 C205 305 35 315 35 215 C35 195 42 195 55 195" class="arrow"/>
+
+  <rect x="230" y="525" width="740" height="64" rx="12" fill="#E2F1EF"/>
+  <text x="600" y="551" class="callout">Generation advances before reuse</text>
+  <text x="600" y="576" class="callout">An old token fails instead of naming a new object in the same slot.</text>
+</svg>
