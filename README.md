@@ -16,7 +16,7 @@ still application-specific.
 
 This repository is the first public RK01 source drop.
 
-For design details read the [Whitepaper](RK01-white-paper.pdf) and/or the 
+For design details read the 
 [Blog](https://rkernel0.org/rk01-user-kernel-and-memory-domain-boundaries/).
 
 ## Delivered Supported Targets
