@@ -36,6 +36,24 @@
 #endif
 #endif
 
+/* RKFS is currently backed by reserved STM32F401RE flash. Other platforms can
+ * keep the record example RAM-only by leaving this disabled. */
+#ifndef RK_CONF_FILESYSTEM
+#if defined(RK_MCU_F401RE)
+#define RK_CONF_FILESYSTEM (ON)
+#else
+#define RK_CONF_FILESYSTEM (OFF)
+#endif
+#endif
+
+#if ((RK_CONF_FILESYSTEM != ON) && (RK_CONF_FILESYSTEM != OFF))
+#error "RK_CONF_FILESYSTEM must be ON or OFF"
+#endif
+
+#if ((RK_CONF_FILESYSTEM == ON) && !defined(RK_MCU_F401RE))
+#error "RK_CONF_FILESYSTEM=ON currently requires RK_MCU_F401RE"
+#endif
+
 /* RK01 keeps one region for domain RAM, one for the private task stack, one
  * for the global shared aperture and leaves the remaining regions for
  * explicitly mapped inter-domain regions. */
@@ -275,6 +293,8 @@ account.
 #ifndef RK_CONF_PLATFORM_SYSCORECLK
 #if defined(STM32F401xE)
 #define RK_CONF_PLATFORM_SYSCORECLK (80000000UL)
+#elif defined(RK_MCU_MPS2_AN386)
+#define RK_CONF_PLATFORM_SYSCORECLK (25000000UL)
 #elif defined(RK_MCU_MPS2_AN505)
 #define RK_CONF_PLATFORM_SYSCORECLK (20000000UL)
 #else

@@ -9,9 +9,8 @@
 
 /*
  * File intent:
- *   STM32F401RE board-console backend. The kernel uses this small USART2 path
- *   for privileged diagnostics, panic output, logger draining and optional RX
- *   interrupt delivery.
+ *   ARMv7-M board-console backend. STM32F401RE uses USART2; MPS2 AN386 uses
+ *   CMSDK UART0 routed by QEMU to the first serial chardev.
  */
 
 #define RK_SOURCE_CODE
@@ -29,7 +28,33 @@
 #define RK_BOARD_CONSOLE_BAUD (115200UL)
 #endif
 
-#if defined(RK_BOARD_CONSOLE_HAS_USART2)
+#if defined(RK_MCU_MPS2_AN386)
+#define RK_BOARD_CONSOLE_HAS_CMSDK_UART (1U)
+
+#define MPS2_AN386_UART0_BASE (0x40004000UL)
+#define CMSDK_UART_DATA                                                      \
+    (*(volatile unsigned long *)(MPS2_AN386_UART0_BASE + 0x00UL))
+#define CMSDK_UART_STATE                                                     \
+    (*(volatile unsigned long *)(MPS2_AN386_UART0_BASE + 0x04UL))
+#define CMSDK_UART_CTRL                                                      \
+    (*(volatile unsigned long *)(MPS2_AN386_UART0_BASE + 0x08UL))
+#define CMSDK_UART_INTSTATUS                                                 \
+    (*(volatile unsigned long *)(MPS2_AN386_UART0_BASE + 0x0CUL))
+#define CMSDK_UART_BAUDDIV                                                   \
+    (*(volatile unsigned long *)(MPS2_AN386_UART0_BASE + 0x10UL))
+
+#define CMSDK_UART_STATE_TXBF (1UL << 0U)
+#define CMSDK_UART_STATE_RXBF (1UL << 1U)
+#define CMSDK_UART_CTRL_TXEN (1UL << 0U)
+#define CMSDK_UART_CTRL_RXEN (1UL << 1U)
+#define CMSDK_UART_CTRL_RXIRQEN (1UL << 3U)
+#define CMSDK_UART_INTSTATUS_RXIRQ (1UL << 1U)
+#define CMSDK_UART_BAUD (115200UL)
+#define CMSDK_UART0_IRQN (0UL)
+#endif
+
+#if defined(RK_BOARD_CONSOLE_HAS_USART2) ||                                  \
+    defined(RK_BOARD_CONSOLE_HAS_CMSDK_UART)
 #define RK_BOARD_CONSOLE_IRQ_LOWEST_PRIO ((1U << RK_CONF_NPRIO_BITS) - 1U)
 #define RK_BOARD_CONSOLE_IRQ_PRIO_SHIFT (8U - RK_CONF_NPRIO_BITS)
 
@@ -435,6 +460,22 @@ void kBoardConsoleInit(void)
     K_F401RE_USART2_CR1 =
         K_F401RE_USART2_CR1_UE | K_F401RE_USART2_CR1_TE |
         K_F401RE_USART2_CR1_RE;
+#elif defined(RK_BOARD_CONSOLE_HAS_CMSDK_UART)
+    unsigned long coreClock = RK_gSysCoreClock;
+
+    if (coreClock == 0UL)
+    {
+        coreClock = RK_CONF_EFFECTIVE_SYSCORECLK;
+    }
+    if (coreClock == 0UL)
+    {
+        coreClock = 25000000UL;
+    }
+
+    CMSDK_UART_CTRL = 0UL;
+    CMSDK_UART_BAUDDIV =
+        ((coreClock + (CMSDK_UART_BAUD / 2UL)) / CMSDK_UART_BAUD);
+    CMSDK_UART_CTRL = CMSDK_UART_CTRL_TXEN | CMSDK_UART_CTRL_RXEN;
 #endif
 
     initDone = 1U;
@@ -454,6 +495,19 @@ static VOID kBoardConsoleRxInterruptEnable_(VOID)
                                   RK_BOARD_CONSOLE_IRQ_LOWEST_PRIO);
     K_F401RE_USART2_CR1 |= K_F401RE_USART2_CR1_RXNEIE;
     kBoardConsoleNvicEnable_(K_F401RE_USART2_IRQN);
+
+    kBoardConsoleRxIrqEnabled_ = RK_TRUE;
+#elif defined(RK_BOARD_CONSOLE_HAS_CMSDK_UART)
+    if (kBoardConsoleRxIrqEnabled_ == RK_TRUE)
+    {
+        return;
+    }
+
+    kBoardConsoleNvicPrioritySet_(CMSDK_UART0_IRQN,
+                                  RK_BOARD_CONSOLE_IRQ_LOWEST_PRIO);
+    CMSDK_UART_INTSTATUS = CMSDK_UART_INTSTATUS_RXIRQ;
+    CMSDK_UART_CTRL |= CMSDK_UART_CTRL_RXIRQEN;
+    kBoardConsoleNvicEnable_(CMSDK_UART0_IRQN);
 
     kBoardConsoleRxIrqEnabled_ = RK_TRUE;
 #endif
@@ -609,6 +663,11 @@ static VOID kConsoleRawPutc_(CHAR const c)
     {
     }
     K_F401RE_USART2_DR = (unsigned long)((unsigned char)c);
+#elif defined(RK_BOARD_CONSOLE_HAS_CMSDK_UART)
+    while ((CMSDK_UART_STATE & CMSDK_UART_STATE_TXBF) != 0UL)
+    {
+    }
+    CMSDK_UART_DATA = (unsigned long)((unsigned char)c);
 #else
     (void)c;
 #endif
@@ -776,6 +835,14 @@ static INT kConsoleRawGetc_(CHAR *const chPtr)
 
     *chPtr = (char)(K_F401RE_USART2_DR & 0xFFUL);
     return (1);
+#elif defined(RK_BOARD_CONSOLE_HAS_CMSDK_UART)
+    if ((CMSDK_UART_STATE & CMSDK_UART_STATE_RXBF) == 0UL)
+    {
+        return (0);
+    }
+
+    *chPtr = (char)(CMSDK_UART_DATA & 0xFFUL);
+    return (1);
 #else
     return (0);
 #endif
@@ -795,6 +862,23 @@ void USART2_IRQHandler(void)
 
         kConsoleRxByteFromIsr_(ch);
     }
+}
+#endif
+
+#if defined(RK_BOARD_CONSOLE_HAS_CMSDK_UART)
+void UART0_Handler(void)
+{
+    do
+    {
+        CMSDK_UART_INTSTATUS = CMSDK_UART_INTSTATUS_RXIRQ;
+        while ((CMSDK_UART_STATE & CMSDK_UART_STATE_RXBF) != 0UL)
+        {
+            BYTE const ch = (BYTE)(CMSDK_UART_DATA & 0xFFUL);
+
+            kConsoleRxByteFromIsr_(ch);
+        }
+    } while (((CMSDK_UART_STATE & CMSDK_UART_STATE_RXBF) != 0UL) ||
+             ((CMSDK_UART_INTSTATUS & CMSDK_UART_INTSTATUS_RXIRQ) != 0UL));
 }
 #endif
 

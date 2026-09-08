@@ -17,7 +17,7 @@
 #include "record_domain_internal.h"
 #include "tiny_app.h"
 
-#if defined(RK_MCU_F401RE)
+#if (RK_CONF_FILESYSTEM == ON)
 #include <rkfs.h>
 
 static CHAR const recordSlotPath[RECORD_SLOT_COUNT][6] =
@@ -243,7 +243,7 @@ static RK_BOOL RecordFindNewest_(RecordState const *const statePtr,
 static RK_ERR RecordStorageWrite_(ULONG const slot,
                                   RECORD const *const recordPtr)
 {
-#if defined(RK_MCU_F401RE)
+#if (RK_CONF_FILESYSTEM == ON)
     CHAR text[RECORD_PERSIST_TEXT_BYTES];
 
     RecordToPersistText_(recordPtr, text);
@@ -257,7 +257,7 @@ static RK_ERR RecordStorageWrite_(ULONG const slot,
 
 static VOID RecordLoad_(RecordState *const statePtr)
 {
-#if defined(RK_MCU_F401RE)
+#if (RK_CONF_FILESYSTEM == ON)
     for (ULONG i = 0UL; i < RECORD_SLOT_COUNT; i++)
     {
         RKFS_REPLY reply;

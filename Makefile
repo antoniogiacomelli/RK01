@@ -11,6 +11,9 @@
 # Cortex-M33 QEMU build:
 #   make -j4 ARCH=armv8m PLATFORM=mps2-an505
 #
+# Cortex-M4 QEMU build:
+#   make -j4 ARCH=armv7m PLATFORM=mps2-an386
+#
 ARCH ?= armv7m
 PLATFORM ?= stm32f401re
 TARGET ?= rk01_demo
@@ -99,12 +102,16 @@ JLINK_IF ?= SWD
 JLINK_SPEED ?= 4000
 JLINK_SCRIPT ?= $(BUILD_DIR)/flash.jlink
 QEMU_SYSTEM_ARM ?= qemu-system-arm
+QEMU_M4_MACHINE ?= mps2-an386
+QEMU_M4_CPU ?= cortex-m4
 QEMU_M33_MACHINE ?= mps2-an505
 QEMU_M33_CPU ?= cortex-m33
 QEMU_EXTRA_FLAGS ?=
 QEMU_GDB_PORT ?= 3333
 QEMU_DEBUG_BUILD ?= qemu-debug
 QEMU_DEBUG_OPT ?= -Og
+QEMU_M4_PID_FILE ?= $(BUILD_DIR)/qemu-m4.pid
+QEMU_M4_LOG_FILE ?= $(BUILD_DIR)/qemu-m4.log
 QEMU_PID_FILE ?= $(BUILD_DIR)/qemu-m33.pid
 QEMU_LOG_FILE ?= $(BUILD_DIR)/qemu-m33.log
 
@@ -128,6 +135,30 @@ DEFINES :=
 DEFINES += -DLFS_NO_MALLOC -DLFS_NO_DEBUG -DLFS_NO_WARN -DLFS_NO_ERROR -DLFS_NO_ASSERT -DLFS_NO_INTRINSICS
 DEFINES += -DRK_BUILD_COOKIE=$(RK_BUILD_COOKIE)
 
+RK_CONF_FILESYSTEM_FROM_DEFS := $(patsubst -DRK_CONF_FILESYSTEM=%,%,$(filter -DRK_CONF_FILESYSTEM=%,$(EXTRA_DEFINES) $(EXTRA_DEFS)))
+ifneq ($(strip $(RK_CONF_FILESYSTEM_FROM_DEFS)),)
+RK_CONF_FILESYSTEM_EFFECTIVE := $(lastword $(RK_CONF_FILESYSTEM_FROM_DEFS))
+else
+ifneq ($(origin RK_CONF_FILESYSTEM),undefined)
+RK_CONF_FILESYSTEM_EFFECTIVE := $(RK_CONF_FILESYSTEM)
+else ifeq ($(PLATFORM),stm32f401re)
+RK_CONF_FILESYSTEM_EFFECTIVE := ON
+else
+RK_CONF_FILESYSTEM_EFFECTIVE := OFF
+endif
+endif
+
+ifneq ($(filter $(RK_CONF_FILESYSTEM_EFFECTIVE),ON OFF),$(RK_CONF_FILESYSTEM_EFFECTIVE))
+$(error RK_CONF_FILESYSTEM must be ON or OFF)
+endif
+
+RK_CONF_FILESYSTEM_RECURSE :=
+ifeq ($(strip $(RK_CONF_FILESYSTEM_FROM_DEFS)),)
+ifneq ($(origin RK_CONF_FILESYSTEM),undefined)
+RK_CONF_FILESYSTEM_RECURSE := RK_CONF_FILESYSTEM='$(RK_CONF_FILESYSTEM)'
+endif
+endif
+
 ifneq ($(filter $(ARCH),armv7m armv8m),$(ARCH))
 $(error Unsupported ARCH '$(ARCH)': RK01 supports MPU hardware on ARCH=armv7m or ARCH=armv8m)
 endif
@@ -136,10 +167,6 @@ ifeq ($(PLATFORM),stm32f401re)
 ifneq ($(ARCH),armv7m)
 $(error PLATFORM '$(PLATFORM)' requires ARCH=armv7m)
 endif
-MIDDLEWARE_SRCS += \
-    $(MIDDLEWARE_DIR)/src/rkfs.c \
-    $(MIDDLEWARE_DIR)/littlefs/lfs.c \
-    $(MIDDLEWARE_DIR)/littlefs/lfs_util.c
 CPU_FLAGS ?= -mcpu=cortex-m4 -mthumb
 DEFINES += -DSTM32F401xE -DRK_MCU_F401RE
 DEFINES += -D__NVIC_PRIO_BITS=4
@@ -162,8 +189,35 @@ endif
 CPU_FLAGS ?= -mcpu=cortex-m33 -mthumb
 FPU_FLAGS ?= -mfloat-abi=soft
 DEFINES += -DRK_MCU_MPS2_AN505 -D__FPU_PRESENT=0 -DRK_CONF_FPU=OFF -D__NVIC_PRIO_BITS=3
+else ifeq ($(PLATFORM),mps2-an386)
+ifneq ($(ARCH),armv7m)
+$(error PLATFORM '$(PLATFORM)' requires ARCH=armv7m)
+endif
+ifneq ($(FPU),OFF)
+$(error PLATFORM '$(PLATFORM)' currently supports FPU=OFF only)
+endif
+ifeq ($(LINKER_SCRIPT),$(ARCH_DIR)/linker.ld)
+LINKER_SCRIPT := $(ARCH_DIR)/linker_mps2_an386.ld
+endif
+CPU_FLAGS ?= -mcpu=cortex-m4 -mthumb
+FPU_FLAGS ?= -mfloat-abi=soft
+DEFINES += -DRK_MCU_MPS2_AN386 -D__FPU_PRESENT=0 -DRK_CONF_FPU=OFF -D__NVIC_PRIO_BITS=3
 else
-$(error Unsupported PLATFORM '$(PLATFORM)': RK01 supports stm32f401re and mps2-an505 MPU targets)
+$(error Unsupported PLATFORM '$(PLATFORM)': RK01 supports stm32f401re, mps2-an386 and mps2-an505 MPU targets)
+endif
+
+ifeq ($(RK_CONF_FILESYSTEM_EFFECTIVE),ON)
+ifneq ($(PLATFORM),stm32f401re)
+$(error RK_CONF_FILESYSTEM=ON is currently supported only on PLATFORM=stm32f401re)
+endif
+MIDDLEWARE_SRCS += \
+    $(MIDDLEWARE_DIR)/src/rkfs.c \
+    $(MIDDLEWARE_DIR)/littlefs/lfs.c \
+    $(MIDDLEWARE_DIR)/littlefs/lfs_util.c
+endif
+
+ifeq ($(strip $(RK_CONF_FILESYSTEM_FROM_DEFS)),)
+DEFINES += -DRK_CONF_FILESYSTEM=$(RK_CONF_FILESYSTEM_EFFECTIVE)
 endif
 
 DEFINES += $(EXTRA_DEFINES) $(EXTRA_DEFS) $(APP_DEFS)
@@ -227,7 +281,7 @@ LDFLAGS += \
 
 LDLIBS ?= -lc
 
-.PHONY: all help clean size objects audit-domain-writable flash qemu-m33 qemu-m33-debug qemu-m33-debug-start qemu-m33-debug-stop run-qemu-m33 run-qemu-m33-debug run-qemu-m33-debug-start run-qemu-m33-debug-stop board-run FORCE
+.PHONY: all help clean size objects audit-domain-writable flash qemu-m4 qemu-m4-debug qemu-m4-debug-start qemu-m4-debug-stop run-qemu-m4 run-qemu-m4-debug run-qemu-m4-debug-start run-qemu-m4-debug-stop qemu-m33 qemu-m33-debug qemu-m33-debug-start qemu-m33-debug-stop run-qemu-m33 run-qemu-m33-debug run-qemu-m33-debug-start run-qemu-m33-debug-stop board-run FORCE
 
 all: $(ELF) $(BIN) $(HEX) size
 
@@ -245,6 +299,10 @@ help:
 	    '  make audit-domain-writable   Warn on writable globals in DOMAIN_IMPL_SRCS.' \
 	    '  make size                    Print section sizes for the ELF.' \
 	    '  make flash                   Flash the current STM32 board build.' \
+	    '  make qemu-m4                 Build and run the Cortex-M4 MPS2 AN386 QEMU target.' \
+	    '  make qemu-m4-debug           Run QEMU M4 halted on the GDB port.' \
+	    '  make qemu-m4-debug-start     Start halted QEMU M4 in the background for VS Code.' \
+	    '  make qemu-m4-debug-stop      Stop the background QEMU M4 debug server.' \
 	    '  make qemu-m33                Build and run the Cortex-M33 MPS2 AN505 QEMU target.' \
 	    '  make qemu-m33-debug          Run QEMU M33 halted on the GDB port.' \
 	    '  make qemu-m33-debug-start    Start halted QEMU M33 in the background for VS Code.' \
@@ -256,11 +314,13 @@ help:
 	    'Core variables:' \
 	    '  ARCH=armv7m|armv8m           CPU architecture. Default: armv7m.' \
 	    '  PLATFORM=stm32f401re         Cortex-M4 MPU board target. Default.' \
+	    '  PLATFORM=mps2-an386          Cortex-M4 MPU QEMU target.' \
 	    '  PLATFORM=mps2-an505          Cortex-M33 MPU QEMU target.' \
 		    '  TARGET=name                  Output basename. Default: rk01_demo.' \
 	    '  APP_EXAMPLE=name             Example profile. Default: tiny.' \
 	    '  BUILD=name                   Build profile directory label. Default: debug.' \
 	    '  FPU=ON|OFF                   Enable F401 M4F hard-float context support. Default: OFF.' \
+	    '  RK_CONF_FILESYSTEM=ON|OFF    Include RKFS/LittleFS. Default: ON for F401, OFF elsewhere.' \
 	    '  BUILD_ROOT=dir               Root output directory. Default: build.' \
 	    '  APP_SRCS=files               Override application source list.' \
 	    '  DOMAIN_IMPL_SRCS=files       Domain bundle sources audited for writable globals.' \
@@ -279,7 +339,7 @@ help:
 	    '  BOARD_TIMEOUT=seconds        board-run capture duration. Default: 20.' \
 	    '  BOARD_BAUD=baud              board-run UART baud. Default: 115200.' \
 	    '  BOARD_RESET_AFTER_FLASH=ON|OFF Reset/run after serial capture starts. Default: ON.' \
-	    '  QEMU_SYSTEM_ARM=path         QEMU binary for make qemu-m33. Default: qemu-system-arm.' \
+	    '  QEMU_SYSTEM_ARM=path         QEMU binary for make qemu-m4/qemu-m33. Default: qemu-system-arm.' \
 	    '  QEMU_EXTRA_FLAGS=flags       Extra flags appended to the QEMU command.' \
 	    '  QEMU_GDB_PORT=port           GDB port for QEMU debug. Default: 3333.' \
 	    '  QEMU_DEBUG_BUILD=name        Build profile for QEMU debug. Default: qemu-debug.' \
@@ -298,7 +358,9 @@ help:
 	    '  make -j4 APP_EXAMPLE=06-profile-ctxsw EXTRA_DEFS="-DNDEBUG -DPROFILE_CTXSW_CLASS=PROFILE_CTXSW_CLASS_INTER_DOMAIN"' \
 	    '  make -j4 APP_EXAMPLE=99-showcase' \
 	    '  make -j4 ARCH=armv7m PLATFORM=stm32f401re FPU=ON' \
+	    '  make -j4 ARCH=armv7m PLATFORM=mps2-an386' \
 	    '  make -j4 ARCH=armv8m PLATFORM=mps2-an505' \
+	    '  make qemu-m4' \
 	    '  make qemu-m33' \
 	    '  make qemu-m33-debug' \
 	    'Flash examples:' \
@@ -317,16 +379,28 @@ audit-domain-writable: $(DOMAIN_IMPL_OBJS)
 	fi
 
 qemu-m33:
-	$(MAKE) ARCH=armv8m PLATFORM=mps2-an505 BUILD_ROOT=$(BUILD_ROOT) APP_EXAMPLE='$(APP_EXAMPLE)' EXTRA_DEFINES='$(EXTRA_DEFINES)' EXTRA_DEFS='$(EXTRA_DEFS)' run-qemu-m33
+	$(MAKE) ARCH=armv8m PLATFORM=mps2-an505 BUILD_ROOT=$(BUILD_ROOT) $(RK_CONF_FILESYSTEM_RECURSE) APP_EXAMPLE='$(APP_EXAMPLE)' EXTRA_DEFINES='$(EXTRA_DEFINES)' EXTRA_DEFS='$(EXTRA_DEFS)' run-qemu-m33
 
 qemu-m33-debug:
-	$(MAKE) ARCH=armv8m PLATFORM=mps2-an505 BUILD_ROOT=$(BUILD_ROOT) BUILD=$(QEMU_DEBUG_BUILD) TARGET=$(TARGET) APP_EXAMPLE='$(APP_EXAMPLE)' EXTRA_DEFINES='$(EXTRA_DEFINES)' EXTRA_DEFS='$(EXTRA_DEFS)' OPT='$(QEMU_DEBUG_OPT)' QEMU_GDB_PORT=$(QEMU_GDB_PORT) run-qemu-m33-debug
+	$(MAKE) ARCH=armv8m PLATFORM=mps2-an505 BUILD_ROOT=$(BUILD_ROOT) BUILD=$(QEMU_DEBUG_BUILD) TARGET=$(TARGET) $(RK_CONF_FILESYSTEM_RECURSE) APP_EXAMPLE='$(APP_EXAMPLE)' EXTRA_DEFINES='$(EXTRA_DEFINES)' EXTRA_DEFS='$(EXTRA_DEFS)' OPT='$(QEMU_DEBUG_OPT)' QEMU_GDB_PORT=$(QEMU_GDB_PORT) run-qemu-m33-debug
 
 qemu-m33-debug-start:
-	$(MAKE) ARCH=armv8m PLATFORM=mps2-an505 BUILD_ROOT=$(BUILD_ROOT) BUILD=$(QEMU_DEBUG_BUILD) TARGET=$(TARGET) APP_EXAMPLE='$(APP_EXAMPLE)' EXTRA_DEFINES='$(EXTRA_DEFINES)' EXTRA_DEFS='$(EXTRA_DEFS)' OPT='$(QEMU_DEBUG_OPT)' QEMU_GDB_PORT=$(QEMU_GDB_PORT) run-qemu-m33-debug-start
+	$(MAKE) ARCH=armv8m PLATFORM=mps2-an505 BUILD_ROOT=$(BUILD_ROOT) BUILD=$(QEMU_DEBUG_BUILD) TARGET=$(TARGET) $(RK_CONF_FILESYSTEM_RECURSE) APP_EXAMPLE='$(APP_EXAMPLE)' EXTRA_DEFINES='$(EXTRA_DEFINES)' EXTRA_DEFS='$(EXTRA_DEFS)' OPT='$(QEMU_DEBUG_OPT)' QEMU_GDB_PORT=$(QEMU_GDB_PORT) run-qemu-m33-debug-start
 
 qemu-m33-debug-stop:
-	$(MAKE) ARCH=armv8m PLATFORM=mps2-an505 BUILD_ROOT=$(BUILD_ROOT) BUILD=$(QEMU_DEBUG_BUILD) TARGET=$(TARGET) APP_EXAMPLE='$(APP_EXAMPLE)' QEMU_GDB_PORT=$(QEMU_GDB_PORT) run-qemu-m33-debug-stop
+	$(MAKE) ARCH=armv8m PLATFORM=mps2-an505 BUILD_ROOT=$(BUILD_ROOT) BUILD=$(QEMU_DEBUG_BUILD) TARGET=$(TARGET) $(RK_CONF_FILESYSTEM_RECURSE) APP_EXAMPLE='$(APP_EXAMPLE)' QEMU_GDB_PORT=$(QEMU_GDB_PORT) run-qemu-m33-debug-stop
+
+qemu-m4:
+	$(MAKE) ARCH=armv7m PLATFORM=mps2-an386 BUILD_ROOT=$(BUILD_ROOT) $(RK_CONF_FILESYSTEM_RECURSE) APP_EXAMPLE='$(APP_EXAMPLE)' EXTRA_DEFINES='$(EXTRA_DEFINES)' EXTRA_DEFS='$(EXTRA_DEFS)' run-qemu-m4
+
+qemu-m4-debug:
+	$(MAKE) ARCH=armv7m PLATFORM=mps2-an386 BUILD_ROOT=$(BUILD_ROOT) BUILD=$(QEMU_DEBUG_BUILD) TARGET=$(TARGET) $(RK_CONF_FILESYSTEM_RECURSE) APP_EXAMPLE='$(APP_EXAMPLE)' EXTRA_DEFINES='$(EXTRA_DEFINES)' EXTRA_DEFS='$(EXTRA_DEFS)' OPT='$(QEMU_DEBUG_OPT)' QEMU_GDB_PORT=$(QEMU_GDB_PORT) run-qemu-m4-debug
+
+qemu-m4-debug-start:
+	$(MAKE) ARCH=armv7m PLATFORM=mps2-an386 BUILD_ROOT=$(BUILD_ROOT) BUILD=$(QEMU_DEBUG_BUILD) TARGET=$(TARGET) $(RK_CONF_FILESYSTEM_RECURSE) APP_EXAMPLE='$(APP_EXAMPLE)' EXTRA_DEFINES='$(EXTRA_DEFINES)' EXTRA_DEFS='$(EXTRA_DEFS)' OPT='$(QEMU_DEBUG_OPT)' QEMU_GDB_PORT=$(QEMU_GDB_PORT) QEMU_PID_FILE='$(QEMU_M4_PID_FILE)' QEMU_LOG_FILE='$(QEMU_M4_LOG_FILE)' run-qemu-m4-debug-start
+
+qemu-m4-debug-stop:
+	$(MAKE) ARCH=armv7m PLATFORM=mps2-an386 BUILD_ROOT=$(BUILD_ROOT) BUILD=$(QEMU_DEBUG_BUILD) TARGET=$(TARGET) $(RK_CONF_FILESYSTEM_RECURSE) APP_EXAMPLE='$(APP_EXAMPLE)' QEMU_GDB_PORT=$(QEMU_GDB_PORT) QEMU_PID_FILE='$(QEMU_M4_PID_FILE)' QEMU_LOG_FILE='$(QEMU_M4_LOG_FILE)' run-qemu-m4-debug-stop
 
 run-qemu-m33: $(ELF)
 	$(QEMU_SYSTEM_ARM) -M $(QEMU_M33_MACHINE) -cpu $(QEMU_M33_CPU) -kernel $(ELF) -nographic -serial mon:stdio $(QEMU_EXTRA_FLAGS)
@@ -369,11 +443,53 @@ run-qemu-m33-debug-stop:
 	    printf '%s\n' "No QEMU M33 pid file at $(QEMU_PID_FILE)"; \
 	fi
 
+run-qemu-m4: $(ELF)
+	$(QEMU_SYSTEM_ARM) -M $(QEMU_M4_MACHINE) -cpu $(QEMU_M4_CPU) -kernel $(ELF) -nographic -serial mon:stdio $(QEMU_EXTRA_FLAGS)
+
+run-qemu-m4-debug: $(ELF)
+	$(QEMU_SYSTEM_ARM) -M $(QEMU_M4_MACHINE) -cpu $(QEMU_M4_CPU) -kernel $(ELF) -nographic -serial mon:stdio -S -gdb tcp::$(QEMU_GDB_PORT) $(QEMU_EXTRA_FLAGS)
+
+run-qemu-m4-debug-start: $(ELF)
+	@mkdir -p "$(BUILD_DIR)"
+	@if [ -f "$(QEMU_PID_FILE)" ]; then \
+	    pid=$$(cat "$(QEMU_PID_FILE)"); \
+	    if kill -0 "$$pid" 2>/dev/null; then \
+	        printf '%s\n' "Stopping stale QEMU M4 pid=$$pid"; \
+	        kill "$$pid"; \
+	        sleep 0.2; \
+	    fi; \
+	    rm -f "$(QEMU_PID_FILE)"; \
+	fi
+	@printf '%s\n' "Starting QEMU M4 GDB server on localhost:$(QEMU_GDB_PORT)"
+	@nohup $(QEMU_SYSTEM_ARM) -M $(QEMU_M4_MACHINE) -cpu $(QEMU_M4_CPU) -kernel $(ELF) -nographic -serial mon:stdio -S -gdb tcp::$(QEMU_GDB_PORT) $(QEMU_EXTRA_FLAGS) > "$(QEMU_LOG_FILE)" 2>&1 < /dev/null & echo $$! > "$(QEMU_PID_FILE)"
+	@sleep 0.2; \
+	if ! kill -0 "$$(cat "$(QEMU_PID_FILE)")" 2>/dev/null; then \
+	    printf '%s\n' "QEMU failed to start. Log follows:"; \
+	    cat "$(QEMU_LOG_FILE)"; \
+	    exit 1; \
+	fi; \
+	printf '%s\n' "QEMU M4 pid=$$(cat "$(QEMU_PID_FILE)") log=$(QEMU_LOG_FILE)"
+
+run-qemu-m4-debug-stop:
+	@if [ -f "$(QEMU_PID_FILE)" ]; then \
+	    pid=$$(cat "$(QEMU_PID_FILE)"); \
+	    if kill -0 "$$pid" 2>/dev/null; then \
+	        printf '%s\n' "Stopping QEMU M4 pid=$$pid"; \
+	        kill "$$pid"; \
+	    else \
+	        printf '%s\n' "QEMU M4 pid=$$pid is not running"; \
+	    fi; \
+	    rm -f "$(QEMU_PID_FILE)"; \
+	else \
+	    printf '%s\n' "No QEMU M4 pid file at $(QEMU_PID_FILE)"; \
+	fi
+
 board-run:
 	ARCH=armv7m \
 	PLATFORM=stm32f401re \
 	BUILD_ROOT='$(BOARD_BUILD_ROOT)' \
 	APP_EXAMPLE='$(APP_EXAMPLE)' \
+	RK_CONF_FILESYSTEM='$(RK_CONF_FILESYSTEM_EFFECTIVE)' \
 	EXTRA_DEFINES='$(EXTRA_DEFINES)' \
 	EXTRA_DEFS='$(EXTRA_DEFS)' \
 	FLASH_TOOL='$(BOARD_FLASH_TOOL)' \
@@ -398,6 +514,7 @@ $(CONFIG_STAMP): FORCE
 	    printf '%s\n' 'CC=$(CC)'; \
 	    printf '%s\n' 'ARCH=$(ARCH)'; \
 	    printf '%s\n' 'PLATFORM=$(PLATFORM)'; \
+	    printf '%s\n' 'RK_CONF_FILESYSTEM=$(RK_CONF_FILESYSTEM_EFFECTIVE)'; \
 	    printf '%s\n' 'BUILD_PROFILE=$(BUILD_PROFILE)'; \
 	    printf '%s\n' 'TARGET=$(TARGET)'; \
 	    printf '%s\n' 'APP_EXAMPLE=$(APP_EXAMPLE)'; \

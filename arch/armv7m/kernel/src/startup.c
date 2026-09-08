@@ -237,12 +237,20 @@ void (* const g_pfnVectors[])(void) =
     SysTick_Handler,             /* The SysTick handler */
 
     /* External interrupts */
+#if defined(RK_MCU_MPS2_AN386)
+    UART0_Handler,               /* IRQ 0: MPS2 AN386 CMSDK UART0 */
+#else
     GPIO_Handler,                /* IRQ 0: GPIO */
+#endif
     Default_Handler,             /* IRQ 1 */
     Default_Handler,             /* IRQ 2 */
     Default_Handler,             /* IRQ 3 */
     Default_Handler,             /* IRQ 4 */
+#if defined(RK_MCU_MPS2_AN386)
+    Default_Handler,             /* IRQ 5 */
+#else
     UART0_Handler,               /* IRQ 5: UART0 */
+#endif
     UART1_Handler,               /* IRQ 6: UART1 */
     SSI_Handler,                 /* IRQ 7: SSI */
     I2C_Handler,                 /* IRQ 8: I2C */

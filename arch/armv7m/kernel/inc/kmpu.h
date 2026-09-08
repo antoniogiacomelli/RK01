@@ -18,8 +18,8 @@ extern "C"
 #include <kcommondefs.h>
 #include <khal.h>
 
-/* Cortex-M4 implements 8 programmable MPU data regions on STM32F401RE. */
-#if defined(RK_MCU_F401RE)
+/* Supported Cortex-M4 ports expose 8 programmable MPU data regions. */
+#if defined(RK_MCU_F401RE) || defined(RK_MCU_MPS2_AN386)
 #define RK_MPU_N_REGIONS (8U)
 #endif
 

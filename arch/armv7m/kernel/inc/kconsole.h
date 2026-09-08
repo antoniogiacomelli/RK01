@@ -25,8 +25,8 @@ typedef RK_CONSOLE_RX_CBK RK_CONSOLE_RX_ISR_CBK;
 
 /*
  * Initialise the board console used by the kernel fault/debug path.
- * Current board binding: STM32F401RE USART2 on PA2/PA3, routed to the Nucleo
- * ST-LINK virtual COM port.
+ * Current board bindings: STM32F401RE USART2 on PA2/PA3, and MPS2 AN386
+ * CMSDK UART0 routed by QEMU to the first serial chardev.
  * Normal task I/O should use the privileged UART service, not this raw path.
  */
 void kBoardConsoleInit(void);

@@ -21,7 +21,7 @@
 #define TASK_STACK_WORDS (256U)
 #define APP_LOG_PRIO (10U)
 #define ECHO_TASK_PRIO (1)
-#if defined(RK_MCU_F401RE)
+#if (RK_CONF_FILESYSTEM == ON)
 #define FS_TASK_PRIO (3)
 #endif
 
@@ -34,6 +34,8 @@
 
 #if defined(RK_MCU_F401RE)
 #define APP_CONSOLE_NAME "USART2"
+#elif defined(RK_MCU_MPS2_AN386)
+#define APP_CONSOLE_NAME "UART0"
 #else
 #define APP_CONSOLE_NAME "console"
 #endif
@@ -58,7 +60,7 @@ typedef struct
 extern RK_SEMAPHORE_HANDLE lineReadySemaHandle;
 extern AppLineRing sharedLineRing;
 
-#if defined(RK_MCU_F401RE)
+#if (RK_CONF_FILESYSTEM == ON)
 extern RK_TASK_HANDLE fsTaskHandle;
 #endif
 

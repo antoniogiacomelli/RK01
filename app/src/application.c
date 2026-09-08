@@ -20,7 +20,7 @@
 #include <kapi_trusted.h>
 #include <klogger.h>
 
-#if defined(RK_MCU_F401RE)
+#if (RK_CONF_FILESYSTEM == ON)
 #include <rkfs.h>
 #endif
 
@@ -29,7 +29,7 @@ RK_DECLARE_DOMAIN_TASK(echoTaskHandle, EchoTask)
 RK_DECLARE_DOMAIN_TASK_STACK(echoStack, TASK_STACK_WORDS)
 RK_DECLARE_GLOBAL_SEMAPHORE(lineReadySemaHandle)
 
-#if defined(RK_MCU_F401RE)
+#if (RK_CONF_FILESYSTEM == ON)
 static RKFS_RAM fsRam RK_DOMAIN_RAM_ATTR(RKFS_DOMAIN_BYTES);
 static RK_DOMAIN fsDomain RK_DOMAIN_DESC_ATTR;
 RK_DECLARE_DOMAIN_TASK(fsTaskHandle, rkFsServerTask)
@@ -73,7 +73,7 @@ VOID kApplicationInit(VOID)
 
     AppCheck_(kDomainInit(&echoDomain, echoRam, sizeof(echoRam), "Echo"));
 
-#if defined(RK_MCU_F401RE)
+#if (RK_CONF_FILESYSTEM == ON)
     AppCheck_(kDomainInit(&fsDomain, (BYTE *)&fsRam, sizeof(fsRam), "FS"));
     /*
      * RKFS owns reserved flash and STM32 flash-controller MMIO. Keep callers

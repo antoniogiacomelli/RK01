@@ -1,0 +1,843 @@
+= RK01: Bounded Responses. Bounded Domains.
+Antonio Giacomelli
+v0.1, September 2026
+:doctype: article
+:lang: en
+:toc: left
+:toclevels: 3
+:sectnums:
+:icons: font
+:source-highlighter: highlight.js
+:imagesoutdir: generated
+:plantuml-format: svg
+
+[abstract]
+== Abstract
+
+RK01 takes the fixed-priority, statically bounded real-time model of RK0 and adds an explicit user/kernel boundary and MPU-enforced writable-memory domains. It remains a single firmware image built in one final link. Tasks remain the independently scheduled entities. A domain is neither a process nor a loadable module: it is a frozen set of writable authorities shared by one or more tasks, while each active task retains a private stack aperture.
+
+That boundary changes more than context-switch assembly. Public kernel objects can no longer be exposed as trusted addresses; task-facing identity therefore becomes an opaque, generation-checked handle. Ordinary task calls can no longer enter kernel code as normal C calls; they cross SVC, with caller-derived authority, pointer validation and an explicit continuation protocol for blocking operations. Communication semantics now depend on whether endpoints share writable memory. Fault handling must retire a damaged task without leaving wait queues, messages or owned mutexes inconsistent. The linker and BOOT path together become responsible for constructing and validating the writable-authority topology before dispatch.
+
+This paper describes those mechanisms and their rationale, using the privileged UART Console task as a complete client/server example. It also separates hardware constraints from deliberate real-time policy, compares RK01 domains with CMSIS-RTX MPU zones and ThreadX Modules, and interprets the available preemption benchmark without presenting whole-chain throughput as isolated context-switch latency.
+
+[NOTE]
+====
+This paper describes the RK01 V0.1.0 implementation snapshot at commit `e379a43` <<rk01-source>>. It is an architectural account, not a safety certification, security proof or completed WCET analysis.
+====
+
+== Purpose and design position
+
+RK0 is a flat real-time executive <<rk0-source>>. Application and kernel code share one privileged address space; services are ordinary function calls; application pointers and kernel-object pointers can be passed directly. This gives RK0 unusually low indirection and makes the path from a call site to a scheduling decision easy to inspect.
+
+RK01 does not claim that this model was mistaken. It answers a different requirement: contain a defective ordinary task before it can overwrite kernel RAM, another component's persistent state or a privileged service stack.
+
+The result is not simply RK0 with an MPU driver. A real protection boundary must be reflected consistently in:
+
+* memory placement and startup;
+* privilege transitions and system calls;
+* task and object identity;
+* ownership and visibility rules;
+* inter-task communication;
+* context-switch work;
+* fault cleanup and application recovery;
+* response-time analysis.
+
+The scheduler's identity remains recognisable: fixed-priority, preemptive, statically limited and intended for small embedded systems. The new question is not whether all firmware is trusted equally, but where writable authority is deliberately shared.
+
+[plantuml,rk0-rk01-boundary,svg]
+....
+@startuml
+top to bottom direction
+skinparam componentStyle rectangle
+skinparam shadowing false
+
+frame "RK0: flat trusted firmware" as RK0 {
+  rectangle "Application tasks\nshared address space" as R0APP
+  rectangle "RK0 kernel" as R0K
+  R0APP --> R0K : direct C calls
+}
+
+frame "RK01: explicit protection boundary" as RK01 {
+  rectangle "Unprivileged tasks\nin memory domains" as R1APP
+  rectangle "SVC boundary\nvalidation and continuation" as SVC
+  rectangle "Kernel and\nprivileged services" as R1K
+  R1APP --> SVC : public API
+  SVC --> R1K : checked operation
+}
+@enduml
+....
+
+=== Threat model
+
+RK01 assumes one intentionally built firmware image. The build, linker description, startup code, board port, kernel, exception paths and deliberately privileged services are trusted. Ordinary unprivileged task code may nevertheless be defective, memory-unsafe or compromised through an application-level error.
+
+The protection objective is local containment:
+
+* prevent an unprivileged task from writing kernel RAM;
+* prevent it from writing another domain's persistent state;
+* prevent it from writing another task's private stack;
+* restrict its direct access to MMIO and privileged services;
+* reject invalid handles and caller pointers at the syscall boundary;
+* remove a faulted task from kernel protocols consistently.
+
+RK01 does not claim protection against malicious privileged code, a defective exception handler, unrestricted DMA, debug or physical access, a dishonest build, or arbitrary code loading. Privileged code is not somehow shielded while it exercises universal authority. Reducing the amount of code that needs that authority reduces the trusted computing base; it does not abolish it.
+
+== System model and terminology
+
+The term _domain_ is intentionally narrower than _process_ and different from a separately built module.
+
+[cols="1,3",options="header"]
+|===
+|Term |Meaning in RK01
+
+|Task
+|The independently scheduled entity. It owns execution context, priority, state, timeout participation and a private stack aperture.
+
+|Domain
+|A named writable-authority boundary. One or more tasks may share its persistent RAM and the same explicit shared-region attachments.
+
+|Implicit App domain
+|The default domain used by ordinary application tasks created through the RK0-like task declaration and initialisation path.
+
+|Explicit domain
+|A BOOT-created domain with an explicitly declared MPU-compatible RAM window and one or more member tasks.
+
+|Isolated task
+|A one-task domain whose declared stack storage is also its private domain window. It is still an ordinary scheduled task, not a new scheduler class.
+
+|Privileged system task
+|A task deliberately running with privileged CONTROL state, such as Console, Logger, SysMon or PostProc. It remains inside the trusted computing base.
+
+|Source bundle
+|A C project-organisation convention: public header, private header, domain declaration, BOOT function and member-task sources. Its files compile to ordinary object files and participate in the same final firmware link.
+|===
+
+Two tasks belong in one domain when they are intentionally allowed to modify the same persistent state. Domain membership is therefore a writable-fault boundary: a wild store into domain RAM by either member can damage state used by the other members. RK01 still protects their stacks from one another.
+
+Creating more domains is not automatically better. A boundary is justified when fault containment, ownership or service structure is worth additional MPU, syscall and communication work.
+
+== Construction of the memory topology
+
+=== One image and one final link
+
+RK01 does not produce `kernel.elf`, `domain1.elf` and `domain2.elf`, nor does it load independent application images at run time. Domain source files may of course compile independently into `domain_a.o`, `domain_a_server.o` and so on, but those object files are inputs to one final link.
+
+The important information is not the object filename. It is the section into which each writable declaration is emitted.
+
+The ARMv7-M linker script classifies writable authority into the following principal areas:
+
+[cols="2,2,3",options="header"]
+|===
+|Area |Current STM32F401RE placement |Purpose
+
+|FLASH
+|256 KiB at `0x08000000`
+|Shared executable code and read-only data.
+
+|FS_FLASH
+|256 KiB at `0x08040000`
+|Reserved storage used by RKFS; not part of the ordinary executable user window.
+
+|TASK_RAM
+|64 KiB at `0x20000000`
+|Implicit App-domain RAM, explicit domain windows, private task stacks and shared apertures.
+
+|KERNEL_RAM
+|32 KiB at `0x20010000`
+|TCBs, object pools, registries, kernel data, privileged stacks and the MSP.
+|===
+
+The exact sizes are board-port choices, not universal RK01 constants. The classification is the architectural point.
+
+Within TASK_RAM, the current ARMv7-M script reserves:
+
+* a naturally aligned 16 KiB window for the implicit App domain;
+* a generic collection for explicit `.rk_domain_ram*` windows;
+* a distinct `.rk_task_stack*` collection for ordinary private stacks;
+* task no-init storage;
+* a fixed 1 KiB global shared aperture;
+* optional explicit shared regions declared by the application.
+
+Kernel `.data`, `.bss`, no-init data, object pools and privileged stacks go to KERNEL_RAM. Shared code remains in FLASH. This is why the linker is best described as a build-time classifier of writable authority.
+
+=== Domain source bundles
+
+A useful domain layout is:
+
+[cols="2,4",options="header"]
+|===
+|File |Responsibility
+
+|`domain_a.h`
+|Public request, reply and export types. It should not expose private writable representation.
+
+|`domain_a_internal.h`
+|Typed private RAM layout, member-task declarations and implementation-only definitions.
+
+|`domain_a.c`
+|The domain window and descriptor, BOOT construction, public exports and composition of member tasks.
+
+|`domain_a_worker.c`
+|One or more member-task implementations using the private typed RAM view.
+|===
+
+There is no automatic placement of a global merely because it appears in `domain_a_worker.c`. A casual writable global still follows the normal linker rules and will commonly land in the implicit App domain. RK01 therefore makes private persistent state explicit through a typed domain RAM declaration. The build's `DOMAIN_IMPL_SRCS` audit warns when a source-bundle implementation introduces unexpected `.data`, `.bss`, `.sdata`, `.sbss` or COMMON symbols.
+
+That audit is a construction aid, not the MPU itself. The MPU enforces the final linked map; the audit helps the author ensure that the map expresses the intended ownership.
+
+=== Sequential build and BOOT process
+
+[plantuml,rk01-build-and-boot,svg]
+....
+@startuml
+top to bottom direction
+skinparam shadowing false
+skinparam componentStyle rectangle
+
+rectangle "C declarations" as C {
+  rectangle "Domain RAM sections" as DR
+  rectangle "Task stack sections" as TS
+  rectangle "Shared RAM sections" as SR
+  rectangle "Kernel RAM sections" as KR
+}
+
+rectangle "Ordinary compilation\nsource files to .o files" as CC
+rectangle "One final linker\nclassifies writable authority" as LD
+rectangle "Startup\ncopies data and clears BSS" as START
+rectangle "Application BOOT\ncreates domains, tasks and attachments" as BOOT
+rectangle "Kernel validation\ngeometry, overlap and membership" as VALID
+rectangle "Frozen MPU maps" as MAPS
+rectangle "First dispatch" as RUN
+
+C --> CC
+CC --> LD
+LD --> START
+START --> BOOT
+BOOT --> VALID
+VALID --> MAPS
+MAPS --> RUN
+@enduml
+....
+
+The sequence is important:
+
+. Declarations create intentionally named writable sections.
+. Each source file is compiled normally.
+. The final linker collects, aligns and bounds those sections and exports startup symbols.
+. Reset startup copies initialised data and clears the appropriate zero-initialised areas.
+. Privileged BOOT code initialises domains, allocates typed domain state, creates tasks and attaches explicit shared regions.
+. Before scheduling begins, the kernel validates region size and alignment, TASK_RAM containment, non-overlap, private-stack placement, domain membership and shared mappings.
+. The topology is frozen.
+. PendSV dispatches tasks using precomputed MPU descriptors.
+
+The kernel does not discover or construct an address space dynamically inside every context switch. Dispatch consumes a topology that was already validated.
+
+=== Why a prebuilt kernel object is not the domain model
+
+RK01 could technically be distributed as a precompiled archive or `kernel.o`, provided its configuration-dependent ABI, pool geometry, feature set and required linker symbols were frozen. That is a packaging choice, not a protection feature.
+
+The current model lets the application configure and compile the kernel because configuration changes code, object capacities and memory requirements. Compiling each domain to one relocatable object may help encapsulation or proprietary delivery, but it does not create domain placement automatically and does not improve MPU isolation. The final linker must still classify the sections and establish concrete addresses.
+
+== MPU views and context-switch classes
+
+=== The effective task view
+
+On the current ARMv7-M port, an ordinary task's view is composed from fixed MPU roles:
+
+[cols="1,2,4",options="header"]
+|===
+|Region |Authority |Update rule
+
+|0
+|Shared user FLASH, executable and read-only
+|Installed once during MPU initialisation.
+
+|1
+|Active domain RAM
+|Replaced when dispatch crosses a domain boundary.
+
+|2
+|Active task's private stack
+|Replaced on every dispatch to a different task.
+
+|3
+|Global shared RAM
+|Part of the domain authority map; reloaded on a domain change.
+
+|4--7
+|Explicit shared regions attached to the active domain
+|Part of the domain authority map; reloaded on a domain change.
+|===
+
+Privileged handlers and privileged system tasks use the default privileged system map through `PRIVDEFENA`. Unprivileged tasks see only the enabled user regions.
+
+The private stack overlay is a deliberate difference between “these tasks share domain state” and “these tasks may overwrite one another's execution frames.” RK01 permits the first without permitting the second.
+
+[plantuml,rk01-dispatch-classes,svg]
+....
+@startuml
+left to right direction
+skinparam shadowing false
+skinparam componentStyle rectangle
+
+rectangle "Task A1\nDomain A\nStack A1" as A1
+rectangle "Task A2\nDomain A\nStack A2" as A2
+rectangle "Task B1\nDomain B\nStack B1" as B1
+
+A1 --> A2 : same domain\nreplace stack slot only
+A2 --> B1 : domain crossing\nreplace domain and shared slots\nthen replace stack slot
+B1 --> B1 : same task selected\nno MPU rewrite
+@enduml
+....
+
+=== Immutable domain maps
+
+The current dispatch path remembers both the active task and active domain. When the selected task is unchanged, it performs no MPU write. When the task changes but its domain is the active domain, it changes only the private-stack slot. When the domain changes, it reloads the domain and shared-authority slots before installing the selected stack.
+
+[cols="2,3,3",options="header"]
+|===
+|Dispatch class |MPU work |Meaning
+
+|Same task selected again
+|None
+|The installed task view is already correct.
+
+|Different task, same domain
+|Replace private-stack region
+|Persistent state and shared attachments remain mapped; execution frames remain private.
+
+|Different domain
+|Replace domain RAM, global/explicit shared slots and private stack
+|Writable authority changes completely.
+|===
+
+This is the practical reason for grouping cooperating tasks into domains. An intra-domain hand-off retains containment from unrelated domains while avoiding a complete authority-map reload. An inter-domain hand-off pays the larger cost because it changes the fault boundary.
+
+== Object identity, scope and lifecycle
+
+=== Why a pointer is no longer a sufficient handle
+
+In RK0, a handle can naturally be a pointer to an object because the caller already shares the kernel's trusted address space. Across an unprivileged boundary, an arbitrary caller-supplied address cannot be accepted as a mutex, semaphore, queue or TCB.
+
+RK01 task-facing handles are opaque tokens. The 32-bit encoding contains:
+
+* a fixed RK tag;
+* an object-kind field;
+* a 16-bit generation;
+* an 8-bit registry slot.
+
+Decoding the fields is not sufficient to establish validity. Resolution also checks the configured family capacity, current generation, live registry entry, ownership by the correct fixed pool and the internal object type header.
+
+Task handles use the same slot-and-generation principle through the live-task registry. The application never needs a TCB address.
+
+=== Bounded lifecycle
+
+image::https://i0.wp.com/rkernel0.org/wp-content/uploads/2026/09/RK01-object-lifecycle-edited-1.png
+
+Run-time creation is therefore not an open-ended heap. It is reservation from a build-time-bounded family pool. Creation time may be dynamic; maximum capacity is not.
+
+=== Scope is separate from possession
+
+Every scoped object records whether it is:
+
+* `RK_SCOPE_DOMAIN_LOCAL`, with an owning domain; or
+* `RK_SCOPE_KERNEL_GLOBAL`, intentionally usable across domains.
+
+Holding the numerical token is not, by itself, authority. The kernel resolves identity and checks scope against the current caller domain. This is a substantial difference from protection schemes in which MPU placement guards raw loads and stores but an RTOS API will still operate on any valid object ID supplied through privileged handler mode.
+
+Domain-local is the natural default for mutexes, semaphores, sleep queues and pointer-bearing services. Global scope is deliberate infrastructure for cross-domain queues, mailboxes or other system-wide endpoints.
+
+=== Fault-aware cleanup
+
+An object model is credible only if abnormal task exit cannot leave its protocols silently valid.
+
+When an unprivileged task is retired after a fault, RK01 invalidates its task identity, removes wait and timeout links, clears syscall continuation state and releases message relationships. A mutex owned by that task is poisoned; waiters receive `RK_ERR_MUTEX_OWNER_FAULTED` rather than inheriting ownership of state whose invariants may already be broken. Reuse requires destroy/recreate or a wider recovery action.
+
+The kernel can make its own queues and identities consistent. It cannot infer whether the application's data remains meaningful.
+
+== The system-call boundary
+
+=== Two entry paths behind one public API
+
+RK01 retains a conventional C API. The wrapper first determines its execution context:
+
+* handler mode and privileged thread mode call the implementation directly where permitted;
+* ordinary unprivileged thread mode enters through SVC.
+
+This lets privileged BOOT and system services avoid a pointless trap while ensuring that ordinary tasks cannot bypass the boundary.
+
+The SVC path derives the caller from the current TCB. Caller identity is never trusted as an argument. Before privileged code dereferences application-supplied data, the dispatcher validates:
+
+* trap origin and syscall number;
+* handle tag, kind, slot, generation and liveness;
+* object scope against the caller's domain;
+* required input ranges for readability;
+* required or optional output ranges for writability;
+* callback or function pointers as valid user code addresses;
+* packed argument records, copied into kernel-local storage before nested pointers are interpreted.
+
+=== Immediate and blocking calls
+
+An immediate syscall completes in handler mode, writes the result into the caller's stacked `R0`, and returns.
+
+A blocking syscall cannot simply preserve an arbitrary privileged C call chain on the MSP while unrelated tasks and nested syscalls execute. RK01 represents the continuation explicitly in the caller's TCB: saved exception frame, syscall number, original arguments, phase and wake result.
+
+
+The public function still appears to block once. Internally it may cross SVC more than once, with the continuation represented as bounded task state rather than a suspended privileged stack.
+
+Long non-blocking kernel work may use the same restart principle at explicit checkpoints. This allows a pending higher-priority task to run without exposing an unbounded privileged continuation.
+
+=== Timing consequence
+
+A syscall is a protocol, not merely the `SVC` instruction. Its response-time contribution may include exception entry and exit, validation, object lookup, wait-queue operations, PendSV, an MPU update, later wakeup and continuation. A client/server service adds at least the server dispatch, service execution, reply and client redispatch.
+
+Those costs are finite and classifiable, but they are not equal to RK0's direct function call.
+
+== Communication follows memory authority
+
+RK01 does not impose message passing inside every domain. Tasks that intentionally share domain RAM can use ordinary loads and stores and coordinate with familiar services. Forcing such traffic through a server would add states and context switches without creating a new containment boundary.
+
+Across domains, a pointer is meaningful only when both views map the referenced storage. RK01 therefore distinguishes communication contracts explicitly.
+
+[cols="2,3,3",options="header"]
+|===
+|Mechanism |Natural use |Boundary rule
+
+|Direct shared state
+|Closely cooperating tasks in one domain
+|Both tasks already map the same domain RAM; synchronisation is still required.
+
+|Domain-local semaphore, mutex or sleep queue
+|Coordination around domain-owned invariants
+|The object's owner scope is checked independently of handle possession.
+
+|Task event
+|Cross-domain notification without a payload pointer
+|Targets a task identity; no writable object is transferred.
+
+|Asynchronous direct message
+|Ownership transfer of an application-owned message buffer
+|By-reference use is same-domain because the receiver must retain access to the buffer.
+
+|Asynchronous copied message
+|Queued payload across non-shared domains
+|Payload moves through bounded kernel-owned message storage.
+
+|Synchronous send/receive
+|Blocking one-way rendezvous
+|The receiver copies the payload; there is no reply and no receiver priority substitution.
+
+|Synchronous call/accept/reply
+|Request/reply service
+|Copied request/reply with one active caller per server and caller-priority substitution while queued or active.
+
+|Global queue or mailbox
+|Named infrastructure shared by several domains
+|The object must be explicitly global; payload storage must still satisfy its copy/reference contract.
+
+|Explicit shared memory
+|Deliberately shared high-rate or stateful data
+|The segment is attached to selected domains before topology finalisation and consumes MPU capacity.
+
+|MRM
+|Latest-value publication using pointer leases
+|Domain-local under the current API because a lease is a pointer. Across domains, use a copied payload or an explicit shared-memory snapshot instead.
+|===
+
+The policy is not “messages are good and shared memory is bad.” The policy is that the communication primitive must match the writable authority actually installed by the MPU.
+
+=== Priority-aware service calls
+
+Call/reply is intended for a server that owns state or hardware on behalf of clients. While calls are queued or active, the server's effective priority reflects its most urgent caller. This limits priority inversion caused by a low nominal server priority. Timeout, reply and cleanup remove the relationship.
+
+Priority substitution does not make the service free. It makes the scheduling dependency explicit enough to analyse.
+
+== UART Console as a complete service example
+
+The Console path demonstrates why a client/server structure becomes natural once ordinary tasks no longer own MMIO authority.
+
+=== Topology
+
+* Ordinary clients run unprivileged in one or more domains.
+* USART2 MMIO remains accessible to privileged code.
+* A privileged Console task owns foreground transmit and receive processing.
+* A small ISR transfers received bytes into a fixed ring and signals the Console task.
+* Transmit uses synchronous call/accept/reply.
+
+=== Transmit path
+
+An unprivileged task calls `kConsoleWrite()` with a buffer and byte count. A zero-length request succeeds immediately. The front end rejects a null buffer and any request beyond `RK_CONF_CONSOLE_WRITE_MAX_BYTES`, which is 65 bytes in the default configuration.
+
+The caller builds a bounded request descriptor and reply area on its private stack. The syscall copies and validates the protocol metadata, then enters the generic call/reply machinery. The client blocks while the privileged Console task accepts the request.
+
+The descriptor contains a pointer to the original payload. Before using it, the Console task resolves the original caller and validates that the requested range is readable in that caller's MPU contract. The caller remains blocked until reply, so its private stack and syscall continuation remain stable during this bounded loan. The current example transmits by polling the UART-ready condition; a future interrupt- or DMA-driven implementation would change the device-side execution without changing the protection protocol.
+
+[plantuml,rk01-uart-service,svg]
+....
+@startuml
+skinparam shadowing false
+participant "Client task\nunprivileged" as C
+participant "SVC and\ncall/reply" as K
+participant "Console task\nprivileged" as S
+participant "USART2" as U
+participant "USART2 ISR" as I
+collections "Fixed RX ring" as R
+
+== Transmit ==
+C -> C : build bounded descriptor\non private stack
+C -> K : kConsoleWrite(buffer, bytes)
+K -> K : validate metadata\nand queue call
+K --> C : block caller
+K -> S : wake or dispatch server\nat effective caller priority
+S -> K : accept copied descriptor
+S -> K : resolve original caller\nand validate payload range
+S -> U : write bounded payload
+S -> K : reply(status, bytes)
+K --> C : wake and complete syscall
+
+== Receive ==
+U -> I : RX interrupt
+I -> R : append available byte
+I -> K : signal Console event
+K -> S : make ready when required
+S -> R : drain bytes in task context
+S -> S : invoke registered owner callback
+@enduml
+....
+
+=== What the example proves
+
+The example does not prove that all drivers must be server tasks. It demonstrates a coherent boundary:
+
+* one privileged endpoint owns the peripheral;
+* clients use a bounded checked interface;
+* call/reply represents blocking service ownership;
+* priority substitution connects client urgency to server scheduling;
+* the ISR remains small;
+* application parsing and policy can remain outside the interrupt path.
+
+It also exposes the trusted-base issue honestly. The Console task and any callback it invokes while privileged are trusted. Moving parsing or protocol policy into an unprivileged domain can reduce that trusted surface; merely naming privileged code a task cannot.
+
+== Fault containment and application recovery
+
+=== What RK01 does on an MPU violation
+
+For a valid exception frame originating from an ordinary unprivileged task, MemManage records the task ID, PC, LR, status registers, fault address when available, PSP and CONTROL state. It clears the processor fault status, marks the running task `FAULT_PENDING`, schedules away and queues cleanup for PostProc.
+
+PostProc later invalidates public task identity and unlinks kernel relationships. A fault in handler mode, privileged thread mode or an unusable exception context is fatal because the kernel cannot safely treat it as an isolated user-task failure.
+
+[plantuml,rk01-fault-path,svg]
+....
+@startuml
+skinparam shadowing false
+start
+:MPU raises MemManage;
+:capture architectural fault record;
+
+if (ordinary unprivileged task\nand usable frame?) then (yes)
+  :mark task FAULT_PENDING;
+  :PendSV dispatches another task;
+  :PostProc invalidates handle\nand unlinks waits, timeouts,\nmessages and owned mutexes;
+  :containment complete;
+  :application-specific policy;
+else (no)
+  :fatal kernel fault path;
+endif
+stop
+@enduml
+....
+
+=== Containment is not recovery
+
+Killing the offending task prevents further execution. It does not reconstruct an application invariant that may have been damaged before the illegal access.
+
+Recovery therefore depends on what the product controls. Possible policies include:
+
+* command outputs to a safe state and continue in degraded mode;
+* fail over to a pre-created redundant domain;
+* reinitialise a peripheral and its owning service state;
+* abandon the affected function until maintenance;
+* reset the controller when shared invariants cannot be established safely.
+
+=== Example: failover rather than blind restart
+
+Consider a controller with `PrimarySensor` and `StandbySensor` domains. Each publishes copied samples to a separate `Control` domain. No mutable sensor state is shared directly with Control.
+
+. A task in `PrimarySensor` violates its MPU map.
+. RK01 records and contains the task, then PostProc cleans its kernel relationships.
+. A bounded privileged fault-report handoff informs a product supervisor. This notification path is application integration work; the V0.1.0 diagnostic record alone is not a complete supervisor protocol.
+. The supervisor commands the actuator controller to its defined transient-safe value.
+. It marks the primary sample stream invalid using a generation or epoch field and selects the already-running standby stream.
+. Remaining tasks in the primary domain are quiesced by application policy because their shared domain state can no longer be trusted.
+. The system either remains degraded or schedules a controlled reset at an acceptable process state.
+
+```plantuml
+@startuml
+left to right direction
+skinparam shadowing false
+skinparam componentStyle rectangle
+
+rectangle "PrimarySensor domain\nfaulted state" as P
+rectangle "RK01 containment\nand PostProc cleanup" as K
+rectangle "Product supervisor\napplication policy" as S
+rectangle "StandbySensor domain\npre-created" as B
+rectangle "Control domain\nsafe output then failover" as C
+
+P --> K : MPU fault
+K --> S : bounded fault report\nrequired integration
+S --> C : command transient safe state
+S --> B : select valid stream
+B --> C : copied samples with new epoch
+S --> P : quiesce remaining members
+@enduml
+```
+
+This example is feasible because it does not pretend that zeroing one stack repairs shared domain state. A transparent in-place restart would require more kernel and application machinery: domain-level lifecycle, deterministic RAM reinitialisation, invalidation and reconstruction of domain-local objects, task recreation rules and a bounded supervisor notification path. Those are legitimate future features, not properties supplied automatically by the MPU.
+
+== Building an operating system around RK01
+
+RK01 is a kernel. The surrounding firmware may or may not contain a separately identifiable operating-system layer.
+
+[plantuml,rk01-system-composition,svg]
+....
+@startuml
+left to right direction
+skinparam shadowing false
+skinparam componentStyle rectangle
+
+frame "A. Specialised system" as A {
+  rectangle "Application tasks" as AA
+  rectangle "RK01 kernel" as AK
+  AA --> AK : kernel API
+}
+
+frame "B. Integrated user OS" as B {
+  rectangle "Application tasks" as BA
+  rectangle "User-side OS or framework" as BO
+  rectangle "RK01 kernel" as BK
+  BA --> BO
+  BO --> BK : kernel API
+}
+
+frame "C. Service-oriented system" as C {
+  rectangle "Application domains" as CA
+  rectangle "Unprivileged service domains" as CS
+  rectangle "Privileged hardware endpoints" as CP
+  rectangle "RK01 kernel" as CK
+  CA --> CS : copied IPC or call/reply
+  CS --> CP : narrow checked service
+  CP --> CK
+}
+@enduml
+....
+
+=== Specialised application with no OS layer
+
+The smallest arrangement resembles normal RK0 use: application tasks call the RK01 API directly. The difference is that ordinary calls cross SVC and the tasks execute inside protected memory views. There is no need to invent a user-space OS merely because the kernel has a privilege boundary.
+
+=== Integrated user-side OS or framework
+
+A larger product can place protocols, storage policy and application services behind one integrated interface above RK01. This may still look monolithic at the software-architecture level even though its tasks are unprivileged and can be separated into domains.
+
+=== Service-oriented composition
+
+Selected facilities may instead be represented as independently scheduled servers. Applications call services rather than owning hardware or persistent service state directly. Hardware-facing endpoints may remain privileged, while parsers, filesystems, protocol engines and product policy can be moved into unprivileged domains when their timing and communication costs justify it.
+
+Labels such as Application A, B and C in an architecture drawing do not denote independently loaded programs. They are product-level groupings containing one or more tasks and domains. RK01 still schedules tasks, and the build still produces one image.
+
+== Why RK01 leans toward a microkernel approach
+
+An explicit memory boundary encourages several microkernel-like choices:
+
+* client/server ownership of devices and persistent service state;
+* copied messages across non-shared domains;
+* small interrupt handlers;
+* independently scheduled service tasks;
+* checked service gateways;
+* priority-aware synchronous calls;
+* explicit fault boundaries.
+
+This is an architectural option for the OS built around RK01, not a compulsory classification of the kernel implementation.
+
+A strict microkernel normally attempts to move a large portion of services and drivers out of privileged kernel space. RK01 still contains substantial kernel-resident scheduling, object, IPC, logging and diagnostic machinery. Its current Console endpoint is a privileged task and remains in the trusted base. An OS can nevertheless place higher-level driver logic and policy in unprivileged service domains and retain only a narrow privileged MMIO endpoint.
+
+Moving every operation through a server would be counterproductive. A protected call/reply service may require client-to-kernel entry, dispatch to the server, reply through the kernel and redispatch to the client, with validation and copying along the way. For a timing-critical local mechanism inside one trusted domain, a direct kernel service or shared-state operation may be the better real-time design.
+
+RK01 therefore enables a microkernel-like composition where the boundary has value; it does not demand a classification victory at the expense of response time.
+
+=== Response-time classes
+
+A realistic analysis must distinguish at least:
+
+[cols="2,4",options="header"]
+|===
+|Class |Components
+
+|Privileged direct call
+|Normal call overhead plus kernel operation.
+
+|Immediate syscall
+|SVC entry/exit, caller derivation, handle and pointer validation, kernel operation.
+
+|Blocking syscall
+|Immediate path plus wait insertion, PendSV, wakeup and one or more continuation entries.
+
+|Same-domain dispatch
+|Register context switch plus private-stack MPU update.
+
+|Inter-domain dispatch
+|Register context switch plus domain/shared-map update and private-stack update.
+
+|Call/reply service
+|Client syscall, request validation/copy, server dispatch and execution, reply, client redispatch and continuation.
+|===
+
+The relevant service equation is therefore structural rather than a single universal context-switch number:
+
+[source,text]
+....
+T_service = T_svc_entry
+          + T_validation
+          + T_request_protocol
+          + T_dispatch_client_to_server
+          + C_server
+          + T_reply_protocol
+          + T_dispatch_server_to_client
+          + T_syscall_continuation
+....
+
+Each term can be bounded for a target and configuration. Some terms disappear for privileged direct calls or same-domain operations.
+
+=== Preemption-chain measurement
+
+The available ThreadX-style preemptive scheduling test uses five counter tasks arranged by priority <<thread-metric>>. The lowest-priority task drives the chain; each intermediate task resumes the next higher-priority task and suspends itself; the highest task increments and suspends. A reporting task samples cumulative counters every 30 seconds.
+
+The reported build conditions were:
+
+* STM32F401RE Cortex-M4F at 80 MHz;
+* `-O2` optimisation;
+* `NDEBUG` enabled;
+* FPU disabled;
+* stack-overflow checking disabled;
+* debug symbols retained.
+
+After five 30-second intervals, the supplied measurements were:
+
+[cols="2,2,2,2",options="header"]
+|===
+|Kernel |Total counter increments |Maximum counter spread |Test errors
+
+|RK0
+|26,766,655
+|0
+|0
+
+|RK01
+|7,124,887
+|1
+|0
+|===
+
+RK01 therefore achieved approximately 26.62% of RK0's whole-chain throughput; conversely, RK0 completed approximately 3.76 times as many chain increments in the same interval.
+
+This is not evidence that an isolated RK01 context switch is universally 3.76 times slower. The chain includes event syscalls, exception entry and exit, handle and pointer checks, event-state transitions, blocking, wakeup, PendSV and the private-stack MPU update. All counter tasks use the implicit App domain, so the result does not include full inter-domain authority-map replacement.
+
+The one-count RK01 spread also is not a numerical timing-jitter measurement. It is consistent with the reporting task interrupting the chain at one of several adjacent states. Both kernels satisfy the test's stated plus-or-minus-one counter criterion.
+
+RK01's dedicated context-switch profile can build same-domain and inter-domain pairs separately. A defensible timing characterisation should report raw cycle counts and distributions for each path, calibrate instrumentation overhead on the target, and document interrupt, FPU, cache and debug conditions. Minimum, maximum and relevant percentiles are more informative than one average.
+
+=== Hardware constraints versus real-time policy
+
+[cols="3,2,2,4",options="header"]
+|===
+|Constraint |Hardware-derived |RK01 policy |Rationale
+
+|Finite MPU region count
+|Yes
+|RK01 assigns fixed roles to available slots
+|The processor cannot map an arbitrary number of independent windows.
+
+|Power-of-two size and natural alignment on ARMv7-M
+|Yes
+|Validated during BOOT
+|Invalid geometry cannot be repaired safely during dispatch and may waste RAM.
+
+|Separate task-stack aperture
+|No
+|Deliberate
+|Preserves stack isolation among tasks that share persistent domain state.
+
+|One linked code image
+|No
+|Deliberate
+|Avoids a loader, relocation, per-image validation and additional run-time states.
+
+|Fixed global shared window size
+|Not inherently
+|Current port policy
+|Makes a scarce shared authority explicit and keeps its cost predictable.
+
+|Finite explicit shared attachments
+|Partly
+|Configured within the remaining MPU slots
+|Every attachment consumes map capacity and inter-domain dispatch work.
+
+|Topology frozen before dispatch
+|No
+|Deliberate
+|Moves validation and overlap analysis out of time-critical run-time paths.
+
+|No arbitrary process creation or remapping
+|No
+|Deliberate non-goal
+|General mapping and loading would introduce allocation, validation and timing variability that RK01 does not require.
+
+|Privileged code can access the default map
+|Architecture and configuration
+|Accepted trust model
+|The MPU contains unprivileged tasks; it does not isolate privileged components from one another.
+|===
+
+Some restrictions exist because the small Cortex-M MPU leaves no alternative. Others would remain desirable even on more capable hardware because the omitted generality would enlarge the state space and response-time envelope. “Hardware could do it” is not, by itself, a reason for a small real-time kernel to expose it.
+
+== Design consequences and non-goals
+
+=== The trusted computing base is reduced, not minimal
+
+The kernel, exception paths, board support, privileged service tasks and callbacks executed by them retain privileged authority. A defect there can defeat containment. RK01's improvement over RK0 is that ordinary application domains need not share that authority.
+
+=== Shared code is intentional
+
+All domains execute from the same linked FLASH image. Writable data, stacks, kernel RAM and shared apertures are protected. RK01 does not provide independent code loading, module-specific signing or separate link identities.
+
+=== Domain boundaries do not replace synchronisation
+
+Tasks inside a domain can race on their shared persistent state. MPU authority answers who may access memory; it does not serialize correct access.
+
+=== Static topology is both feature and restriction
+
+Freezing the map supports overlap validation, bounded dispatch and composition analysis. It rules out general run-time remapping and process-like construction.
+
+=== Containment needs product policy
+
+Fault retirement protects the rest of the system from continued execution. Whether safe operation can continue depends on the controlled process, redundancy, shared-state design and failure assumptions. Reset is sometimes the correct recovery policy.
+
+=== “Microkernel-like” is an architectural choice
+
+RK01 makes client/server services natural but does not require every facility to be a server and does not claim that a privileged server is outside the trusted base. The operating system built around RK01 can choose where the extra transitions buy a meaningful boundary.
+
+== Conclusion
+
+RK01 is the RK0 real-time foundation with one additional boundary made explicit.
+
+The domain is the central new abstraction, but it is deliberately modest: a frozen writable-authority map shared by tasks, not a process, loader or scheduler entity. The linker classifies storage; BOOT constructs and validates the topology; PendSV installs either a private stack overlay or a complete domain view. Opaque generation-checked handles prevent application tokens from becoming kernel addresses. SVC turns public API calls into checked protocols, with explicit task continuations for blocking work. ITC then follows the actual memory relationship: direct sharing inside a domain, copies or deliberate shared apertures across domains.
+
+These mechanisms cost RAM, MPU slots, validation work and context-switch time. The available benchmark makes that price visible but does not reduce it to a misleading universal multiplier. The appropriate claim is narrower and stronger: RK01 keeps finite, classifiable mechanisms while adding fault-containment boundaries that RK0 intentionally does not provide.
+
+There is no reason to merge both designs into a compromise. RK0 should remain flat, direct and transparent. RK01 should make its boundaries useful, bounded and honest about their bill.
+
+[bibliography]
+== References
+
+- [[[rk01-source]]] Antonio Giacomelli, _RK01 source repository_, https://github.com/antoniogiacomelli/RK01[github.com/antoniogiacomelli/RK01].
+- [[[rk0-source]]] Antonio Giacomelli, _RK0 -- Embedded Real-Time Kernel '0'_, https://antoniogiacomelli.github.io/RK0/[antoniogiacomelli.github.io/RK0].

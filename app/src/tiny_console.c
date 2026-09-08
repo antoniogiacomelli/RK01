@@ -609,7 +609,7 @@ VOID EchoTask(VOID *args)
     static CHAR const banner[] =
         "\r\nRK01 " APP_CONSOLE_NAME
         " record console ready. SET A 123, READ A, RKMONITOR.\r\n"
-#if defined(RK_MCU_F401RE)
+#if (RK_CONF_FILESYSTEM == ON)
         "Record slots: 4, persisted in flash through rkfs.\r\n";
 #else
         "Record slots: 4, RAM-only on this target.\r\n";

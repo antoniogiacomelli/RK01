@@ -802,6 +802,7 @@ struct RK_STRUCT_TASK_MEMORY
  * not numeric identifiers: use defined(RK_MCU_...) when selecting port code. */
 #if ((defined(RK_MCU_F401RE) + defined(RK_MCU_F103RB) +                  \
       defined(RK_MCU_F030RB) + defined(RK_MCU_G071RB) +                  \
+      defined(RK_MCU_MPS2_AN386) +                                       \
       defined(RK_MCU_MPS2_AN505)) != 1)
 #error "Define exactly one supported RK_MCU_* selection macro"
 #endif
