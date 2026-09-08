@@ -21,6 +21,8 @@
 | TCB registry       | Kernel table used to resolve an opaque task handle                   |
 | WCET               | Worst-case execution time                                            |
 
+
+| Term                   | Meaning
 |:-----------------------|:---------------------------------------------------------------------------------------------------------------------------------------------|
 | Task                   | The independently scheduled entity.                                                                                                          |
 | Domain                 | One validated writable-memory map shared by one or more tasks.                                                                               |
