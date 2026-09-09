@@ -29,6 +29,7 @@ compile_commands.json
 .DS_Store
 .vscode/c_cpp_properties.json
 .vscode/settings.json
+docs_local/
 
 # Scratch or private harness material
 scripts/*
