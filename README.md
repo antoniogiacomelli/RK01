@@ -19,7 +19,7 @@ This repository is the first public RK01 source drop.
 For a desin over view read the 
 [Blog](https://rkernel0.org/rk01-user-kernel-and-memory-domain-boundaries/).
 
-For a detailed view: [Architecure Specification](docs/asd/asd.mdit )
+For a detailed view: [Architecure Specification](docs/asd/asd.md )
 
 ## Delivered Supported Targets
 
