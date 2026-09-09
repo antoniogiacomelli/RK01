@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1320" height="780" viewBox="0 0 1320 780" role="img" aria-labelledby="title desc">
-  <title id="title">RK01 two-domain source syntax to linker-map placement</title>
-  <desc id="desc">Side-by-side view of two RK01 domain declarations, the linker sections that collect them, and the runtime MPU view created from the resulting map.</desc>
+  <title id="title">RK01 two-domain source syntax, linker placement and MPU policy</title>
+  <desc id="desc">Side-by-side view of two RK01 domain declarations, the linker sections that place them, and the runtime MPU policy derived from BOOT validation.</desc>
   <defs>
     <style>
       .title { font: 700 28px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #102a43; }
@@ -60,7 +60,7 @@
   <text x="72" y="676" class="mono">kTaskInitDomain(..., &amp;controlDomain);</text>
 
   <rect x="465" y="72" width="390" height="650" rx="8" class="panel"/>
-  <text x="660" y="105" text-anchor="middle" class="heading">2. Linker classifier</text>
+  <text x="660" y="105" text-anchor="middle" class="heading">2. Linker placement</text>
   <rect x="487" y="128" width="346" height="247" rx="6" class="link"/>
   <text x="507" y="158" class="monoStrong">/* arch/.../linker.ld */</text>
   <text x="507" y="184" class="mono">.rk_domain_ram (NOLOAD) :</text>
@@ -85,7 +85,7 @@
   <text x="507" y="672" class="small">Addresses are illustrative; section membership is the audit point.</text>
 
   <rect x="900" y="72" width="390" height="650" rx="8" class="panel"/>
-  <text x="1095" y="105" text-anchor="middle" class="heading">3. Runtime writable views</text>
+  <text x="1095" y="105" text-anchor="middle" class="heading">3. MPU access policy</text>
 
   <rect x="928" y="132" width="334" height="80" rx="6" class="flash"/>
   <text x="1095" y="164" text-anchor="middle" class="label">FLASH code and const data</text>
@@ -117,5 +117,5 @@
   <path d="M 855 345 C 878 345 878 345 900 345" class="arrow"/>
   <path d="M 855 548 C 878 548 878 548 900 548" class="arrow"/>
 
-  <text x="660" y="752" text-anchor="middle" class="small">The source names help humans review ownership; the final linked sections and BOOT validation create the authority boundary.</text>
+  <text x="660" y="752" text-anchor="middle" class="small">The source names help humans review ownership; linked sections provide ranges; BOOT validation and MPU setup apply policy.</text>
 </svg>

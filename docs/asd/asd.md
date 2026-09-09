@@ -55,7 +55,7 @@
 | Trust          | Application and kernel share privileged write access.    | Ordinary tasks run unprivileged; kernel, handlers and selected services remain trusted. | Review every privileged task and callback. Keep privileged code explicit and small.                  |
 | Scheduling     | Fixed-priority tasks.                                    | Preserved. Domains are not scheduled.                                                   | Retain task-level response-time analysis and add boundary costs per path.                            |
 | Memory         | Application and kernel writable data share one flat map. | Linker separates task RAM, kernel RAM, domain RAM, stacks and shared apertures.         | Classify every writable symbol and review the final map file.                                        |
-| Build          | Ordinary objects feed one final link.                    | Still one final link; section placement now defines write access.                       | Keep domain source bundles auditable and ensure linker, BOOT and configuration agree.                |
+| Build          | Ordinary objects feed one final link.                    | Still one final link; section placement provides bounded ranges for later policy.       | Keep domain source bundles auditable and ensure linker, BOOT and configuration agree.                |
 | BOOT           | Creates kernel/application state.                        | Also validates and freezes the domain topology.                                         | Add negative tests for alignment, bounds, overlap, membership and late mutation.                     |
 | Dispatch       | Saves/restores registers.                                | Also maintains the active MPU view.                                                     | Measure no-update, stack-only and full-map paths separately.                                         |
 | API entry      | Direct C call.                                           | Unprivileged task calls cross SVC; allowed privileged calls stay direct.                | Define an SVC number, argument format, validation and completion path for every task-facing service. |
@@ -114,7 +114,7 @@ Skipping a step either reopens the protection boundary or leaves an unbounded/un
 ## Domain, memory and build design
 
 
-> The final linked section, not the source filename or object filename, decides which task may write a variable. Domain declarations, linker placement, reset initialisation and BOOT validation shall be reviewed as one implementation path.
+> The final linked section, not the source filename or object filename, decides where a variable lives. Domain declarations, linker placement, reset initialisation, BOOT validation and MPU policy shall be reviewed as one implementation path.
 
 ### Domain and memory requirements
 
@@ -152,6 +152,12 @@ The ARMv7-M linker script uses the following regions:
 
 *Figure 2 — STM32F401RE build-time memory organisation. Blocks are descriptive, not drawn to scale.*
 
+<a id="fig:rk01-linker-memory-map-detailed"></a>
+
+![Detailed STM32F401RE linker memory map with section order and load-copy relationships.](figures/rk01-linker-memory-map-detailed.svg)
+
+*Figure 2B - Detailed STM32F401RE linker memory map with section order and load-copy relationships.*
+
 The exact sizes are board-port choices, not universal RK01 constants. Every port shall preserve the separation, even when the addresses and capacities change.
 
 Within TASK_RAM, the current ARMv7-M script reserves:
@@ -168,7 +174,9 @@ Within TASK_RAM, the current ARMv7-M script reserves:
 
 - optional explicit shared regions declared by the application.
 
-Kernel `.data`, `.bss`, no-init data, object pools and privileged stacks go to KERNEL_RAM. Shared code remains in FLASH. The linker therefore acts as the build-time classifier of writable access.
+Kernel `.data`, `.bss`, no-init data, object pools and privileged stacks go to KERNEL_RAM. Shared code remains in FLASH. The linker therefore acts as the build-time classifier of storage placement, not as the policy engine.
+
+For unprivileged thread mode, policy is the MPU view installed for the selected task. The linker map supplies candidate ranges; BOOT validates the ranges and membership; PendSV programs the task's executable FLASH, active domain RAM, private stack and allowed shared regions. Privileged handlers and privileged system tasks are different: with `PRIVDEFENA`, they can use the default privileged map and are part of the trusted base.
 
 <a id="fig:rk01-two-domain-code-link-map"></a>
 
@@ -180,9 +188,9 @@ For review, a two-domain design should be read in three columns:
 
 1.  The source declaration states the intended ownership: domain windows, domain-member tasks, private stacks and deliberately shared RAM.
 
-2.  The linker script classifies those objects into `.rk_domain_ram*`, `.rk_task_stack*` and `.rk_shared_bss*` inside TASK_RAM, then exports the bounds used by startup and MPU validation.
+2.  The linker script places those objects into `.rk_domain_ram*`, `.rk_task_stack*` and `.rk_shared_bss*` inside TASK_RAM, then exports the bounds used by startup and MPU validation.
 
-3.  The final map file proves where each symbol landed. Source filenames are useful for review, but section placement and BOOT validation define the writable authority boundary.
+3.  The final map file proves where each symbol landed. Source filenames are useful for review, but BOOT validation and MPU policy define the writable authority boundary from those placed ranges.
 
 ### Required domain source-bundle pattern
 
