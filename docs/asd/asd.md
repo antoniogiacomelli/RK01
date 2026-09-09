@@ -1,4 +1,4 @@
-# RK01 Architectire Specification Document
+# RK01 Architecture Specification Document
 
 ### Acronyms and working terms
 
