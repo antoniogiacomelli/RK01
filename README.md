@@ -16,20 +16,20 @@ still application-specific.
 
 This repository is the first public RK01 source drop.
 
-For a desin over view read the 
-[Blog](https://rkernel0.org/rk01-user-kernel-and-memory-domain-boundaries/).
+For a design overview, read the
+[blog post](https://rkernel0.org/rk01-user-kernel-and-memory-domain-boundaries/).
 
-For a detailed view: [Architecure Specification](docs/asd/asd.md )
+For a detailed view, read the [Architecture Specification](docs/asd/asd.md).
 
-## Delivered Supported Targets
+## Supported Targets
 
-Cortex-M4(F)/M7 based MCUs with MPU are considered the most suitable targets for RK01. 
-ARMv8M chips are supported but would be underused.
-Although Cortex-M0+ chips have MPUs, RK01 does not support ARMv6M.
+Cortex-M4(F)/M7-based MCUs with an MPU are considered the most suitable targets for RK01.
+ARMv8-M chips are supported but would be underused.
+Although Cortex-M0+ chips have MPUs, RK01 does not support ARMv6-M.
 
-This repo delivers a build environment to run on Nucleo STM32F401RE M4F, plus
+This repository provides a build environment for the Nucleo STM32F401RE M4F, plus
 QEMU environments for MPS2 Cortex-M4 and Cortex-M33. RK01 does not use the
-_Trusted Environment_ of ARMv8M.
+_Trusted Environment_ of ARMv8-M.
 
 ## Repository Layout
 
