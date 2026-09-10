@@ -10,7 +10,8 @@
 #ifndef TINY_APP_H
 #define TINY_APP_H
 
-#include <kapi.h>
+#include <kapi_domain.h>
+#include <kapi_diag.h>
 #include <kconsole.h>
 #include <kstring.h>
 

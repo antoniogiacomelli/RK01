@@ -20,6 +20,10 @@
 
 #include "tiny_app.h"
 
+#ifndef RK_DMB
+#define RK_DMB RK_BARRIER
+#endif
+
 static BYTE AppUpper_(BYTE const ch)
 {
     if ((ch >= (BYTE)'a') && (ch <= (BYTE)'z'))

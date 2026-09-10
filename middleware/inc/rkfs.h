@@ -10,7 +10,7 @@
 #ifndef RKFS_H
 #define RKFS_H
 
-#include <kapi.h>
+#include <kapi_app.h>
 #include <lfs.h>
 
 #ifdef __cplusplus
@@ -18,7 +18,8 @@ extern "C"
 {
 #endif
 
-#define RKFS_DOMAIN_BYTES (4096U)
+#define RKFS_SERVICE_RAM_BYTES (4096U)
+#define RKFS_DOMAIN_BYTES RKFS_SERVICE_RAM_BYTES
 #define RKFS_STACK_WORDS (1024U)
 #define RKFS_PATH_BYTES (32U)
 #define RKFS_RECORD_BYTES (64U)
@@ -69,15 +70,15 @@ typedef struct
     BYTE progCache[RKFS_CACHE_BYTES];
     BYTE fileCache[RKFS_CACHE_BYTES];
     BYTE lookahead[RKFS_LOOKAHEAD_BYTES];
-    BYTE reserved[RKFS_DOMAIN_BYTES -
+    BYTE reserved[RKFS_SERVICE_RAM_BYTES -
                   (sizeof(lfs_t) +
                    sizeof(struct lfs_config) +
                    (3U * RKFS_CACHE_BYTES) +
                    RKFS_LOOKAHEAD_BYTES)];
 } RKFS_RAM;
 
-_Static_assert(sizeof(RKFS_RAM) == RKFS_DOMAIN_BYTES,
-               "filesystem domain RAM layout must fill its MPU region");
+_Static_assert(sizeof(RKFS_RAM) == RKFS_SERVICE_RAM_BYTES,
+               "filesystem service RAM layout must fill its reserved region");
 
 RK_ERR rkFsClientMkdir(RK_TASK_HANDLE serverHandle,
                        CHAR const *pathPtr);

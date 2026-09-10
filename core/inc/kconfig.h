@@ -194,7 +194,8 @@
 
 /***[ SYSTEM MONITOR TERMINAL ************************************************/
 #ifndef RK_CONF_SYSMON
-#define RK_CONF_SYSMON (ON)
+/* SysMon is opt-in diagnostics. APP_EXAMPLE=04-sysmon enables it explicitly. */
+#define RK_CONF_SYSMON (OFF)
 #endif
 
 #if ((RK_CONF_SYSMON != ON) && (RK_CONF_SYSMON != OFF))

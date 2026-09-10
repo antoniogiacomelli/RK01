@@ -30,8 +30,7 @@ RK_DECLARE_DOMAIN_TASK_STACK(echoStack, TASK_STACK_WORDS)
 RK_DECLARE_GLOBAL_SEMAPHORE(lineReadySemaHandle)
 
 #if (RK_CONF_FILESYSTEM == ON)
-static RKFS_RAM fsRam RK_DOMAIN_RAM_ATTR(RKFS_DOMAIN_BYTES);
-static RK_DOMAIN fsDomain RK_DOMAIN_DESC_ATTR;
+static RKFS_RAM fsRam RK_RETAINED_TASK_RAM_ATTR;
 RK_DECLARE_DOMAIN_TASK(fsTaskHandle, rkFsServerTask)
 RK_DECLARE_DOMAIN_TASK_STACK(fsServerStack, RKFS_STACK_WORDS)
 #endif
@@ -74,10 +73,10 @@ VOID kApplicationInit(VOID)
     AppCheck_(kDomainInit(&echoDomain, echoRam, sizeof(echoRam), "Echo"));
 
 #if (RK_CONF_FILESYSTEM == ON)
-    AppCheck_(kDomainInit(&fsDomain, (BYTE *)&fsRam, sizeof(fsRam), "FS"));
     /*
-     * RKFS owns reserved flash and STM32 flash-controller MMIO. Keep callers
-     * isolated by exposing it only through copied call/reply.
+     * RKFS is a privileged demonstration service over reserved flash, STM32
+     * flash-controller MMIO and reserved service RAM. Its state is not a
+     * domain window; callers interact only through copied call/reply.
      */
     AppCheck_(kTaskInitPrivileged(&fsTaskHandle, rkFsServerTask, &fsRam,
                                   "FS", fsServerStack, RKFS_STACK_WORDS,

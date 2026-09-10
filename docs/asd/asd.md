@@ -22,7 +22,7 @@
 | WCET               | Worst-case execution time                                            |
 
 
-| Term                   | Meaning
+| Term                   | Meaning                                                                                                                                       |
 |:-----------------------|:---------------------------------------------------------------------------------------------------------------------------------------------|
 | Task                   | The independently scheduled entity.                                                                                                          |
 | Domain                 | One validated writable-memory map shared by one or more tasks.                                                                               |
@@ -135,7 +135,7 @@ Skipping a step either reopens the protection boundary or leaves an unbounded/un
 
 ### One image, ordinary objects, one final link
 
-RK01 does not produce several objects nor does it load independent application images at run time. Intermediate objects files are inputs to one final link.
+RK01 produces one firmware image and does not load independent application images at run time. Intermediate object files are inputs to one final link.
 
 The ARMv7-M linker script uses the following regions:
 
@@ -151,12 +151,6 @@ The ARMv7-M linker script uses the following regions:
 ![STM32F401RE build-time memory organisation. Blocks are descriptive, not drawn to scale.](figures/rk01-memory-map.svg)
 
 *Figure 2 — STM32F401RE build-time memory organisation. Blocks are descriptive, not drawn to scale.*
-
-<a id="fig:rk01-linker-memory-map-detailed"></a>
-
-![Detailed STM32F401RE linker memory map with section order and load-copy relationships.](figures/rk01-linker-memory-map-detailed.svg)
-
-*Figure 2B - Detailed STM32F401RE linker memory map with section order and load-copy relationships.*
 
 The exact sizes are board-port choices, not universal RK01 constants. Every port shall preserve the separation, even when the addresses and capacities change.
 
@@ -176,13 +170,13 @@ Within TASK_RAM, the current ARMv7-M script reserves:
 
 Kernel `.data`, `.bss`, no-init data, object pools and privileged stacks go to KERNEL_RAM. Shared code remains in FLASH. The linker therefore acts as the build-time classifier of storage placement, not as the policy engine.
 
-For unprivileged thread mode, policy is the MPU view installed for the selected task. The linker map supplies candidate ranges; BOOT validates the ranges and membership; PendSV programs the task's executable FLASH, active domain RAM, private stack and allowed shared regions. Privileged handlers and privileged system tasks are different: with `PRIVDEFENA`, they can use the default privileged map and are part of the trusted base.
+For unprivileged thread mode, policy is the MPU view installed for the selected task. Region 0 executable FLASH is installed once during MPU initialisation; dispatch does not reload it per task. The linker map supplies concrete addresses and sizes that must satisfy MPU geometry; BOOT validates containment, non-overlap and membership. PendSV updates the selected task's active domain RAM, private stack and allowed shared-region roles. Privileged handlers and privileged system tasks are different: with `PRIVDEFENA`, they can use the default privileged map, so privileged placement and overlap remain part of the trusted-base review.
 
 <a id="fig:rk01-two-domain-code-link-map"></a>
 
 ![Two-domain source declarations beside the linker script and map-file view.](figures/rk01-two-domain-code-link-map.svg)
 
-*Figure 2A - Two-domain source syntax beside the linker script and map-file view.*
+*Figure 2A — Two-domain source syntax beside the linker script and map-file view.*
 
 For review, a two-domain design should be read in three columns:
 
@@ -191,6 +185,12 @@ For review, a two-domain design should be read in three columns:
 2.  The linker script places those objects into `.rk_domain_ram*`, `.rk_task_stack*` and `.rk_shared_bss*` inside TASK_RAM, then exports the bounds used by startup and MPU validation.
 
 3.  The final map file proves where each symbol landed. Source filenames are useful for review, but BOOT validation and MPU policy define the writable authority boundary from those placed ranges.
+
+<a id="fig:rk01-linker-memory-map-detailed"></a>
+
+![Detailed STM32F401RE linker memory map with section order and load-copy relationships.](figures/rk01-linker-memory-map-detailed.svg)
+
+*Figure 2B — Detailed STM32F401RE linker memory map with section order and load-copy relationships.*
 
 ### Required domain source-bundle pattern
 
@@ -701,7 +701,7 @@ PostProc later invalidates public task identity and unlinks kernel relationships
 
 ![Containment path for an eligible unprivileged task fault.](figures/rk01-fault-path.svg)
 
-*Figure 8 — Containment path for an eligible unprivileged task fault.*
+*Figure 7 — Containment path for an eligible unprivileged task fault.*
 
 **Fault handler and deferred cleanup order**
 
@@ -779,7 +779,7 @@ Consider a controller with `PrimarySensor` and `StandbySensor` domains. Each pub
 
 ![Application-dependent failover after kernel-level containment.](figures/rk01-recovery-example.svg)
 
-*Figure 9 — Application-dependent failover after kernel-level containment.*
+*Figure 8 — Application-dependent failover after kernel-level containment.*
 
 This example does not assume that clearing one stack repairs shared domain state. Transparent in-place restart would require additional domain lifecycle, deterministic RAM initialisation, object reconstruction, task recreation and supervisor protocols. These are future design items, not current MPU behaviour.
 
@@ -813,7 +813,7 @@ The following compositions are supported and may be mixed in one product.
 
 ![Three valid ways to compose a system around RK01.](figures/rk01-system-composition.svg)
 
-*Figure 10 — Three valid ways to compose a system around RK01.*
+*Figure 9 — Three valid ways to compose a system around RK01.*
 
 #### Direct application composition
 
@@ -915,6 +915,19 @@ A privileged service task is allowed when a split unprivileged service would cos
 Conversely, a complex protocol parser does not need to remain privileged merely because it ultimately controls a device. It can execute in an unprivileged domain and communicate with a much smaller privileged endpoint that performs bounded register operations.
 
 Select the boundary from the required fault containment and timing budget, not from a kernel-category label.
+
+### V0.1.0 demonstrator qualifications
+
+The public examples are intended to show mechanisms, not to be the final product
+policy for every facility. The following points shall remain explicit during
+review:
+
+| Topic | Current V0.1.0 state | Qualification |
+|:------|:----------------------|:--------------|
+| Privileged RKFS | RKFS runs as a privileged service task because it owns reserved flash and STM32 flash-controller MMIO. Its service state is reserved trusted RAM, not an unprivileged filesystem domain. | Memory-safe under the trusted-base model, but it is not a demonstration of domain-enforced filesystem isolation. A later split can put filesystem policy in an unprivileged domain behind a small privileged flash endpoint. |
+| SysMon configuration | `RK_CONF_SYSMON` defaults to `OFF`; `APP_EXAMPLE=04-sysmon` opts in explicitly through the build profile. | Keeps the minimal kernel default small while preserving a diagnostics demonstrator. |
+| API presentation | Example public headers should include the narrowest useful presentation header, such as `kapi_app.h`, `kapi_domain.h`, `kapi_diag.h` or `kapi_trusted.h`. | Headers are not the security boundary; SVC validation, task privilege and MPU state are. The flagship example should still make trusted capabilities visibly exceptional. |
+| RKFS flash polling | The STM32 flash wait path currently polls hardware `BSY` without a software timeout. | RKFS is demonstration middleware outside the bounded kernel contract for V0.1.0. A qualified storage service needs timeout/error returns and flash-stall latency accounting. |
 
 Before approving a service placement, record:
 

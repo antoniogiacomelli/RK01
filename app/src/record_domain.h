@@ -10,7 +10,7 @@
 #ifndef RECORD_DOMAIN_H
 #define RECORD_DOMAIN_H
 
-#include <kapi.h>
+#include <kapi_domain.h>
 
 #ifdef __cplusplus
 extern "C"

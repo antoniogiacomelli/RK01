@@ -115,6 +115,7 @@ static RKFS_STATUS rkFsStatusFromLfs_(INT const err)
 
 static VOID rkFsFlashWait_(VOID)
 {
+    /* Demonstration middleware: no software timeout is applied in V0.1.0. */
     while ((STM32_FLASH_SR & STM32_FLASH_SR_BSY) != 0UL)
     {
     }

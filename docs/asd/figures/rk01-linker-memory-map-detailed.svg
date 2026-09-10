@@ -36,7 +36,7 @@
 
   <rect width="1500" height="980" fill="#ffffff"/>
   <text x="750" y="44" text-anchor="middle" class="title">RK01 linker memory map - STM32F401RE</text>
-  <text x="750" y="70" text-anchor="middle" class="small">One final image; sections provide bounded placement, while BOOT validation and MPU dispatch apply access policy.</text>
+  <text x="750" y="70" text-anchor="middle" class="small">One final image; sections provide addresses and bounds, while BOOT membership and MPU dispatch apply unprivileged access policy.</text>
 
   <rect x="50" y="110" width="400" height="760" rx="8" class="frame"/>
   <text x="250" y="144" text-anchor="middle" class="heading">FLASH address space</text>
@@ -143,5 +143,5 @@
   <path d="M 942 528 C 990 528 1032 278 1114 278" class="arrow"/>
   <text x="994" y="504" class="small">separate VMA ranges</text>
 
-  <text x="750" y="940" text-anchor="middle" class="small">Placement is not policy: NOLOAD and initialized sections define ranges; startup and MPU code decide initialization and access.</text>
+  <text x="750" y="940" text-anchor="middle" class="small">Placement is not unprivileged policy: it only supplies ranges; membership and installed MPU entries grant access.</text>
 </svg>
