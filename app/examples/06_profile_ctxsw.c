@@ -2,7 +2,7 @@
 /******************************************************************************/
 /*                                                                            */
 /* RK01 - Bounded Responses. Bounded domains.                                   */
-/* VERSION: V0.1.0                                                            */
+/* VERSION: V0.2.0                                                            */
 /* (C) 2026 Antonio Giacomelli <dev@kernel0.org>                               */
 /*                                                                            */
 /******************************************************************************/
@@ -100,18 +100,6 @@ static volatile ULONG profilePhase K_ALIGN(4) RK_SECTION_SHARED_BSS;
 static volatile ULONG profileParkMask K_ALIGN(4) RK_SECTION_SHARED_BSS;
 static ProfileStats profileStats K_ALIGN(4) RK_SECTION_SHARED_BSS;
 
-static VOID AppCheck_(RK_ERR const err)
-{
-    K_ASSERT(err == RK_ERR_SUCCESS);
-    if (err != RK_ERR_SUCCESS)
-    {
-        while (1)
-        {
-            kErrHandler((RK_FAULT)err);
-        }
-    }
-}
-
 static VOID ProfileCycleCounterEnable_(VOID)
 {
     RK_PROFILE_DEMCR |= RK_PROFILE_DEMCR_TRCENA;
@@ -195,10 +183,8 @@ static VOID ProfileRecordIfActive_(VOID)
 
 static VOID ProfileReport_(CHAR const *const classNamePtr,
                            ProfileStats const *const statsPtr,
-                           RK_TICK const time0,
-                           RK_TICK const time1,
-                           ULONG const pendsvStart,
-                           ULONG const pendsvEnd)
+                           RK_TICK const time0, RK_TICK const time1,
+                           ULONG const pendsvStart, ULONG const pendsvEnd)
 {
     ULONG const counter1 = statsPtr->counter1;
     ULONG const counter2 = statsPtr->counter2;
@@ -219,12 +205,9 @@ static VOID ProfileReport_(CHAR const *const classNamePtr,
     ProfilePrintField_(" raw_min=", min);
     ProfilePrintField_(" raw_max=", max);
     ProfilePrintField_(" est_comp=", PROFILE_PENDSV_COMP_EST_CYCLES);
-    ProfilePrintField_(" est_adj_last=",
-                       ProfileEstimatedAdjustedCycles_(last));
-    ProfilePrintField_(" est_adj_min=",
-                       ProfileEstimatedAdjustedCycles_(min));
-    ProfilePrintField_(" est_adj_max=",
-                       ProfileEstimatedAdjustedCycles_(max));
+    ProfilePrintField_(" est_adj_last=", ProfileEstimatedAdjustedCycles_(last));
+    ProfilePrintField_(" est_adj_min=", ProfileEstimatedAdjustedCycles_(min));
+    ProfilePrintField_(" est_adj_max=", ProfileEstimatedAdjustedCycles_(max));
 #if (RK_CONF_PROFILE_PENDSV == 1)
     ProfilePrintField_(" pendsv_delta=", pendsvEnd - pendsvStart);
     ProfilePrintField_(" pendsv_total=", pendsvEnd);
@@ -240,7 +223,10 @@ static VOID ProfileParkWorker_(ULONG const workerMask)
 {
     profileParkMask |= workerMask;
     RK_BARRIER
-    AppCheck_(kEventSet(reportTaskHandle, PROFILE_PARK_EVENT));
+    {
+        RK_ERR err = kEventSet(reportTaskHandle, PROFILE_PARK_EVENT);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 }
 
 static VOID ProfileWaitActive_(ULONG const workerMask)
@@ -248,8 +234,11 @@ static VOID ProfileWaitActive_(ULONG const workerMask)
     while (profilePhase != PROFILE_PHASE_ACTIVE)
     {
         ProfileParkWorker_(workerMask);
-        AppCheck_(kEventGet(PROFILE_RUN_EVENT, RK_OPT_EVENT_ANY,
-                            NULL, RK_WAIT_FOREVER));
+        {
+            RK_ERR err = kEventGet(PROFILE_RUN_EVENT, RK_OPT_EVENT_ANY, NULL,
+                                   RK_WAIT_FOREVER);
+            K_ASSERT(err == RK_ERR_SUCCESS);
+        }
     }
 }
 
@@ -258,8 +247,11 @@ static VOID ProfileWaitParked_(VOID)
     while ((profileParkMask & PROFILE_WORKER_ALL_MASK) !=
            PROFILE_WORKER_ALL_MASK)
     {
-        AppCheck_(kEventGet(PROFILE_PARK_EVENT, RK_OPT_EVENT_ANY,
-                            NULL, RK_WAIT_FOREVER));
+        {
+            RK_ERR err = kEventGet(PROFILE_PARK_EVENT, RK_OPT_EVENT_ANY, NULL,
+                                   RK_WAIT_FOREVER);
+            K_ASSERT(err == RK_ERR_SUCCESS);
+        }
     }
 }
 
@@ -278,11 +270,20 @@ static VOID ProfileRunPhase_(VOID)
 #endif
     profilePhase = PROFILE_PHASE_ACTIVE;
     RK_BARRIER
-    AppCheck_(kEventSet(profileTask1Handle, PROFILE_RUN_EVENT));
-    AppCheck_(kEventSet(profileTask2Handle, PROFILE_RUN_EVENT));
+    {
+        RK_ERR err = kEventSet(profileTask1Handle, PROFILE_RUN_EVENT);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err = kEventSet(profileTask2Handle, PROFILE_RUN_EVENT);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 
     time0 = kTickGetMs();
-    AppCheck_(kSleep(RK_MS_TO_TICKS(PROFILE_DURATION_MS)));
+    {
+        RK_ERR err = kSleep(RK_MS_TO_TICKS(PROFILE_DURATION_MS));
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
     time1 = kTickGetMs();
 #if (RK_CONF_PROFILE_PENDSV == 1)
     pendsvEnd = rkProfilePendSvSamples;
@@ -290,11 +291,17 @@ static VOID ProfileRunPhase_(VOID)
 
     profilePhase = PROFILE_PHASE_IDLE;
     RK_BARRIER
-    AppCheck_(kEventSet(profileTask1Handle, PROFILE_RUN_EVENT));
-    AppCheck_(kEventSet(profileTask2Handle, PROFILE_RUN_EVENT));
+    {
+        RK_ERR err = kEventSet(profileTask1Handle, PROFILE_RUN_EVENT);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err = kEventSet(profileTask2Handle, PROFILE_RUN_EVENT);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
     ProfileWaitParked_();
-    ProfileReport_(PROFILE_CLASS_NAME, &profileStats, time0, time1,
-                   pendsvStart, pendsvEnd);
+    ProfileReport_(PROFILE_CLASS_NAME, &profileStats, time0, time1, pendsvStart,
+                   pendsvEnd);
 }
 
 static VOID ProfileWorkerLoop_(ULONG const workerMask,
@@ -323,30 +330,54 @@ int main(void)
 VOID kApplicationInit(VOID)
 {
     ProfileCycleCounterEnable_();
-    AppCheck_(kConsoleServiceInit());
+    {
+        RK_ERR err = kConsoleServiceInit();
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 
 #if (PROFILE_CTXSW_CLASS == PROFILE_CTXSW_CLASS_INTER_DOMAIN)
-    AppCheck_(kDomainInit(&crossDomain1, crossDomainRam1,
-                          sizeof(crossDomainRam1), "X0"));
-    AppCheck_(kDomainInit(&crossDomain2, crossDomainRam2,
-                          sizeof(crossDomainRam2), "X1"));
+    {
+        RK_ERR err = kDomainInit(&crossDomain1, crossDomainRam1,
+                                 sizeof(crossDomainRam1), "X0");
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err = kDomainInit(&crossDomain2, crossDomainRam2,
+                                 sizeof(crossDomainRam2), "X1");
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 
-    AppCheck_(kTaskInitDomain(&profileTask1Handle, ProfileTask1, RK_NO_ARGS,
-                              PROFILE_TASK_1_NAME, profileStack1, STACKSIZE,
-                              2U, RK_PREEMPT, &crossDomain1));
-    AppCheck_(kTaskInitDomain(&profileTask2Handle, ProfileTask2, RK_NO_ARGS,
-                              PROFILE_TASK_2_NAME, profileStack2, STACKSIZE,
-                              2U, RK_PREEMPT, &crossDomain2));
+    {
+        RK_ERR err = kTaskInitDomain(
+            &profileTask1Handle, ProfileTask1, RK_NO_ARGS, PROFILE_TASK_1_NAME,
+            profileStack1, STACKSIZE, 2U, RK_PREEMPT, &crossDomain1);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err = kTaskInitDomain(
+            &profileTask2Handle, ProfileTask2, RK_NO_ARGS, PROFILE_TASK_2_NAME,
+            profileStack2, STACKSIZE, 2U, RK_PREEMPT, &crossDomain2);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 #else
-    AppCheck_(kTaskInit(&profileTask1Handle, ProfileTask1, RK_NO_ARGS,
-                        PROFILE_TASK_1_NAME, profileStack1, STACKSIZE,
-                        2U, RK_PREEMPT));
-    AppCheck_(kTaskInit(&profileTask2Handle, ProfileTask2, RK_NO_ARGS,
-                        PROFILE_TASK_2_NAME, profileStack2, STACKSIZE,
-                        2U, RK_PREEMPT));
+    {
+        RK_ERR err = kTaskInit(&profileTask1Handle, ProfileTask1, RK_NO_ARGS,
+                               PROFILE_TASK_1_NAME, profileStack1, STACKSIZE,
+                               2U, RK_PREEMPT);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err = kTaskInit(&profileTask2Handle, ProfileTask2, RK_NO_ARGS,
+                               PROFILE_TASK_2_NAME, profileStack2, STACKSIZE,
+                               2U, RK_PREEMPT);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 #endif
-    AppCheck_(kTaskInit(&reportTaskHandle, ReportTask, RK_NO_ARGS, "REP",
-                        reportStack, STACKSIZE, 1U, RK_PREEMPT));
+    {
+        RK_ERR err = kTaskInit(&reportTaskHandle, ReportTask, RK_NO_ARGS, "REP",
+                               reportStack, STACKSIZE, 1U, RK_PREEMPT);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 }
 
 VOID ProfileTask1(VOID *args)

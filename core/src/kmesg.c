@@ -2,7 +2,7 @@
 /******************************************************************************/
 /*                                                                            */
 /* RK01 - Bounded Responses. Bounded domains.                                   */
-/* VERSION: V0.1.0                                                            */
+/* VERSION: V0.2.0                                                            */
 /* (C) 2026 Antonio Giacomelli <dev@kernel0.org>                               */
 /*                                                                            */
 /******************************************************************************/
@@ -1550,6 +1550,11 @@ RK_ERR kMesgPoolInitGlobalScope(RK_MEM_PARTITION *const poolPtr,
                                 ULONG const nMesg,
                                 RK_PRIO const ceilingPrio)
 {
+    if (kSyscallRequired() == RK_TRUE)
+    {
+        return (RK_ERR_INVALID_PHASE);
+    }
+
     RK_OBJ_ATTR const attr = { RK_SCOPE_KERNEL_GLOBAL, NULL };
     return (kMesgPoolInitWithAttr_(poolPtr, memPoolPtr, payloadBytes, nMesg,
                                    ceilingPrio, &attr));
@@ -1562,6 +1567,11 @@ RK_ERR kMesgPoolInitDomainScope(RK_MEM_PARTITION *const poolPtr,
                                 RK_PRIO const ceilingPrio,
                                 RK_DOMAIN *const domainPtr)
 {
+    if (kSyscallRequired() == RK_TRUE)
+    {
+        return (RK_ERR_INVALID_PHASE);
+    }
+
     RK_OBJ_ATTR const attr = { RK_SCOPE_DOMAIN_LOCAL, domainPtr };
     return (kMesgPoolInitWithAttr_(poolPtr, memPoolPtr, payloadBytes, nMesg,
                                    ceilingPrio, &attr));

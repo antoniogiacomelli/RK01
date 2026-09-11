@@ -2,7 +2,7 @@
 /******************************************************************************/
 /*                                                                            */
 /* RK01 - Bounded Responses. Bounded domains.                                   */
-/* VERSION: V0.1.0                                                            */
+/* VERSION: V0.2.0                                                            */
 /* (C) 2026 Antonio Giacomelli <dev@kernel0.org>                               */
 /*                                                                            */
 /******************************************************************************/
@@ -32,6 +32,7 @@
 #include <kmrm.h>
 #include <ksystasks.h>
 #include <ksyscall.h>
+#include <ksignal.h>
 #include <ksynchmesg.h>
 #include <ktimer.h>
 #include <ktrace.h>
@@ -1595,6 +1596,62 @@ static RK_BOOL kTaskNodeLinked_(RK_TCB const *const taskPtr)
                 : RK_FALSE);
 }
 
+RK_ERR kTaskSignalReady(RK_TCB *const taskPtr)
+{
+    if ((taskPtr == NULL) || (taskPtr->init != RK_TRUE))
+    {
+        return (RK_ERR_INVALID_OBJ);
+    }
+
+    if ((taskPtr->status == RK_READY) || (taskPtr->status == RK_RUNNING))
+    {
+        return (RK_ERR_SUCCESS);
+    }
+
+    switch (taskPtr->status)
+    {
+        case RK_SLEEPING:
+        case RK_SLEEPING_EV_FLAG:
+        case RK_BLOCKED:
+        case RK_SENDING:
+        case RK_RECEIVING:
+        case RK_SLEEPING_DELAY:
+        case RK_SLEEPING_RELEASE:
+        case RK_SLEEPING_UNTIL:
+        case RK_SLEEPQ_BLOCKED:
+            break;
+
+        default:
+            return (RK_ERR_TASK_INVALID_ST);
+    }
+
+    if (taskPtr->timeoutNode.waitingQueuePtr != NULL)
+    {
+        if (kTaskNodeLinked_(taskPtr) == RK_TRUE)
+        {
+            RK_TCB *remPtr = taskPtr;
+            kTCBQRem(taskPtr->timeoutNode.waitingQueuePtr, &remPtr);
+        }
+    }
+
+    if (kTimeoutNodeIsArmed(&taskPtr->timeoutNode) == RK_TRUE)
+    {
+        RK_ERR const err = kTimeoutNodeDisarm(&taskPtr->timeoutNode);
+        if (err != RK_ERR_SUCCESS)
+        {
+            return (err);
+        }
+    }
+    else
+    {
+        kTimeoutNodeReset(&taskPtr->timeoutNode);
+    }
+
+    taskPtr->timeOut = RK_FALSE;
+    kSyscallTaskSignal(taskPtr);
+    return (kReadySwtch(taskPtr));
+}
+
 #if (RK_CONF_MUTEX == ON)
 static VOID kTaskFaultReleaseOwnedMutexes_(RK_TCB *const taskPtr)
 {
@@ -1813,6 +1870,7 @@ RK_ERR kTaskFaultCleanup(RK_TID const tid)
 #endif
 
     kSyscallTaskClear(taskPtr);
+    kSignalTaskCleanup(taskPtr);
     taskPtr->flagsCurr = 0UL;
     taskPtr->flagsOpt = 0UL;
     taskPtr->flagsReq = 0UL;

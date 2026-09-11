@@ -2,7 +2,7 @@
 /******************************************************************************/
 /*                                                                            */
 /* RK01 - Bounded Responses. Bounded domains.                                   */
-/* VERSION: V0.1.0                                                            */
+/* VERSION: V0.2.0                                                            */
 /* (C) 2026 Antonio Giacomelli <dev@kernel0.org>                               */
 /*                                                                            */
 /******************************************************************************/
@@ -65,8 +65,6 @@ extern AppLineRing sharedLineRing;
 extern RK_TASK_HANDLE fsTaskHandle;
 #endif
 
-VOID AppCheck_(RK_ERR const err);
-VOID *AppCheckPtr_(VOID *const ptr);
 VOID AppConsoleWriteText_(CHAR const *const textPtr);
 
 VOID AppLineByteFromConsole_(BYTE const ch);

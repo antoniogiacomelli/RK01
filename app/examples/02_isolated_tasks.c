@@ -2,7 +2,7 @@
 /******************************************************************************/
 /*                                                                            */
 /* RK01 - Bounded Responses. Bounded domains.                                   */
-/* VERSION: V0.1.0                                                            */
+/* VERSION: V0.2.0                                                            */
 /* (C) 2026 Antonio Giacomelli <dev@kernel0.org>                               */
 /*                                                                            */
 /******************************************************************************/
@@ -27,19 +27,6 @@ typedef struct
 RK_DECLARE_ISOLATED_TASK(alphaHandle, AlphaTask, alphaStack, ISO_STACK_WORDS)
 RK_DECLARE_ISOLATED_TASK(betaHandle, BetaTask, betaStack, ISO_STACK_WORDS)
 
-RK_FORCE_INLINE
-static inline VOID AppCheck_(RK_ERR const err)
-{
-    K_ASSERT(err == RK_ERR_SUCCESS);
-    if (err != RK_ERR_SUCCESS)
-    {
-        while (1)
-        {
-            kErrHandler((RK_FAULT)err);
-        }
-    }
-}
-
 int main(void)
 {
     kCoreInit();
@@ -55,15 +42,27 @@ VOID kApplicationInit(VOID)
 {
     kLogInit(APP_LOG_PRIO);
 
-    AppCheck_(kTaskInitIsolated(&alphaHandle, AlphaTask, RK_NO_ARGS,
-                                "Alpha", alphaStack, ISO_STACK_WORDS,
-                                ALPHA_PRIO, RK_PREEMPT));
-    AppCheck_(kTaskInitIsolated(&betaHandle, BetaTask, RK_NO_ARGS,
-                                "Beta", betaStack, ISO_STACK_WORDS,
-                                BETA_PRIO, RK_PREEMPT));
+    {
+        RK_ERR err = kTaskInitIsolated(&alphaHandle, AlphaTask, RK_NO_ARGS,
+                                       "Alpha", alphaStack, ISO_STACK_WORDS,
+                                       ALPHA_PRIO, RK_PREEMPT);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err = kTaskInitIsolated(&betaHandle, BetaTask, RK_NO_ARGS,
+                                       "Beta", betaStack, ISO_STACK_WORDS,
+                                       BETA_PRIO, RK_PREEMPT);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 
-    AppCheck_(kMesgCopyEndpointInit(alphaHandle));
-    AppCheck_(kMesgCopyEndpointInit(betaHandle));
+    {
+        RK_ERR err = kMesgCopyEndpointInit(alphaHandle);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err = kMesgCopyEndpointInit(betaHandle);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 }
 
 VOID AlphaTask(VOID *args)
@@ -81,9 +80,15 @@ VOID AlphaTask(VOID *args)
         msg.seq = seq;
         msg.value = seq * 10UL;
 
-        AppCheck_(kMesgSendCopy(betaHandle, &msg, sizeof(msg)));
-        AppCheck_(kMesgRecvCopy(betaHandle, &msg, sizeof(msg),
-                                &rxBytes, RK_WAIT_FOREVER));
+        {
+            RK_ERR err = kMesgSendCopy(betaHandle, &msg, sizeof(msg));
+            K_ASSERT(err == RK_ERR_SUCCESS);
+        }
+        {
+            RK_ERR err = kMesgRecvCopy(betaHandle, &msg, sizeof(msg), &rxBytes,
+                                       RK_WAIT_FOREVER);
+            K_ASSERT(err == RK_ERR_SUCCESS);
+        }
         K_ASSERT(rxBytes == sizeof(msg));
 
         kLog("alpha reply seq=%lu value=%lu", msg.seq, msg.value);
@@ -100,11 +105,17 @@ VOID BetaTask(VOID *args)
         IsoMsg msg;
         ULONG rxBytes = 0UL;
 
-        AppCheck_(kMesgRecvCopy(alphaHandle, &msg, sizeof(msg),
-                                &rxBytes, RK_WAIT_FOREVER));
+        {
+            RK_ERR err = kMesgRecvCopy(alphaHandle, &msg, sizeof(msg), &rxBytes,
+                                       RK_WAIT_FOREVER);
+            K_ASSERT(err == RK_ERR_SUCCESS);
+        }
         K_ASSERT(rxBytes == sizeof(msg));
 
         msg.value++;
-        AppCheck_(kMesgSendCopy(alphaHandle, &msg, sizeof(msg)));
+        {
+            RK_ERR err = kMesgSendCopy(alphaHandle, &msg, sizeof(msg));
+            K_ASSERT(err == RK_ERR_SUCCESS);
+        }
     }
 }

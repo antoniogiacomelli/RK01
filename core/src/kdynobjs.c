@@ -2,7 +2,7 @@
 /******************************************************************************/
 /*                                                                            */
 /* RK01 - Bounded Responses. Bounded domains.                                   */
-/* VERSION: V0.1.0                                                            */
+/* VERSION: V0.2.0                                                            */
 /* (C) 2026 Antonio Giacomelli <dev@kernel0.org>                               */
 /*                                                                            */
 /******************************************************************************/
@@ -1235,6 +1235,11 @@ RK_ERR kSemaphoreCreateGlobalScope(RK_SEMAPHORE_HANDLE *const semaHandlePtr,
                                    UINT const initValue,
                                    UINT const maxValue)
 {
+    if (kSyscallRequired() == RK_TRUE)
+    {
+        return (RK_ERR_INVALID_PHASE);
+    }
+
     RK_OBJ_ATTR const attr = { RK_SCOPE_KERNEL_GLOBAL, NULL };
     return (kSemaphoreCreateWithAttr_(semaHandlePtr, objName, initValue,
                                       maxValue,
@@ -1247,6 +1252,11 @@ RK_ERR kSemaphoreCreateDomainScope(RK_SEMAPHORE_HANDLE *const semaHandlePtr,
                                    UINT const maxValue,
                                    RK_DOMAIN *const domainPtr)
 {
+    if (kSyscallRequired() == RK_TRUE)
+    {
+        return (RK_ERR_INVALID_PHASE);
+    }
+
     RK_OBJ_ATTR const attr = { RK_SCOPE_DOMAIN_LOCAL, domainPtr };
     return (kSemaphoreCreateWithAttr_(semaHandlePtr, objName, initValue,
                                       maxValue,
@@ -1441,6 +1451,11 @@ RK_ERR kMutexCreateGlobalScope(RK_MUTEX_HANDLE *const mutexHandlePtr,
                                RK_STRING objName,
                                UINT const protocol)
 {
+    if (kSyscallRequired() == RK_TRUE)
+    {
+        return (RK_ERR_INVALID_PHASE);
+    }
+
     RK_OBJ_ATTR const attr = { RK_SCOPE_KERNEL_GLOBAL, NULL };
     return (kMutexCreateWithAttr_(mutexHandlePtr, objName, protocol, &attr));
 }
@@ -1450,6 +1465,11 @@ RK_ERR kMutexCreateDomainScope(RK_MUTEX_HANDLE *const mutexHandlePtr,
                                UINT const protocol,
                                RK_DOMAIN *const domainPtr)
 {
+    if (kSyscallRequired() == RK_TRUE)
+    {
+        return (RK_ERR_INVALID_PHASE);
+    }
+
     RK_OBJ_ATTR const attr = { RK_SCOPE_DOMAIN_LOCAL, domainPtr };
     return (kMutexCreateWithAttr_(mutexHandlePtr, objName, protocol, &attr));
 }
@@ -1646,6 +1666,11 @@ RK_ERR kSleepQueueCreateGlobalScope(
     RK_SLEEP_QUEUE_HANDLE *const sleepqHandlePtr,
     RK_STRING objName)
 {
+    if (kSyscallRequired() == RK_TRUE)
+    {
+        return (RK_ERR_INVALID_PHASE);
+    }
+
     RK_OBJ_ATTR const attr = { RK_SCOPE_KERNEL_GLOBAL, NULL };
     return (kSleepQueueCreateWithAttr_(sleepqHandlePtr, objName, &attr));
 }
@@ -1655,6 +1680,11 @@ RK_ERR kSleepQueueCreateDomainScope(
     RK_STRING objName,
     RK_DOMAIN *const domainPtr)
 {
+    if (kSyscallRequired() == RK_TRUE)
+    {
+        return (RK_ERR_INVALID_PHASE);
+    }
+
     RK_OBJ_ATTR const attr = { RK_SCOPE_DOMAIN_LOCAL, domainPtr };
     return (kSleepQueueCreateWithAttr_(sleepqHandlePtr, objName, &attr));
 }
@@ -1864,6 +1894,11 @@ RK_ERR kMesgQueueCreateGlobalScope(
     ULONG const mesgWords,
     ULONG const depth)
 {
+    if (kSyscallRequired() == RK_TRUE)
+    {
+        return (RK_ERR_INVALID_PHASE);
+    }
+
     RK_OBJ_ATTR const attr = { RK_SCOPE_KERNEL_GLOBAL, NULL };
     return (kMesgQueueCreateWithAttr_(queueHandlePtr, objName, bufPtr,
                                       mesgWords, depth, &attr));
@@ -1877,6 +1912,11 @@ RK_ERR kMesgQueueCreateDomainScope(
     ULONG const depth,
     RK_DOMAIN *const domainPtr)
 {
+    if (kSyscallRequired() == RK_TRUE)
+    {
+        return (RK_ERR_INVALID_PHASE);
+    }
+
     RK_OBJ_ATTR const attr = { RK_SCOPE_DOMAIN_LOCAL, domainPtr };
     return (kMesgQueueCreateWithAttr_(queueHandlePtr, objName, bufPtr,
                                       mesgWords, depth, &attr));
@@ -2112,6 +2152,11 @@ RK_ERR kTimerCreateGlobalScope(RK_TIMER_HANDLE *const timerHandlePtr,
                                VOID *const argsPtr,
                                RK_OPTION const reload)
 {
+    if (kSyscallRequired() == RK_TRUE)
+    {
+        return (RK_ERR_INVALID_PHASE);
+    }
+
     RK_OBJ_ATTR const attr = { RK_SCOPE_KERNEL_GLOBAL, NULL };
     return (kTimerCreateWithAttr_(timerHandlePtr, objName, phase, countTicks,
                                   funPtr, argsPtr, reload, &attr));
@@ -2126,6 +2171,11 @@ RK_ERR kTimerCreateDomainScope(RK_TIMER_HANDLE *const timerHandlePtr,
                                RK_OPTION const reload,
                                RK_DOMAIN *const domainPtr)
 {
+    if (kSyscallRequired() == RK_TRUE)
+    {
+        return (RK_ERR_INVALID_PHASE);
+    }
+
     RK_OBJ_ATTR const attr = { RK_SCOPE_DOMAIN_LOCAL, domainPtr };
     return (kTimerCreateWithAttr_(timerHandlePtr, objName, phase, countTicks,
                                   funPtr, argsPtr, reload, &attr));
@@ -2344,6 +2394,11 @@ RK_ERR kMRMCreateDomainScope(RK_MRM_HANDLE *const mrmHandlePtr,
                              ULONG const dataSizeWords,
                              RK_DOMAIN *const domainPtr)
 {
+    if (kSyscallRequired() == RK_TRUE)
+    {
+        return (RK_ERR_INVALID_PHASE);
+    }
+
     RK_OBJ_ATTR const attr = { RK_SCOPE_DOMAIN_LOCAL, domainPtr };
     return (kMRMCreateWithAttr_(mrmHandlePtr, objName, mrmPoolPtr,
                                 mesgPoolPtr, nBufs, dataSizeWords, &attr));

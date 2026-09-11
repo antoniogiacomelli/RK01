@@ -14,11 +14,13 @@
 | MPU                | Memory protection unit                                               |
 | MSP                | Main stack pointer, used by privileged exception execution           |
 | PSP                | Process stack pointer, used by task execution                        |
+| Signal             | Asynchronous task notification delivered later by redirecting user-mode execution |
 | SVC                | Supervisor call exception and the RK01 checked service-entry path    |
 | TCB                | Task control block                                                   |
 | TCB continuation   | Bounded state stored in a TCB to resume a blocking syscall           |
 | TCB trust boundary | Kernel ownership of task identity, state and saved execution context |
 | TCB registry       | Kernel table used to resolve an opaque task handle                   |
+| Upcall             | Kernel-arranged return to a task-registered user handler             |
 | WCET               | Worst-case execution time                                            |
 
 
@@ -594,6 +596,190 @@ The `SVC` instruction is only the entry point. Syscall timing may include except
 
 Those costs are finite and measurable. They shall not be reported as equivalent to RK0’s direct function call.
 
+## Signal and user-upcall design
+
+
+> A signal is an asynchronous task notification that is delivered later by
+> redirecting the task's saved user-mode context at a controlled kernel-to-user
+> return boundary.
+
+Signals give a task a way to register a small user-mode handler for selected
+asynchronous conditions. Like UNIX/BSD signals, the signal is marked pending
+first and handled later, but delivery changes the task's user execution flow:
+the task resumes through a trampoline and handler instead of the original
+interrupted `PC`.
+
+RK01 constrains the delivery point. The mechanism shall remain compatible with
+the TCB-continuation and MPU model: the kernel records bounded pending state,
+validates registered user addresses, edits the saved task frame at a defined
+return point and resumes unprivileged code through a trampoline. It does not
+interrupt arbitrary kernel code, does not run handlers on the MSP and does not
+allocate a new stack on each delivery.
+
+### Signal requirements
+
+| ID            | Requirement                                                                                                                                      | Owner / verification                         |
+|:--------------|:-------------------------------------------------------------------------------------------------------------------------------------------------|:---------------------------------------------|
+| **`SIG-001`** | Signal delivery shall occur only while returning from SVC, syscall continuation, PendSV dispatch or another validated kernel-to-user boundary.  | Kernel and port / delivery-point test        |
+| **`SIG-002`** | Pending signals, enabled mask, handler table, alternate-stack registration and in-handler state shall be bounded TCB-owned state.                | Kernel / TCB layout and pool review          |
+| **`SIG-003`** | A handler entry pointer shall be validated as executable user code for the target task before it is installed or delivered.                      | Kernel / invalid-handler tests               |
+| **`SIG-004`** | A signal alternate stack shall be pre-registered, fixed-size, writable by the target task and valid under that task's MPU view.                  | Kernel and port / range and MPU tests        |
+| **`SIG-005`** | The kernel shall not allocate or free a per-delivery signal stack.                                                                               | Kernel / timing and allocation review        |
+| **`SIG-006`** | Delivery shall preserve the interrupted user exception frame and redirect PSP to a bounded alternate-stack signal frame.                     | Kernel and port / frame validation           |
+| **`SIG-007`** | `kSignalReturn()` shall be the only normal path that restores the interrupted context and clears in-handler state.                               | Kernel / forged-return and nesting tests     |
+| **`SIG-008`** | Nested delivery shall be disabled unless a future design explicitly defines bounded nesting depth and stack accounting.                          | Kernel / nested-signal test                  |
+| **`SIG-009`** | A fault while executing a signal handler shall be treated as an ordinary task fault for the target task.                                         | Fault core / handler-fault injection         |
+| **`SIG-010`** | Privileged system tasks shall not receive user-mode signals unless an explicit trusted-task policy is added.                                     | Product and kernel / privilege review        |
+| **`SIG-011`** | Signal support shall be a base task facility, not a configuration-optional replacement for task events.                                         | Kernel / configuration and API review        |
+
+### Relationship to task events
+
+Task events and signals shall remain separate mechanisms.
+
+A task event is passive state: a bounded bitmask that a task waits for, queries
+or clears explicitly. Setting an event shall not redirect execution and shall
+not imply a handler callback.
+
+A signal is active control-flow delivery: a bounded pending notification that
+may cause the selected task to resume through a registered user handler before
+returning to the interrupted context.
+
+The kernel shall not provide event-to-signal binding as a separate feature.
+Handler-style behavior uses signals directly. Explicit wait/query behavior uses
+task events.
+
+### Registered alternate stack
+
+Each task that handles signals registers a fixed alternate stack during BOOT or
+through a checked SVC. The stack is ordinary task-accessible memory: it
+may live in the task's domain, in a private task RAM allocation or in another
+mapped writable region that the target task can use. Placement does not by
+itself grant signal authority; the kernel validates that the task's active view
+can write the registered range.
+
+The alternate stack is not created dynamically on signal delivery. Per-delivery
+allocation would introduce allocation failure, variable latency, MPU
+reclassification and ambiguous cleanup if the handler faults. A fixed
+pre-registered stack keeps delivery bounded and makes map review possible.
+
+The initial implementation shall require a registered alternate stack before a
+task can install a handler. RK01 v0.2.0 starts with eight bounded task signals,
+numbered `1..8`; `0` means no signal. A signal sent to a task without a handler
+for that signal is ignored. It shall not fall back to an event bit or an
+implicit callback.
+
+### Delivery protocol
+
+Signal delivery is a final step before exception return to an ordinary task. The
+kernel first completes any required service continuation and computes the public
+return value. It then checks whether the selected task has a pending unmasked
+signal and is eligible for delivery.
+
+If no signal is deliverable, exception return proceeds normally. If a signal is
+deliverable, the kernel:
+
+1.  chooses the highest-priority pending signal according to the configured
+    signal ordering;
+
+2.  clears or marks that signal according to the selected one-shot or level
+    semantics;
+
+3.  records the interrupted user `PSP`; the original exception frame remains on
+    the interrupted user stack;
+
+4.  creates a fresh exception frame on the registered alternate stack, pointing
+    `PC` at the signal trampoline and passing the installed handler as a
+    bounded argument;
+
+5.  provides the signal number and optional bounded signal information in the
+    trampoline's initial arguments;
+
+6.  returns to unprivileged thread mode.
+
+The trampoline is user code. It calls the registered handler and then invokes
+`kSignalReturn()`. The return syscall validates that the caller is the task
+currently marked as handling a signal, restores the saved interrupted context
+and clears the in-handler flag.
+
+Signals with no installed handler are ignored in the initial implementation.
+Sending a signal shall change task execution only after the target task has
+installed a handler for that signal.
+
+If the target task is blocked in an interruptible syscall wait, an accepted
+signal makes that task ready without setting an event bit or satisfying the
+waited object condition. The pending signal is delivered at the next
+kernel-to-user return boundary, and the interrupted syscall returns
+`RK_ERR_SIGNAL_INTERRUPTED` after `kSignalReturn()` restores the original user
+context.
+
+**Required signal-delivery flow**
+
+```
+return_to_user_boundary(frame, task)
+{
+    complete_syscall_or_dispatch_state(task, frame);
+
+    if (!signal_deliverable(task))
+        exception_return(frame);
+
+    sig = choose_pending_signal(task);
+    require(valid_user_handler(task, sig));
+    require(valid_signal_stack(task));
+
+    task->signal.saved_psp = current_psp();
+    task->signal.active = true;
+    prepare_signal_frame(task->signal.alt_stack,
+                         signal_trampoline,
+                         task->signal.handler[sig],
+                         sig);
+
+    exception_return(frame);
+}
+
+kSignalReturn()
+{
+    task = current_task();
+    require(task->signal.active == true);
+    restore_psp(task->signal.saved_psp);
+    task->signal.active = false;
+}
+```
+
+### Signal API shape
+
+The implementation should keep the public API small and explicit:
+
+```
+typedef VOID (*RK_SIGNAL_HANDLER)(RK_SIGNAL signal);
+
+RK_ERR kSignalHandlerSet(RK_SIGNAL signal,
+                         RK_SIGNAL_HANDLER handler,
+                         VOID *altStackBasePtr,
+                         ULONG altStackBytes);
+RK_ERR kSignalSend(RK_TASK_HANDLE taskHandle, RK_SIGNAL signal);
+RK_ERR kSignalMaskSet(RK_SIGNAL enabledMask);
+RK_ERR kSignalReturn(VOID);
+```
+
+The exact payload shape is a service-family decision. A signal may be only a bit
+in the pending mask, or it may carry a bounded copied record. Pointer-bearing
+signal payloads shall obey the same mapped-storage rules as any other ITC
+protocol.
+
+### Fault and timing consequences
+
+A handler fault is a task fault. The fault path records that the task was inside
+a signal handler, clears signal state during task cleanup and applies the normal
+product recovery policy. The kernel shall not attempt to resume the interrupted
+context after a handler fault unless a future recovery design explicitly proves
+that the task invariant is still valid.
+
+Signal delivery adds a distinct timing class: kernel-to-user return plus pending
+mask scan, handler and stack validation, context save, signal-frame preparation,
+handler execution, `kSignalReturn()` and context restore. Products that use
+signals in response-time paths shall budget that class separately from a plain
+SVC return or a normal PendSV dispatch.
+
 ## ITC and priority-protocol design
 
 
@@ -765,7 +951,7 @@ Consider a controller with `PrimarySensor` and `StandbySensor` domains. Each pub
 
 2.  RK01 records and contains the task, then PostProc cleans its kernel relationships.
 
-3.  A bounded privileged fault-report handoff informs a product supervisor. This notification path is application integration work; the V0.1.0 diagnostic record alone is not a complete supervisor protocol.
+3.  A bounded privileged fault-report handoff informs a product supervisor. This notification path is application integration work; the V0.2.0 diagnostic record alone is not a complete supervisor protocol.
 
 4.  The supervisor commands the actuator controller to its defined transient-safe value.
 
@@ -916,18 +1102,18 @@ Conversely, a complex protocol parser does not need to remain privileged merely 
 
 Select the boundary from the required fault containment and timing budget, not from a kernel-category label.
 
-### V0.1.0 demonstrator qualifications
+### V0.2.0 demonstrator qualifications
 
 The public examples are intended to show mechanisms, not to be the final product
 policy for every facility. The following points shall remain explicit during
 review:
 
-| Topic | Current V0.1.0 state | Qualification |
+| Topic | Current V0.2.0 state | Qualification |
 |:------|:----------------------|:--------------|
-| Privileged RKFS | RKFS runs as a privileged service task because it owns reserved flash and STM32 flash-controller MMIO. Its service state is reserved trusted RAM, not an unprivileged filesystem domain. | Memory-safe under the trusted-base model, but it is not a demonstration of domain-enforced filesystem isolation. A later split can put filesystem policy in an unprivileged domain behind a small privileged flash endpoint. |
+| Privileged RKFS | RKFS runs as a privileged service task because it owns reserved flash and STM32 flash-controller MMIO. Its service state is reserved trusted RAM, not an unprivileged filesystem domain. | Consistent with the trusted-base model, but not fault-contained from the kernel or other domains. A later split can put filesystem policy in an unprivileged domain behind a small privileged flash endpoint. |
 | SysMon configuration | `RK_CONF_SYSMON` defaults to `OFF`; `APP_EXAMPLE=04-sysmon` opts in explicitly through the build profile. | Keeps the minimal kernel default small while preserving a diagnostics demonstrator. |
 | API presentation | Example public headers should include the narrowest useful presentation header, such as `kapi_app.h`, `kapi_domain.h`, `kapi_diag.h` or `kapi_trusted.h`. | Headers are not the security boundary; SVC validation, task privilege and MPU state are. The flagship example should still make trusted capabilities visibly exceptional. |
-| RKFS flash polling | The STM32 flash wait path currently polls hardware `BSY` without a software timeout. | RKFS is demonstration middleware outside the bounded kernel contract for V0.1.0. A qualified storage service needs timeout/error returns and flash-stall latency accounting. |
+| RKFS flash polling | The STM32 flash wait path currently polls hardware `BSY` without a software timeout. | RKFS is demonstration middleware outside the bounded kernel contract for V0.2.0. A qualified storage service needs timeout/error returns and flash-stall latency accounting. |
 
 Before approving a service placement, record:
 
@@ -1013,7 +1199,7 @@ RK01 remains one statically linked, fixed-priority real-time kernel. A product m
 | ID           | Requirement                                                                                                                                                 | Owner / verification                    |
 |:-------------|:------------------------------------------------------------------------------------------------------------------------------------------------------------|:----------------------------------------|
 | **`RT-001`** | Task/object counts, queue depths, copied-message pools and MPU attachments shall have configured finite maxima.                                             | Configuration / exhaustion tests        |
-| **`RT-002`** | Timing evidence shall distinguish privileged direct calls, immediate SVC, blocking SVC, same-domain dispatch, inter-domain dispatch and call/reply service. | Verification / profile set              |
+| **`RT-002`** | Timing evidence shall distinguish privileged direct calls, immediate SVC, blocking SVC, same-domain dispatch, inter-domain dispatch, signal delivery and call/reply service. | Verification / profile set              |
 | **`RT-003`** | Same-domain and inter-domain dispatch shall be built and measured as separate profiles.                                                                     | Verification / dedicated builds         |
 | **`RT-004`** | A timing report shall record target clock, compiler, optimisation, FPU state, debug/check options, interrupt conditions and instrumentation method.         | Verification / report review            |
 | **`RT-005`** | Cycle reports shall include raw samples and at least minimum, maximum and sample count. Averages alone are insufficient.                                    | Verification / data review              |
@@ -1055,6 +1241,7 @@ A realistic analysis must distinguish at least:
 | Blocking syscall       | Immediate path plus wait insertion, PendSV, wakeup and one or more continuation entries.                           |
 | Same-domain dispatch   | Register context switch plus private-stack MPU update.                                                             |
 | Inter-domain dispatch  | Register context switch plus domain/shared-map update and private-stack update.                                    |
+| Signal delivery        | Kernel-to-user return check, pending selection, context save, signal-frame setup, handler execution and signal return. |
 | Call/reply service     | Client syscall, request validation/copy, server dispatch and execution, reply, client redispatch and continuation. |
 
 Use the following decomposition for a synchronous service budget:
@@ -1081,6 +1268,7 @@ Bound each term for the selected target and configuration. Remove a term only wh
 | Inter-domain task switch | Two tasks use distinct domains          | Raw cycles; confirm domain/shared plus stack writes                            |
 | Immediate SVC            | Service completes without blocking      | Entry, validation, operation and return cycles                                 |
 | Blocking SVC             | Service waits then resumes              | Start, dispatch, wake and continuation costs                                   |
+| Signal delivery          | Pending signal delivered to a task      | Return-boundary check, frame setup, handler execution and `kSignalReturn()`    |
 | Call/reply               | Client and server run in stated domains | End-to-end latency plus each dispatch class                                    |
 | Fault cleanup            | Injected eligible task fault            | Handler time, time to schedule away, PostProc work and supervisor notification |
  

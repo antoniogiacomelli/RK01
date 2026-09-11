@@ -1,4 +1,4 @@
-# RK01 - Version 0.1.0
+# RK01 - Version 0.2.0
 
 RK01 is the RK0 kernel line with a Cortex-M MPU and an explicit kernel/user
 boundary.

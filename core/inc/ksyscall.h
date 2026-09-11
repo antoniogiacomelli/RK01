@@ -2,7 +2,7 @@
 /******************************************************************************/
 /*                                                                            */
 /* RK01 - Bounded Responses. Bounded domains.                                   */
-/* VERSION: V0.1.0                                                            */
+/* VERSION: V0.2.0                                                            */
 /* (C) 2026 Antonio Giacomelli <dev@kernel0.org>                               */
 /*                                                                            */
 /******************************************************************************/
@@ -63,6 +63,11 @@ extern "C"
 #define RK_SYSCALL_EVENT_SET (61UL)
 #define RK_SYSCALL_EVENT_CLEAR (62UL)
 #define RK_SYSCALL_EVENT_QUERY (63UL)
+
+#define RK_SYSCALL_SIGNAL_HANDLER_SET (70UL)
+#define RK_SYSCALL_SIGNAL_SEND (71UL)
+#define RK_SYSCALL_SIGNAL_MASK_SET (72UL)
+#define RK_SYSCALL_SIGNAL_RETURN (73UL)
 
 #define RK_SYSCALL_SEMAPHORE_PEND (80UL)
 #define RK_SYSCALL_SEMAPHORE_POST (81UL)
@@ -296,6 +301,7 @@ VOID kSyscallTaskCheckpoint(RK_EXCEPTION_FRAME *const framePtr,
 VOID kSyscallTaskClear(RK_TCB *const taskPtr);
 VOID kSyscallTaskWake(RK_TCB *const taskPtr);
 VOID kSyscallTaskTimeout(RK_TCB *const taskPtr);
+VOID kSyscallTaskSignal(RK_TCB *const taskPtr);
 RK_BOOL kSyscallDispatchApp(RK_EXCEPTION_FRAME *const framePtr,
                             ULONG const callNumber,
                             ULONG const arg0,

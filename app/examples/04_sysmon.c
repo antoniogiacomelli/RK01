@@ -2,7 +2,7 @@
 /******************************************************************************/
 /*                                                                            */
 /* RK01 - Bounded Responses. Bounded domains.                                   */
-/* VERSION: V0.1.0                                                            */
+/* VERSION: V0.2.0                                                            */
 /* (C) 2026 Antonio Giacomelli <dev@kernel0.org>                               */
 /*                                                                            */
 /******************************************************************************/
@@ -31,19 +31,6 @@ static RK_DECLARE_SEMAPHORE(updateSema)
 RK_DECLARE_TASK(producerHandle, ProducerTask, producerStack, TASK_STACK_WORDS)
 RK_DECLARE_TASK(consumerHandle, ConsumerTask, consumerStack, TASK_STACK_WORDS)
 
-RK_FORCE_INLINE
-static inline VOID AppCheck_(RK_ERR const err)
-{
-    K_ASSERT(err == RK_ERR_SUCCESS);
-    if (err != RK_ERR_SUCCESS)
-    {
-        while (1)
-        {
-            kErrHandler((RK_FAULT)err);
-        }
-    }
-}
-
 int main(void)
 {
     kCoreInit();
@@ -59,16 +46,28 @@ VOID kApplicationInit(VOID)
 {
     kLogInit(APP_LOG_PRIO);
 
-    AppCheck_(kSemaphoreCreate(&updateSema, "Update", 0U, 1U));
+    {
+        RK_ERR err = kSemaphoreCreate(&updateSema, "Update", 0U, 1U);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 
-    AppCheck_(kTaskInit(&producerHandle, ProducerTask, RK_NO_ARGS,
-                        "Prod", producerStack, TASK_STACK_WORDS,
-                        PRODUCER_PRIO, RK_PREEMPT));
-    AppCheck_(kTaskInit(&consumerHandle, ConsumerTask, RK_NO_ARGS,
-                        "Cons", consumerStack, TASK_STACK_WORDS,
-                        CONSUMER_PRIO, RK_PREEMPT));
+    {
+        RK_ERR err = kTaskInit(&producerHandle, ProducerTask, RK_NO_ARGS,
+                               "Prod", producerStack, TASK_STACK_WORDS,
+                               PRODUCER_PRIO, RK_PREEMPT);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err = kTaskInit(&consumerHandle, ConsumerTask, RK_NO_ARGS,
+                               "Cons", consumerStack, TASK_STACK_WORDS,
+                               CONSUMER_PRIO, RK_PREEMPT);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 
-    AppCheck_(kSysMonInit());
+    {
+        RK_ERR err = kSysMonInit();
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 }
 
 VOID ProducerTask(VOID *args)
@@ -81,8 +80,8 @@ VOID ProducerTask(VOID *args)
         monitorState.value = (monitorState.seq * 7UL) & 0xFFUL;
 
         kSemaphorePost(updateSema);
-        kLog("sysmon demo seq=%lu value=%lu",
-             monitorState.seq, monitorState.value);
+        kLog("sysmon demo seq=%lu value=%lu", monitorState.seq,
+             monitorState.value);
         kSleep(RK_MS_TO_TICKS(1000UL));
     }
 }
@@ -93,8 +92,11 @@ VOID ConsumerTask(VOID *args)
 
     while (1)
     {
-        AppCheck_(kSemaphorePend(updateSema, RK_WAIT_FOREVER));
-        kLog("consumer observed seq=%lu value=%lu",
-             monitorState.seq, monitorState.value);
+        {
+            RK_ERR err = kSemaphorePend(updateSema, RK_WAIT_FOREVER);
+            K_ASSERT(err == RK_ERR_SUCCESS);
+        }
+        kLog("consumer observed seq=%lu value=%lu", monitorState.seq,
+             monitorState.value);
     }
 }

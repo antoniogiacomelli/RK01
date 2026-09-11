@@ -2,7 +2,7 @@
 /******************************************************************************/
 /*                                                                            */
 /* RK01 - Bounded Responses. Bounded domains.                                   */
-/* VERSION: V0.1.0                                                            */
+/* VERSION: V0.2.0                                                            */
 /* (C) 2026 Antonio Giacomelli <dev@kernel0.org>                               */
 /*                                                                            */
 /******************************************************************************/
@@ -79,18 +79,6 @@ static volatile ULONG counter5 PROFILE_STATE_ATTR;
 static volatile ULONG error PROFILE_STATE_ATTR;
 static volatile ULONG roundn PROFILE_STATE_ATTR;
 
-static VOID AppCheck_(RK_ERR const err)
-{
-    K_ASSERT(err == RK_ERR_SUCCESS);
-    if (err != RK_ERR_SUCCESS)
-    {
-        while (1)
-        {
-            kErrHandler((RK_FAULT)err);
-        }
-    }
-}
-
 static VOID ProfilePrintUL_(ULONG value)
 {
     CHAR buf[16];
@@ -149,11 +137,10 @@ static VOID ProfileReport_(RK_TICK const time0, RK_TICK const time1)
         maxDelta = delta;
     }
 
-    if ((c1 + 1UL < average) || (c1 > average + 1UL) ||
-        (c2 + 1UL < average) || (c2 > average + 1UL) ||
-        (c3 + 1UL < average) || (c3 > average + 1UL) ||
-        (c4 + 1UL < average) || (c4 > average + 1UL) ||
-        (c5 + 1UL < average) || (c5 > average + 1UL))
+    if ((c1 + 1UL < average) || (c1 > average + 1UL) || (c2 + 1UL < average) ||
+        (c2 > average + 1UL) || (c3 + 1UL < average) || (c3 > average + 1UL) ||
+        (c4 + 1UL < average) || (c4 > average + 1UL) || (c5 + 1UL < average) ||
+        (c5 > average + 1UL))
     {
         error++;
     }
@@ -176,16 +163,23 @@ static VOID ProfileReport_(RK_TICK const time0, RK_TICK const time1)
     kPuts("\r\n");
 }
 
-#define kSuspendSelf(timeout)                                                 \
-    do                                                                        \
-    {                                                                         \
-        AppCheck_(kEventGet(TM_FLAG, RK_OPT_EVENT_ANY, NULL, (timeout)));     \
+#define kSuspendSelf(timeout)                                                  \
+    do                                                                         \
+    {                                                                          \
+        {                                                                      \
+            RK_ERR err =                                                       \
+                kEventGet(TM_FLAG, RK_OPT_EVENT_ANY, NULL, (timeout));         \
+            K_ASSERT(err == RK_ERR_SUCCESS);                                   \
+        }                                                                      \
     } while (0)
 
-#define kResumeTask(taskHandle)                                               \
-    do                                                                        \
-    {                                                                         \
-        AppCheck_(kEventSet((taskHandle), TM_FLAG));                          \
+#define kResumeTask(taskHandle)                                                \
+    do                                                                         \
+    {                                                                          \
+        {                                                                      \
+            RK_ERR err = kEventSet((taskHandle), TM_FLAG);                     \
+            K_ASSERT(err == RK_ERR_SUCCESS);                                   \
+        }                                                                      \
     } while (0)
 
 int main(void)
@@ -201,41 +195,110 @@ int main(void)
 
 VOID kApplicationInit(VOID)
 {
-    AppCheck_(kConsoleServiceInit());
+    {
+        RK_ERR err = kConsoleServiceInit();
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 
 #if (PROFILE_PREEMPT_CLASS == PROFILE_PREEMPT_CLASS_PER_TASK_DOMAIN)
-    AppCheck_(kDomainInit(&task1Domain, task1Ram, sizeof(task1Ram), "T0D"));
-    AppCheck_(kDomainInit(&task2Domain, task2Ram, sizeof(task2Ram), "T1D"));
-    AppCheck_(kDomainInit(&task3Domain, task3Ram, sizeof(task3Ram), "T2D"));
-    AppCheck_(kDomainInit(&task4Domain, task4Ram, sizeof(task4Ram), "T3D"));
-    AppCheck_(kDomainInit(&task5Domain, task5Ram, sizeof(task5Ram), "T4D"));
-    AppCheck_(kDomainInit(&task6Domain, task6Ram, sizeof(task6Ram), "REPD"));
+    {
+        RK_ERR err =
+            kDomainInit(&task1Domain, task1Ram, sizeof(task1Ram), "T0D");
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err =
+            kDomainInit(&task2Domain, task2Ram, sizeof(task2Ram), "T1D");
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err =
+            kDomainInit(&task3Domain, task3Ram, sizeof(task3Ram), "T2D");
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err =
+            kDomainInit(&task4Domain, task4Ram, sizeof(task4Ram), "T3D");
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err =
+            kDomainInit(&task5Domain, task5Ram, sizeof(task5Ram), "T4D");
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err =
+            kDomainInit(&task6Domain, task6Ram, sizeof(task6Ram), "REPD");
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 
-    AppCheck_(kTaskInitDomain(&task1Handle, Task1, RK_NO_ARGS, "T0", stack1,
-                              STACKSIZE, 6U, RK_PREEMPT, &task1Domain));
-    AppCheck_(kTaskInitDomain(&task2Handle, Task2, RK_NO_ARGS, "T1", stack2,
-                              STACKSIZE, 5U, RK_PREEMPT, &task2Domain));
-    AppCheck_(kTaskInitDomain(&task3Handle, Task3, RK_NO_ARGS, "T2", stack3,
-                              STACKSIZE, 4U, RK_PREEMPT, &task3Domain));
-    AppCheck_(kTaskInitDomain(&task4Handle, Task4, RK_NO_ARGS, "T3", stack4,
-                              STACKSIZE, 3U, RK_PREEMPT, &task4Domain));
-    AppCheck_(kTaskInitDomain(&task5Handle, Task5, RK_NO_ARGS, "T4", stack5,
-                              STACKSIZE, 2U, RK_PREEMPT, &task5Domain));
-    AppCheck_(kTaskInitDomain(&task6Handle, Task6, RK_NO_ARGS, "REP", stack6,
-                              STACKSIZE, 1U, RK_PREEMPT, &task6Domain));
+    {
+        RK_ERR err =
+            kTaskInitDomain(&task1Handle, Task1, RK_NO_ARGS, "T0", stack1,
+                            STACKSIZE, 6U, RK_PREEMPT, &task1Domain);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err =
+            kTaskInitDomain(&task2Handle, Task2, RK_NO_ARGS, "T1", stack2,
+                            STACKSIZE, 5U, RK_PREEMPT, &task2Domain);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err =
+            kTaskInitDomain(&task3Handle, Task3, RK_NO_ARGS, "T2", stack3,
+                            STACKSIZE, 4U, RK_PREEMPT, &task3Domain);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err =
+            kTaskInitDomain(&task4Handle, Task4, RK_NO_ARGS, "T3", stack4,
+                            STACKSIZE, 3U, RK_PREEMPT, &task4Domain);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err =
+            kTaskInitDomain(&task5Handle, Task5, RK_NO_ARGS, "T4", stack5,
+                            STACKSIZE, 2U, RK_PREEMPT, &task5Domain);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err =
+            kTaskInitDomain(&task6Handle, Task6, RK_NO_ARGS, "REP", stack6,
+                            STACKSIZE, 1U, RK_PREEMPT, &task6Domain);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 #else
-    AppCheck_(kTaskInit(&task1Handle, Task1, RK_NO_ARGS, "T0", stack1,
-                        STACKSIZE, 6U, RK_PREEMPT));
-    AppCheck_(kTaskInit(&task2Handle, Task2, RK_NO_ARGS, "T1", stack2,
-                        STACKSIZE, 5U, RK_PREEMPT));
-    AppCheck_(kTaskInit(&task3Handle, Task3, RK_NO_ARGS, "T2", stack3,
-                        STACKSIZE, 4U, RK_PREEMPT));
-    AppCheck_(kTaskInit(&task4Handle, Task4, RK_NO_ARGS, "T3", stack4,
-                        STACKSIZE, 3U, RK_PREEMPT));
-    AppCheck_(kTaskInit(&task5Handle, Task5, RK_NO_ARGS, "T4", stack5,
-                        STACKSIZE, 2U, RK_PREEMPT));
-    AppCheck_(kTaskInit(&task6Handle, Task6, RK_NO_ARGS, "REP", stack6,
-                        STACKSIZE, 1U, RK_PREEMPT));
+    {
+        RK_ERR err = kTaskInit(&task1Handle, Task1, RK_NO_ARGS, "T0", stack1,
+                               STACKSIZE, 6U, RK_PREEMPT);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err = kTaskInit(&task2Handle, Task2, RK_NO_ARGS, "T1", stack2,
+                               STACKSIZE, 5U, RK_PREEMPT);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err = kTaskInit(&task3Handle, Task3, RK_NO_ARGS, "T2", stack3,
+                               STACKSIZE, 4U, RK_PREEMPT);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err = kTaskInit(&task4Handle, Task4, RK_NO_ARGS, "T3", stack4,
+                               STACKSIZE, 3U, RK_PREEMPT);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err = kTaskInit(&task5Handle, Task5, RK_NO_ARGS, "T4", stack5,
+                               STACKSIZE, 2U, RK_PREEMPT);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err = kTaskInit(&task6Handle, Task6, RK_NO_ARGS, "REP", stack6,
+                               STACKSIZE, 1U, RK_PREEMPT);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 #endif
 }
 
@@ -313,7 +376,10 @@ VOID Task6(VOID *args)
     {
         RK_TICK const time0 = kTickGetMs();
 
-        AppCheck_(kSleep(RK_MS_TO_TICKS(TM_TEST_DURATION_MS)));
+        {
+            RK_ERR err = kSleep(RK_MS_TO_TICKS(TM_TEST_DURATION_MS));
+            K_ASSERT(err == RK_ERR_SUCCESS);
+        }
         roundn++;
         ProfileReport_(time0, kTickGetMs());
     }

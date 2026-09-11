@@ -2,7 +2,7 @@
 /******************************************************************************/
 /*                                                                            */
 /* RK01 - Bounded Responses. Bounded domains.                                  */
-/* VERSION: V0.1.0                                                            */
+/* VERSION: V0.2.0                                                            */
 /* (C) 2026 Antonio Giacomelli <dev@kernel0.org>                               */
 /*                                                                            */
 /******************************************************************************/
@@ -86,6 +86,10 @@ rkProfilePendSvSamples:
 
 .global kSyscallDispatch
 .type kSyscallDispatch, %function
+.thumb_func
+
+.global kSignalMaybeDeliverOnReturn
+.type kSignalMaybeDeliverOnReturn, %function
 .thumb_func
 
 .global kMemManageFault
@@ -311,6 +315,11 @@ CALL_SCHEDULER:
     VLDMIA R2!, {S16-S31}
     SKIPRESTOREVFP:
 #endif
+    PUSH {R0, LR}
+    MOV R0, R2
+    BL kSignalMaybeDeliverOnReturn
+    MOV R2, R0
+    POP {R0, LR}
  /* assign PSP */
 
     MSR PSP, R2

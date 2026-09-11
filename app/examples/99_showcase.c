@@ -2,7 +2,7 @@
 /******************************************************************************/
 /*                                                                            */
 /* RK01 - Bounded Responses. Bounded domains.                                   */
-/* VERSION: V0.1.0                                                            */
+/* VERSION: V0.2.0                                                            */
 /* (C) 2026 Antonio Giacomelli <dev@kernel0.org>                               */
 /*                                                                            */
 /******************************************************************************/
@@ -103,7 +103,6 @@ Runs in fleetControlDomain. It periodically makes a copied call/reply request to
 FleetSupervisorTask and logs the copied reply.
 
 ***************************************************************************************/
-
 
 #include <kapi.h>
 #include <khal.h>
@@ -265,34 +264,6 @@ RK_DECLARE_ISOLATED_TASK(isoGammaHandle, IsoGammaTask, isoGammaStack,
 RK_DECLARE_TIMER(appWatchdogTimer)
 #endif
 
-RK_FORCE_INLINE
-static inline VOID AppCheck_(RK_ERR const err)
-{
-    K_ASSERT(err == RK_ERR_SUCCESS);
-    if (err != RK_ERR_SUCCESS)
-    {
-        while (1)
-        {
-            kErrHandler((RK_FAULT)err);
-        }
-    }
-}
-
-RK_FORCE_INLINE
-static inline VOID *AppCheckPtr_(VOID *const ptr)
-{
-    K_ASSERT(ptr != NULL);
-    if (ptr == NULL)
-    {
-        while (1)
-        {
-            kErrHandler(RK_FAULT_INVALID_PARAM);
-        }
-    }
-
-    return (ptr);
-}
-
 #if (K_HAL_HAS_WATCHDOG == 1U)
 static VOID AppWatchdogTimer_(VOID *args)
 {
@@ -306,9 +277,13 @@ static VOID AppConfigureWatchdog_(VOID)
 {
 #if (K_HAL_HAS_WATCHDOG == 1U)
     kHalWatchdogConfigure();
-    AppCheck_(kTimerCreate(&appWatchdogTimer, "WdgTmr", 0UL,
-                           RK_MS_TO_TICKS(K_HAL_WATCHDOG_FEED_MS),
-                           AppWatchdogTimer_, RK_NO_ARGS, RK_TIMER_RELOAD));
+    {
+        RK_ERR err =
+            kTimerCreate(&appWatchdogTimer, "WdgTmr", 0UL,
+                         RK_MS_TO_TICKS(K_HAL_WATCHDOG_FEED_MS),
+                         AppWatchdogTimer_, RK_NO_ARGS, RK_TIMER_RELOAD);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 #endif
 }
 
@@ -318,90 +293,152 @@ static VOID AppCreateDomains_(VOID)
     RK_MEMSET(fleetControlRam, 0, sizeof(fleetControlRam));
     RK_MEMSET(fleetCommsRam, 0, sizeof(fleetCommsRam));
 
-    AppCheck_(kDomainInit(&fleetControlDomain,
-                          fleetControlRam, sizeof(fleetControlRam), "FleetC"));
-    AppCheck_(kDomainInit(&fleetCommsDomain,
-                          fleetCommsRam, sizeof(fleetCommsRam), "FleetM"));
+    {
+        RK_ERR err = kDomainInit(&fleetControlDomain, fleetControlRam,
+                                 sizeof(fleetControlRam), "FleetC");
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err = kDomainInit(&fleetCommsDomain, fleetCommsRam,
+                                 sizeof(fleetCommsRam), "FleetM");
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 
-    fleetControlState =
-        AppCheckPtr_(RK_DOMAIN_ALLOC(&fleetControlDomain, FleetControlState));
+    fleetControlState = RK_DOMAIN_ALLOC(&fleetControlDomain, FleetControlState);
+    K_ASSERT(fleetControlState != NULL);
 
-    fleetCommsState =
-        AppCheckPtr_(RK_DOMAIN_ALLOC(&fleetCommsDomain, FleetCommsState));
+    fleetCommsState = RK_DOMAIN_ALLOC(&fleetCommsDomain, FleetCommsState);
+    K_ASSERT(fleetCommsState != NULL);
 }
 
 static VOID AppCreateObjects_(VOID)
 {
-    AppCheck_(kMutexCreate(&plantStateMutex, "PlantM", RK_PRIO_INHERITANCE));
-    AppCheck_(kSemaphoreCreate(&plantActuatorSema, "PlantS", 0U, 1U));
+    {
+        RK_ERR err =
+            kMutexCreate(&plantStateMutex, "PlantM", RK_PRIO_INHERITANCE);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err = kSemaphoreCreate(&plantActuatorSema, "PlantS", 0U, 1U);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 
-    AppCheck_(kMutexCreateDomainScope(&fleetCommsMutex, "FleetM",
-                                      RK_PRIO_INHERITANCE, &fleetCommsDomain));
-    AppCheck_(kMesgQueueCreateGlobalScope(&fleetOrderQueueHandle, "FleetQ",
-                                          fleetOrderQueueBuf,
-                                          RK_MESGQ_MESG_SIZE(FleetOrder),
-                                          FLEET_ORDER_QUEUE_DEPTH));
+    {
+        RK_ERR err = kMutexCreateDomainScope(
+            &fleetCommsMutex, "FleetM", RK_PRIO_INHERITANCE, &fleetCommsDomain);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err = kMesgQueueCreateGlobalScope(
+            &fleetOrderQueueHandle, "FleetQ", fleetOrderQueueBuf,
+            RK_MESGQ_MESG_SIZE(FleetOrder), FLEET_ORDER_QUEUE_DEPTH);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 }
 
 static VOID AppCreateTasks_(VOID)
 {
 #if (K_HAL_HAS_WATCHDOG == 0U)
-    AppCheck_(kTaskInit(&debugHeartbeatHandle, DebugHeartbeatTask,
-                        RK_NO_ARGS, "DbgBeat", debugHeartbeatStack,
-                        DEBUG_STACK_WORDS, PRIO_DEBUG_HEARTBEAT,
-                        RK_PREEMPT));
+    {
+        RK_ERR err =
+            kTaskInit(&debugHeartbeatHandle, DebugHeartbeatTask, RK_NO_ARGS,
+                      "DbgBeat", debugHeartbeatStack, DEBUG_STACK_WORDS,
+                      PRIO_DEBUG_HEARTBEAT, RK_PREEMPT);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 #endif
 
-    AppCheck_(kTaskInit(&plantSensorHandle, PlantSensorTask,
-                        RK_NO_ARGS, "PltSens",
-                        plantSensorStack, PLANT_STACK_WORDS,
-                        PRIO_PLANT_SENSOR, RK_PREEMPT));
-    AppCheck_(kTaskInit(&plantControllerHandle, PlantControllerTask,
-                        RK_NO_ARGS, "PltCtrl",
-                        plantControllerStack, PLANT_STACK_WORDS,
-                        PRIO_PLANT_CONTROLLER, RK_PREEMPT));
-    AppCheck_(kTaskInit(&plantActuatorHandle, PlantActuatorTask,
-                        RK_NO_ARGS, "PltAct",
-                        plantActuatorStack, PLANT_STACK_WORDS,
-                        PRIO_PLANT_ACTUATOR, RK_PREEMPT));
-    AppCheck_(kMesgCopyEndpointInit(plantControllerHandle));
+    {
+        RK_ERR err = kTaskInit(&plantSensorHandle, PlantSensorTask, RK_NO_ARGS,
+                               "PltSens", plantSensorStack, PLANT_STACK_WORDS,
+                               PRIO_PLANT_SENSOR, RK_PREEMPT);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err =
+            kTaskInit(&plantControllerHandle, PlantControllerTask, RK_NO_ARGS,
+                      "PltCtrl", plantControllerStack, PLANT_STACK_WORDS,
+                      PRIO_PLANT_CONTROLLER, RK_PREEMPT);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err =
+            kTaskInit(&plantActuatorHandle, PlantActuatorTask, RK_NO_ARGS,
+                      "PltAct", plantActuatorStack, PLANT_STACK_WORDS,
+                      PRIO_PLANT_ACTUATOR, RK_PREEMPT);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err = kMesgCopyEndpointInit(plantControllerHandle);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 
-    AppCheck_(kTaskInitIsolated(&isoAlphaHandle, IsoAlphaTask, RK_NO_ARGS,
-                                "IsoA", isoAlphaStack, ISO_STACK_WORDS,
-                                PRIO_ISO_ALPHA, RK_PREEMPT));
-    AppCheck_(kTaskInitIsolated(&isoBetaHandle, IsoBetaTask, RK_NO_ARGS,
-                                "IsoB", isoBetaStack, ISO_STACK_WORDS,
-                                PRIO_ISO_BETA, RK_PREEMPT));
-    AppCheck_(kTaskInitIsolated(&isoGammaHandle, IsoGammaTask, RK_NO_ARGS,
-                                "IsoC", isoGammaStack, ISO_STACK_WORDS,
-                                PRIO_ISO_GAMMA, RK_PREEMPT));
+    {
+        RK_ERR err = kTaskInitIsolated(
+            &isoAlphaHandle, IsoAlphaTask, RK_NO_ARGS, "IsoA", isoAlphaStack,
+            ISO_STACK_WORDS, PRIO_ISO_ALPHA, RK_PREEMPT);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err = kTaskInitIsolated(&isoBetaHandle, IsoBetaTask, RK_NO_ARGS,
+                                       "IsoB", isoBetaStack, ISO_STACK_WORDS,
+                                       PRIO_ISO_BETA, RK_PREEMPT);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err = kTaskInitIsolated(
+            &isoGammaHandle, IsoGammaTask, RK_NO_ARGS, "IsoC", isoGammaStack,
+            ISO_STACK_WORDS, PRIO_ISO_GAMMA, RK_PREEMPT);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 
-    AppCheck_(kMesgCopyEndpointInit(isoAlphaHandle));
-    AppCheck_(kMesgCopyEndpointInit(isoBetaHandle));
-    AppCheck_(kMesgCopyEndpointInit(isoGammaHandle));
+    {
+        RK_ERR err = kMesgCopyEndpointInit(isoAlphaHandle);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err = kMesgCopyEndpointInit(isoBetaHandle);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err = kMesgCopyEndpointInit(isoGammaHandle);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 
-    AppCheck_(kTaskInitDomain(&fleetPlannerHandle, FleetPlannerTask,
-                              fleetControlState, "FltPlan",
-                              fleetPlannerStack, FLEET_STACK_WORDS,
-                              PRIO_FLEET_PLANNER, RK_PREEMPT,
-                              &fleetControlDomain));
-    AppCheck_(kTaskInitDomain(&fleetTelemetryHandle, FleetTelemetryTask,
-                              fleetControlState, "FltTel",
-                              fleetTelemetryStack, FLEET_STACK_WORDS,
-                              PRIO_FLEET_TELEMETRY, RK_PREEMPT,
-                              &fleetControlDomain));
-    AppCheck_(kTaskInitDomain(&fleetLinkTxHandle, FleetLinkTxTask,
-                              fleetCommsState, "FltTx", fleetLinkTxStack,
-                              FLEET_STACK_WORDS, PRIO_FLEET_LINK, RK_PREEMPT,
-                              &fleetCommsDomain));
-    AppCheck_(kTaskInitDomain(&fleetSupervisorHandle, FleetSupervisorTask,
-                              fleetCommsState, "FltSup",
-                              fleetSupervisorStack, FLEET_STACK_WORDS,
-                              PRIO_FLEET_SUPERVISOR, RK_PREEMPT,
-                              &fleetCommsDomain));
+    {
+        RK_ERR err = kTaskInitDomain(
+            &fleetPlannerHandle, FleetPlannerTask, fleetControlState, "FltPlan",
+            fleetPlannerStack, FLEET_STACK_WORDS, PRIO_FLEET_PLANNER,
+            RK_PREEMPT, &fleetControlDomain);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err = kTaskInitDomain(
+            &fleetTelemetryHandle, FleetTelemetryTask, fleetControlState,
+            "FltTel", fleetTelemetryStack, FLEET_STACK_WORDS,
+            PRIO_FLEET_TELEMETRY, RK_PREEMPT, &fleetControlDomain);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err = kTaskInitDomain(&fleetLinkTxHandle, FleetLinkTxTask,
+                                     fleetCommsState, "FltTx", fleetLinkTxStack,
+                                     FLEET_STACK_WORDS, PRIO_FLEET_LINK,
+                                     RK_PREEMPT, &fleetCommsDomain);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err = kTaskInitDomain(
+            &fleetSupervisorHandle, FleetSupervisorTask, fleetCommsState,
+            "FltSup", fleetSupervisorStack, FLEET_STACK_WORDS,
+            PRIO_FLEET_SUPERVISOR, RK_PREEMPT, &fleetCommsDomain);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 
-    AppCheck_(kSynchMesgInit(fleetSupervisorHandle,
-                             sizeof(FleetStatusReq)));
+    {
+        RK_ERR err =
+            kSynchMesgInit(fleetSupervisorHandle, sizeof(FleetStatusReq));
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 }
 
 int main(void)
@@ -423,7 +460,10 @@ VOID kApplicationInit(VOID)
     AppConfigureWatchdog_();
     AppCreateTasks_();
 #if (RK_CONF_SYSMON == ON)
-    AppCheck_(kSysMonInit());
+    {
+        RK_ERR err = kSysMonInit();
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 #endif
 }
 
@@ -461,7 +501,8 @@ VOID PlantSensorTask(VOID *args)
     RK_UNUSEARGS
 
     plantState.setpoint = 48UL;
-    kLog("APP domain ready: plant tasks share state through the implicit domain");
+    kLog("APP domain ready: plant tasks share state through the implicit "
+         "domain");
 
     while (1)
     {
@@ -474,9 +515,13 @@ VOID PlantSensorTask(VOID *args)
         sample.filtered = filtered;
         sample.setpoint = plantState.setpoint;
 
-        AppCheck_(kMesgSendCopy(plantControllerHandle, &sample,
-                                sizeof(sample)));
-        kLog("PLANT sensor sent sample seq=%lu raw=%lu filtered=%lu setpoint=%lu",
+        {
+            RK_ERR err =
+                kMesgSendCopy(plantControllerHandle, &sample, sizeof(sample));
+            K_ASSERT(err == RK_ERR_SUCCESS);
+        }
+        kLog("PLANT sensor sent sample seq=%lu raw=%lu filtered=%lu "
+             "setpoint=%lu",
              sample.seq, sample.raw, sample.filtered, sample.setpoint);
 
         kSleep(RK_MS_TO_TICKS(500UL));
@@ -493,11 +538,18 @@ VOID PlantControllerTask(VOID *args)
         ULONG rxBytes = 0UL;
         ULONG command;
 
-        AppCheck_(kMesgRecvCopy(plantSensorHandle, &sample, sizeof(sample),
-                                &rxBytes, RK_WAIT_FOREVER));
+        {
+            RK_ERR err =
+                kMesgRecvCopy(plantSensorHandle, &sample, sizeof(sample),
+                              &rxBytes, RK_WAIT_FOREVER);
+            K_ASSERT(err == RK_ERR_SUCCESS);
+        }
         K_ASSERT(rxBytes == sizeof(sample));
 
-        AppCheck_(kMutexLock(plantStateMutex, RK_WAIT_FOREVER));
+        {
+            RK_ERR err = kMutexLock(plantStateMutex, RK_WAIT_FOREVER);
+            K_ASSERT(err == RK_ERR_SUCCESS);
+        }
         plantState.sampleSeq = sample.seq;
         plantState.raw = sample.raw;
         plantState.filtered = sample.filtered;
@@ -505,13 +557,16 @@ VOID PlantControllerTask(VOID *args)
         command = (sample.filtered < sample.setpoint) ? 1UL : 0UL;
         plantState.command = command;
         plantState.commandSeq++;
-        AppCheck_(kMutexUnlock(plantStateMutex));
+        {
+            RK_ERR err = kMutexUnlock(plantStateMutex);
+            K_ASSERT(err == RK_ERR_SUCCESS);
+        }
 
         RK_ERR const err = kSemaphorePost(plantActuatorSema);
         K_ASSERT((err == RK_ERR_SUCCESS) || (err == RK_ERR_SEMA_FULL));
 
-        kLog("PLANT controller accepted sample seq=%lu command=%lu",
-             sample.seq, command);
+        kLog("PLANT controller accepted sample seq=%lu command=%lu", sample.seq,
+             command);
     }
 }
 
@@ -525,16 +580,25 @@ VOID PlantActuatorTask(VOID *args)
         ULONG command;
         ULONG raw;
 
-        AppCheck_(kSemaphorePend(plantActuatorSema, RK_WAIT_FOREVER));
+        {
+            RK_ERR err = kSemaphorePend(plantActuatorSema, RK_WAIT_FOREVER);
+            K_ASSERT(err == RK_ERR_SUCCESS);
+        }
 
-        AppCheck_(kMutexLock(plantStateMutex, RK_WAIT_FOREVER));
+        {
+            RK_ERR err = kMutexLock(plantStateMutex, RK_WAIT_FOREVER);
+            K_ASSERT(err == RK_ERR_SUCCESS);
+        }
         seq = plantState.commandSeq;
         command = plantState.command;
         raw = plantState.raw;
-        AppCheck_(kMutexUnlock(plantStateMutex));
+        {
+            RK_ERR err = kMutexUnlock(plantStateMutex);
+            K_ASSERT(err == RK_ERR_SUCCESS);
+        }
 
-        kLog("PLANT actuator applied command seq=%lu command=%lu raw=%lu",
-             seq, command, raw);
+        kLog("PLANT actuator applied command seq=%lu command=%lu raw=%lu", seq,
+             command, raw);
     }
 }
 
@@ -564,16 +628,27 @@ VOID IsoAlphaTask(VOID *args)
         request.observed = state.rxCount;
 
         state.txCount += 2UL;
-        AppCheck_(kMesgSendCopy(isoBetaHandle, &request, sizeof(request)));
-        AppCheck_(kMesgSendCopy(isoGammaHandle, &request, sizeof(request)));
+        {
+            RK_ERR err =
+                kMesgSendCopy(isoBetaHandle, &request, sizeof(request));
+            K_ASSERT(err == RK_ERR_SUCCESS);
+        }
+        {
+            RK_ERR err =
+                kMesgSendCopy(isoGammaHandle, &request, sizeof(request));
+            K_ASSERT(err == RK_ERR_SUCCESS);
+        }
 
         for (UINT replies = 0U; replies < 2U; replies++)
         {
             IsoCopyMsg reply;
             ULONG rxBytes = 0UL;
 
-            AppCheck_(kMesgRecvCopy(RK_ANY_TASK, &reply, sizeof(reply),
-                                    &rxBytes, RK_WAIT_FOREVER));
+            {
+                RK_ERR err = kMesgRecvCopy(RK_ANY_TASK, &reply, sizeof(reply),
+                                           &rxBytes, RK_WAIT_FOREVER);
+                K_ASSERT(err == RK_ERR_SUCCESS);
+            }
             K_ASSERT(rxBytes == sizeof(reply));
 
             state.rxCount++;
@@ -599,8 +674,11 @@ static VOID IsoResponder_(ULONG const source, ULONG const magic)
         IsoCopyMsg reply;
         ULONG rxBytes = 0UL;
 
-        AppCheck_(kMesgRecvCopy(RK_ANY_TASK, &request, sizeof(request),
-                                &rxBytes, RK_WAIT_FOREVER));
+        {
+            RK_ERR err = kMesgRecvCopy(RK_ANY_TASK, &request, sizeof(request),
+                                       &rxBytes, RK_WAIT_FOREVER);
+            K_ASSERT(err == RK_ERR_SUCCESS);
+        }
         K_ASSERT(rxBytes == sizeof(request));
 
         state.rxCount++;
@@ -612,9 +690,12 @@ static VOID IsoResponder_(ULONG const source, ULONG const magic)
         reply.value = state.magic;
         reply.observed = state.rxCount;
 
-        kLog("ISO node=%lu received request from peer=%lu seq=%lu",
-             source, request.source, request.seq);
-        AppCheck_(kMesgSendCopy(isoAlphaHandle, &reply, sizeof(reply)));
+        kLog("ISO node=%lu received request from peer=%lu seq=%lu", source,
+             request.source, request.seq);
+        {
+            RK_ERR err = kMesgSendCopy(isoAlphaHandle, &reply, sizeof(reply));
+            K_ASSERT(err == RK_ERR_SUCCESS);
+        }
     }
 }
 
@@ -657,8 +738,11 @@ VOID FleetPlannerTask(VOID *args)
         controlPtr->mode = order.mode;
         controlPtr->demand = order.demand;
 
-        AppCheck_(kMesgQueueSend(fleetOrderQueueHandle, &order,
-                                 RK_WAIT_FOREVER));
+        {
+            RK_ERR err =
+                kMesgQueueSend(fleetOrderQueueHandle, &order, RK_WAIT_FOREVER);
+            K_ASSERT(err == RK_ERR_SUCCESS);
+        }
         kLog("FLEET planner sent copied order seq=%lu mode=%lu demand=%lu",
              order.seq, order.mode, order.demand);
 
@@ -677,20 +761,29 @@ VOID FleetLinkTxTask(VOID *args)
         FleetOrder order;
         ULONG beat;
 
-        AppCheck_(kMesgQueueRecv(fleetOrderQueueHandle, &order,
-                                 RK_WAIT_FOREVER));
+        {
+            RK_ERR err =
+                kMesgQueueRecv(fleetOrderQueueHandle, &order, RK_WAIT_FOREVER);
+            K_ASSERT(err == RK_ERR_SUCCESS);
+        }
         K_ASSERT(order.checksum == (order.seq ^ order.mode ^ order.demand));
 
-        AppCheck_(kMutexLock(fleetCommsMutex, RK_WAIT_FOREVER));
+        {
+            RK_ERR err = kMutexLock(fleetCommsMutex, RK_WAIT_FOREVER);
+            K_ASSERT(err == RK_ERR_SUCCESS);
+        }
         commsPtr->lastOrderSeq = order.seq;
         commsPtr->lastDemand = order.demand;
         commsPtr->lastMode = order.mode;
         commsPtr->linkBeat++;
         beat = commsPtr->linkBeat;
-        AppCheck_(kMutexUnlock(fleetCommsMutex));
+        {
+            RK_ERR err = kMutexUnlock(fleetCommsMutex);
+            K_ASSERT(err == RK_ERR_SUCCESS);
+        }
 
-        kLog("FLEET link consumed copied order seq=%lu beat=%lu",
-             order.seq, beat);
+        kLog("FLEET link consumed copied order seq=%lu beat=%lu", order.seq,
+             beat);
     }
 }
 
@@ -707,11 +800,17 @@ VOID FleetSupervisorTask(VOID *args)
         FleetStatusReply reply;
         ULONG reqBytes = 0UL;
 
-        AppCheck_(kSynchMesgAccept(&call, &req, &reqBytes,
-                                   RK_WAIT_FOREVER));
+        {
+            RK_ERR err =
+                kSynchMesgAccept(&call, &req, &reqBytes, RK_WAIT_FOREVER);
+            K_ASSERT(err == RK_ERR_SUCCESS);
+        }
         K_ASSERT(reqBytes == sizeof(req));
 
-        AppCheck_(kMutexLock(fleetCommsMutex, RK_WAIT_FOREVER));
+        {
+            RK_ERR err = kMutexLock(fleetCommsMutex, RK_WAIT_FOREVER);
+            K_ASSERT(err == RK_ERR_SUCCESS);
+        }
         commsPtr->supervisorCalls++;
         reply.seq = req.seq;
         reply.lastOrderSeq = commsPtr->lastOrderSeq;
@@ -721,11 +820,18 @@ VOID FleetSupervisorTask(VOID *args)
                         (commsPtr->lastOrderSeq == req.expectedOrderSeq))
                            ? 1UL
                            : 0UL;
-        AppCheck_(kMutexUnlock(fleetCommsMutex));
+        {
+            RK_ERR err = kMutexUnlock(fleetCommsMutex);
+            K_ASSERT(err == RK_ERR_SUCCESS);
+        }
 
-        AppCheck_(kSynchMesgReply(&call, &reply, sizeof(reply)));
+        {
+            RK_ERR err = kSynchMesgReply(&call, &reply, sizeof(reply));
+            K_ASSERT(err == RK_ERR_SUCCESS);
+        }
 
-        kLog("FLEET supervisor replied status req=%lu lastOrder=%lu beat=%lu inSync=%lu",
+        kLog("FLEET supervisor replied status req=%lu lastOrder=%lu beat=%lu "
+             "inSync=%lu",
              reply.seq, reply.lastOrderSeq, reply.linkBeat, reply.status);
     }
 }
@@ -753,13 +859,17 @@ VOID FleetTelemetryTask(VOID *args)
         attr.replyMaxBytes = sizeof(reply);
         attr.replyBytesPtr = &replyBytes;
 
-        AppCheck_(kSynchMesgCall(fleetSupervisorHandle, &attr,
-                                 RK_WAIT_FOREVER));
+        {
+            RK_ERR err =
+                kSynchMesgCall(fleetSupervisorHandle, &attr, RK_WAIT_FOREVER);
+            K_ASSERT(err == RK_ERR_SUCCESS);
+        }
         K_ASSERT(replyBytes == sizeof(reply));
 
         controlPtr->telemetryReads++;
 
-        kLog("FLEET telemetry received status req=%lu lastOrder=%lu beat=%lu inSync=%lu",
+        kLog("FLEET telemetry received status req=%lu lastOrder=%lu beat=%lu "
+             "inSync=%lu",
              reply.seq, reply.lastOrderSeq, reply.linkBeat, reply.status);
 
         kSleepRelease(RK_MS_TO_TICKS(1500UL));

@@ -7,23 +7,32 @@
 /*                                                                            */
 /******************************************************************************/
 
-#ifndef RK_TASKFLAGS_H
-#define RK_TASKFLAGS_H
+#ifndef RK_SIGNAL_H
+#define RK_SIGNAL_H
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
-#include <kenv.h>
-#include <kcoredefs.h>
+
 #include <kcommondefs.h>
+#include <kmpu.h>
 #include <kobjs.h>
-RK_ERR kEventGet(RK_TASK_EVENT const, RK_OPTION const, RK_TASK_EVENT* const, RK_TICK const);
-RK_ERR kEventSet(RK_TASK_HANDLE const, RK_TASK_EVENT const);
-RK_ERR kEventClear(RK_TASK_HANDLE, RK_TASK_EVENT const);
-RK_ERR kEventQuery(RK_TASK_HANDLE const, RK_TASK_EVENT* const);
+
+RK_ERR kSignalHandlerSet(RK_SIGNAL const signal,
+                         RK_SIGNAL_HANDLER const handler,
+                         VOID *const altStackBasePtr,
+                         ULONG const altStackBytes);
+RK_ERR kSignalSend(RK_TASK_HANDLE const taskHandle, RK_SIGNAL const signal);
+RK_ERR kSignalMaskSet(RK_SIGNAL const enabledMask);
+RK_ERR kSignalReturn(VOID);
+
+VOID kSignalTaskCleanup(RK_TCB *const taskPtr);
+VOID *kSignalMaybeDeliverOnReturn(RK_EXCEPTION_FRAME *const framePtr);
+VOID kSignalMaybeDeliverOnSvcExit(RK_EXCEPTION_FRAME *const framePtr);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif
+#endif /* RK_SIGNAL_H */

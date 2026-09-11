@@ -2,7 +2,7 @@
 /******************************************************************************/
 /*                                                                            */
 /* RK01 - Bounded Responses. Bounded domains.                                   */
-/* VERSION: V0.1.0                                                            */
+/* VERSION: V0.2.0                                                            */
 /* (C) 2026 Antonio Giacomelli <dev@kernel0.org>                               */
 /*                                                                            */
 /******************************************************************************/
@@ -270,6 +270,14 @@ struct  RK_OBJ_TCB
     ULONG syscallArg3;
     UINT syscallPhase;
     RK_ERR syscallWakeResult;
+
+    RK_SIGNAL signalPending;
+    RK_SIGNAL signalEnabledMask;
+    RK_SIGNAL_HANDLER signalHandler[RK_SIGNAL_MAX];
+    VOID *signalAltStackBasePtr;
+    ULONG signalAltStackBytes;
+    RK_BOOL signalActive;
+    VOID *signalSavedPsp;
 
     /* sleep-timers */
     /* on every sleep-release-until call this

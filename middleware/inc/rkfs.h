@@ -2,7 +2,7 @@
 /******************************************************************************/
 /*                                                                            */
 /* RK01 - Bounded Responses. Bounded domains.                                   */
-/* VERSION: V0.1.0                                                            */
+/* VERSION: V0.2.0                                                            */
 /* (C) 2026 Antonio Giacomelli <dev@kernel0.org>                               */
 /*                                                                            */
 /******************************************************************************/
@@ -19,7 +19,6 @@ extern "C"
 #endif
 
 #define RKFS_SERVICE_RAM_BYTES (4096U)
-#define RKFS_DOMAIN_BYTES RKFS_SERVICE_RAM_BYTES
 #define RKFS_STACK_WORDS (1024U)
 #define RKFS_PATH_BYTES (32U)
 #define RKFS_RECORD_BYTES (64U)

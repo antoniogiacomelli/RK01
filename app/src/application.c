@@ -2,7 +2,7 @@
 /******************************************************************************/
 /*                                                                            */
 /* RK01 - Bounded Responses. Bounded domains.                                   */
-/* VERSION: V0.1.0                                                            */
+/* VERSION: V0.2.0                                                            */
 /* (C) 2026 Antonio Giacomelli <dev@kernel0.org>                               */
 /*                                                                            */
 /******************************************************************************/
@@ -31,7 +31,8 @@ RK_DECLARE_GLOBAL_SEMAPHORE(lineReadySemaHandle)
 
 #if (RK_CONF_FILESYSTEM == ON)
 static RKFS_RAM fsRam RK_RETAINED_TASK_RAM_ATTR;
-RK_DECLARE_DOMAIN_TASK(fsTaskHandle, rkFsServerTask)
+VOID rkFsServerTask(VOID *args);
+RK_DECLARE_GLOBAL_TASK_HANDLE(fsTaskHandle)
 RK_DECLARE_DOMAIN_TASK_STACK(fsServerStack, RKFS_STACK_WORDS)
 #endif
 
@@ -70,7 +71,10 @@ VOID kApplicationInit(VOID)
 {
     kLogInit(APP_LOG_PRIO);
 
-    AppCheck_(kDomainInit(&echoDomain, echoRam, sizeof(echoRam), "Echo"));
+    {
+        RK_ERR err = kDomainInit(&echoDomain, echoRam, sizeof(echoRam), "Echo");
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 
 #if (RK_CONF_FILESYSTEM == ON)
     /*
@@ -78,19 +82,40 @@ VOID kApplicationInit(VOID)
      * flash-controller MMIO and reserved service RAM. Its state is not a
      * domain window; callers interact only through copied call/reply.
      */
-    AppCheck_(kTaskInitPrivileged(&fsTaskHandle, rkFsServerTask, &fsRam,
-                                  "FS", fsServerStack, RKFS_STACK_WORDS,
-                                  FS_TASK_PRIO, RK_PREEMPT));
-    AppCheck_(kSynchMesgInit(fsTaskHandle, sizeof(RKFS_REQUEST)));
+    {
+        RK_ERR err = kTaskInitPrivileged(&fsTaskHandle, rkFsServerTask, &fsRam,
+                                         "FS", fsServerStack, RKFS_STACK_WORDS,
+                                         FS_TASK_PRIO, RK_PREEMPT);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err = kSynchMesgInit(fsTaskHandle, sizeof(RKFS_REQUEST));
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 #endif
 
-    AppCheck_(RecordDomainBoot(&recordDomainExports));
+    {
+        RK_ERR err = RecordDomainBoot(&recordDomainExports);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 
-    AppCheck_(kSemaphoreCreateGlobalScope(&lineReadySemaHandle, "LineRdy", 0U,
-                                          APP_LINE_READY_MAX));
-    AppCheck_(kTaskInitDomain(&echoTaskHandle, EchoTask, &recordDomainExports,
-                              "Echo", echoStack, TASK_STACK_WORDS,
-                              ECHO_TASK_PRIO, RK_PREEMPT, &echoDomain));
-    AppCheck_(kConsoleRxClaim(AppLineByteFromConsole_));
-    AppCheck_(kSysMonInit());
+    {
+        RK_ERR err = kSemaphoreCreateGlobalScope(
+            &lineReadySemaHandle, "LineRdy", 0U, APP_LINE_READY_MAX);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err = kTaskInitDomain(
+            &echoTaskHandle, EchoTask, &recordDomainExports, "Echo", echoStack,
+            TASK_STACK_WORDS, ECHO_TASK_PRIO, RK_PREEMPT, &echoDomain);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err = kConsoleRxClaim(AppLineByteFromConsole_);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err = kSysMonInit();
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 }

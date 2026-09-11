@@ -2,7 +2,7 @@
 /******************************************************************************/
 /*                                                                            */
 /* RK01 - Bounded Responses. Bounded domains.                                   */
-/* VERSION: V0.1.0                                                            */
+/* VERSION: V0.2.0                                                            */
 /* (C) 2026 Antonio Giacomelli <dev@kernel0.org>                               */
 /*                                                                            */
 /******************************************************************************/
@@ -28,6 +28,7 @@
 #include <ksch.h>
 #include <ksema.h>
 #include <ksharedmem.h>
+#include <ksignal.h>
 #include <ksleepq.h>
 #include <ksynchmesg.h>
 #include <ksysmon.h>
@@ -655,6 +656,109 @@ VOID kSyscallTaskTimeout(RK_TCB *const taskPtr)
     }
 }
 
+VOID kSyscallTaskSignal(RK_TCB *const taskPtr)
+{
+    if ((taskPtr == NULL) || (taskPtr->syscallNumber == RK_SYSCALL_NONE))
+    {
+        return;
+    }
+
+    switch (taskPtr->syscallNumber)
+    {
+        case RK_SYSCALL_EVENT_GET:
+            taskPtr->flagsReq = 0UL;
+            taskPtr->flagsOpt = 0UL;
+            taskPtr->timeOut = RK_FALSE;
+            kSyscallTaskComplete_(taskPtr, RK_ERR_SIGNAL_INTERRUPTED);
+            break;
+
+        case RK_SYSCALL_SLEEP_DELAY:
+        case RK_SYSCALL_SLEEP_RELEASE:
+        case RK_SYSCALL_SLEEP_UNTIL:
+        case RK_SYSCALL_SEMAPHORE_PEND:
+        case RK_SYSCALL_SLEEP_QUEUE_SLEEP:
+            taskPtr->timeOut = RK_FALSE;
+            kSyscallTaskComplete_(taskPtr, RK_ERR_SIGNAL_INTERRUPTED);
+            break;
+
+        case RK_SYSCALL_MUTEX_LOCK:
+#if (RK_CONF_MUTEX == ON)
+            taskPtr->waitingForMutexPtr = NULL;
+#endif
+            taskPtr->timeOut = RK_FALSE;
+            kSyscallTaskComplete_(taskPtr, RK_ERR_SIGNAL_INTERRUPTED);
+            break;
+
+        case RK_SYSCALL_MESG_QUEUE_RECV:
+        case RK_SYSCALL_MESG_QUEUE_BROADCAST_RECV:
+#if (RK_CONF_MESG_QUEUE == ON)
+            taskPtr->mesgQueueRecvBufPtr = NULL;
+            taskPtr->timeoutNode.waitInfo = RK_MESGQ_RECV_WAIT_NORMAL;
+#endif
+            taskPtr->timeOut = RK_FALSE;
+            kSyscallTaskComplete_(taskPtr, RK_ERR_SIGNAL_INTERRUPTED);
+            break;
+
+        case RK_SYSCALL_MESG_ALLOC:
+#if ((RK_CONF_ASYNCH_MESG == ON) && (RK_CONF_MESG_QUEUE == ON))
+            taskPtr->asynchMesgAllocDestPtr = NULL;
+#endif
+            taskPtr->timeOut = RK_FALSE;
+            kSyscallTaskComplete_(taskPtr, RK_ERR_SIGNAL_INTERRUPTED);
+            break;
+
+        case RK_SYSCALL_MESG_WAIT:
+#if ((RK_CONF_ASYNCH_MESG == ON) && (RK_CONF_MESG_QUEUE == ON))
+            taskPtr->asynchMesgWaitSenderPtr = NULL;
+            taskPtr->asynchMesgWaitDestPtr = NULL;
+            taskPtr->asynchMesgWaitStatus = RK_ERR_SUCCESS;
+#endif
+            taskPtr->timeOut = RK_FALSE;
+            kSyscallTaskComplete_(taskPtr, RK_ERR_SIGNAL_INTERRUPTED);
+            break;
+
+        case RK_SYSCALL_MESG_RECV_COPY:
+#if ((RK_CONF_ASYNCH_MESG == ON) && (RK_CONF_MESG_QUEUE == ON) &&            \
+     (RK_CONF_ASYNCH_COPY_MESG == ON))
+            taskPtr->asynchCopyMesgWaitSenderPtr = NULL;
+            taskPtr->asynchCopyMesgRecvBufPtr = NULL;
+            taskPtr->asynchCopyMesgRecvBufBytes = 0UL;
+            taskPtr->asynchCopyMesgRecvBytesPtr = NULL;
+            taskPtr->asynchCopyMesgRecvStatus = RK_ERR_SUCCESS;
+#endif
+            taskPtr->timeOut = RK_FALSE;
+            kSyscallTaskComplete_(taskPtr, RK_ERR_SIGNAL_INTERRUPTED);
+            break;
+
+#if (RK_CONF_SYNCH_MESG == ON)
+        case RK_SYSCALL_SYNCH_SEND_WAIT:
+            taskPtr->synchMesgStatus = RK_ERR_SUCCESS;
+            taskPtr->timeOut = RK_FALSE;
+            kSyscallTaskComplete_(taskPtr, RK_ERR_SIGNAL_INTERRUPTED);
+            break;
+
+        case RK_SYSCALL_SYNCH_RECV:
+            taskPtr->synchMesgRecvBufPtr = NULL;
+            taskPtr->synchMesgRecvBytesPtr = NULL;
+            taskPtr->synchMesgRecvStatus = RK_ERR_SUCCESS;
+            taskPtr->timeOut = RK_FALSE;
+            kSyscallTaskComplete_(taskPtr, RK_ERR_SIGNAL_INTERRUPTED);
+            break;
+
+        case RK_SYSCALL_SYNCH_MESG_CALL:
+        case RK_SYSCALL_SYNCH_MESG_ACCEPT:
+            taskPtr->timeOut = RK_FALSE;
+            kSyscallTaskComplete_(taskPtr, RK_ERR_SIGNAL_INTERRUPTED);
+            break;
+#endif
+
+        default:
+            taskPtr->timeOut = RK_FALSE;
+            kSyscallTaskComplete_(taskPtr, RK_ERR_SIGNAL_INTERRUPTED);
+            break;
+    }
+}
+
 static RK_BOOL kSyscallThreadOrigin_(ULONG const excReturn)
 {
     /* EXC_RETURN bit 2 is set when the exception came from thread mode using
@@ -662,7 +766,8 @@ static RK_BOOL kSyscallThreadOrigin_(ULONG const excReturn)
     return (((excReturn & 0x4UL) != 0UL) ? RK_TRUE : RK_FALSE);
 }
 
-static VOID kSyscallDispatchActive_(RK_EXCEPTION_FRAME *const framePtr)
+static VOID kSyscallDispatchActive_(RK_EXCEPTION_FRAME *const framePtr,
+                                    RK_BOOL *const frameCurrentPtr)
 {
     /* kSyscall4_ places the syscall number and first four arguments in the
      * stacked core registers. R12 is used for arg3. */
@@ -673,6 +778,11 @@ static VOID kSyscallDispatchActive_(RK_EXCEPTION_FRAME *const framePtr)
     ULONG arg3 = framePtr->r12;
     RK_TCB *const taskPtr = RK_gRunPtr;
     RK_ERR ret = RK_ERR_INVALID_PARAM;
+
+    if (frameCurrentPtr != NULL)
+    {
+        *frameCurrentPtr = RK_TRUE;
+    }
 
     if ((taskPtr != NULL) && (taskPtr->syscallNumber != RK_SYSCALL_NONE))
     {
@@ -1214,6 +1324,34 @@ static VOID kSyscallDispatchActive_(RK_EXCEPTION_FRAME *const framePtr)
             {
                 ret = kEventQuery((RK_TASK_HANDLE)(UINTPTR)arg0,
                                   (RK_TASK_EVENT *)(UINTPTR)arg1);
+            }
+            break;
+
+        case RK_SYSCALL_SIGNAL_HANDLER_SET:
+            ret = kSignalHandlerSet((RK_SIGNAL)arg0,
+                                    (RK_SIGNAL_HANDLER)(UINTPTR)arg1,
+                                    (VOID *)(UINTPTR)arg2,
+                                    arg3);
+            break;
+
+        case RK_SYSCALL_SIGNAL_SEND:
+            ret = kSignalSend((RK_TASK_HANDLE)(UINTPTR)arg0,
+                              (RK_SIGNAL)arg1);
+            break;
+
+        case RK_SYSCALL_SIGNAL_MASK_SET:
+            ret = kSignalMaskSet((RK_SIGNAL)arg0);
+            break;
+
+        case RK_SYSCALL_SIGNAL_RETURN:
+            ret = kSignalReturn();
+            if (ret == RK_ERR_SUCCESS)
+            {
+                if (frameCurrentPtr != NULL)
+                {
+                    *frameCurrentPtr = RK_FALSE;
+                }
+                return;
             }
             break;
 
@@ -2335,6 +2473,8 @@ VOID kSyscallDispatch(RK_EXCEPTION_FRAME *const framePtr,
                       ULONG const excReturn,
                       ULONG const svcNumber)
 {
+    RK_BOOL frameCurrent = RK_TRUE;
+
     if (framePtr == NULL)
     {
         return;
@@ -2354,6 +2494,10 @@ VOID kSyscallDispatch(RK_EXCEPTION_FRAME *const framePtr,
      * timeout state immediately; any resulting PendSV naturally remains pending
      * until exception return. */
     RK_gSyscallThreadModeActive++;
-    kSyscallDispatchActive_(framePtr);
+    kSyscallDispatchActive_(framePtr, &frameCurrent);
     kTickDrainDeferredOnSyscallExit();
+    if (frameCurrent == RK_TRUE)
+    {
+        kSignalMaybeDeliverOnSvcExit(framePtr);
+    }
 }

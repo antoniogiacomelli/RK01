@@ -2,7 +2,7 @@
 /******************************************************************************/
 /*                                                                            */
 /* RK01 - Bounded Responses. Bounded domains.                                   */
-/* VERSION: V0.1.0                                                            */
+/* VERSION: V0.2.0                                                            */
 /* (C) 2026 Antonio Giacomelli <dev@kernel0.org>                               */
 /*                                                                            */
 /******************************************************************************/
@@ -41,25 +41,22 @@ static RK_BOOL AppIsSpace_(BYTE const ch)
 
 static RK_BOOL AppIsSeparator_(BYTE const ch)
 {
-    return (((AppIsSpace_(ch) == RK_TRUE) || (ch == (BYTE)',') ||
-             (ch == (BYTE)'=')) ?
-                RK_TRUE :
-                RK_FALSE);
+    return (
+        ((AppIsSpace_(ch) == RK_TRUE) || (ch == (BYTE)',') || (ch == (BYTE)'='))
+            ? RK_TRUE
+            : RK_FALSE);
 }
 
-static VOID AppSkipSpaces_(BYTE const *const linePtr,
-                           ULONG const lineBytes,
+static VOID AppSkipSpaces_(BYTE const *const linePtr, ULONG const lineBytes,
                            ULONG *const posPtr)
 {
-    while ((*posPtr < lineBytes) &&
-           (AppIsSpace_(linePtr[*posPtr]) == RK_TRUE))
+    while ((*posPtr < lineBytes) && (AppIsSpace_(linePtr[*posPtr]) == RK_TRUE))
     {
         (*posPtr)++;
     }
 }
 
-static RK_BOOL AppOnlySpaces_(BYTE const *const linePtr,
-                              ULONG const lineBytes,
+static RK_BOOL AppOnlySpaces_(BYTE const *const linePtr, ULONG const lineBytes,
                               ULONG const pos)
 {
     ULONG i = pos;
@@ -77,8 +74,7 @@ static RK_BOOL AppOnlySpaces_(BYTE const *const linePtr,
 }
 
 static RK_BOOL AppTokenEquals_(BYTE const *const linePtr,
-                               ULONG const tokenStart,
-                               ULONG const tokenBytes,
+                               ULONG const tokenStart, ULONG const tokenBytes,
                                CHAR const *const textPtr)
 {
     ULONG i = 0UL;
@@ -89,8 +85,7 @@ static RK_BOOL AppTokenEquals_(BYTE const *const linePtr,
         {
             return (RK_FALSE);
         }
-        if (AppUpper_(linePtr[tokenStart + i]) !=
-            AppUpper_((BYTE)textPtr[i]))
+        if (AppUpper_(linePtr[tokenStart + i]) != AppUpper_((BYTE)textPtr[i]))
         {
             return (RK_FALSE);
         }
@@ -116,8 +111,7 @@ static RK_BOOL AppFirstTokenEquals_(BYTE const *const linePtr,
     }
 
     tokenStart = pos;
-    while ((pos < lineBytes) &&
-           (AppIsSeparator_(linePtr[pos]) != RK_TRUE))
+    while ((pos < lineBytes) && (AppIsSeparator_(linePtr[pos]) != RK_TRUE))
     {
         pos++;
     }
@@ -135,10 +129,8 @@ static RK_BOOL AppFirstTokenEquals_(BYTE const *const linePtr,
     return (RK_TRUE);
 }
 
-static RK_BOOL AppParseName_(BYTE const *const linePtr,
-                             ULONG const lineBytes,
-                             ULONG *const posPtr,
-                             BYTE *const namePtr)
+static RK_BOOL AppParseName_(BYTE const *const linePtr, ULONG const lineBytes,
+                             ULONG *const posPtr, BYTE *const namePtr)
 {
     BYTE name;
 
@@ -156,8 +148,7 @@ static RK_BOOL AppParseName_(BYTE const *const linePtr,
     }
     (*posPtr)++;
 
-    if ((*posPtr < lineBytes) &&
-        (AppIsSeparator_(linePtr[*posPtr]) != RK_TRUE))
+    if ((*posPtr < lineBytes) && (AppIsSeparator_(linePtr[*posPtr]) != RK_TRUE))
     {
         return (RK_FALSE);
     }
@@ -167,8 +158,7 @@ static RK_BOOL AppParseName_(BYTE const *const linePtr,
 }
 
 static VOID AppSkipValueSeparators_(BYTE const *const linePtr,
-                                    ULONG const lineBytes,
-                                    ULONG *const posPtr)
+                                    ULONG const lineBytes, ULONG *const posPtr)
 {
     while ((*posPtr < lineBytes) &&
            (AppIsSeparator_(linePtr[*posPtr]) == RK_TRUE))
@@ -177,10 +167,8 @@ static VOID AppSkipValueSeparators_(BYTE const *const linePtr,
     }
 }
 
-static RK_BOOL AppParseUshort_(BYTE const *const linePtr,
-                               ULONG const lineBytes,
-                               ULONG *const posPtr,
-                               USHORT *const valuePtr)
+static RK_BOOL AppParseUshort_(BYTE const *const linePtr, ULONG const lineBytes,
+                               ULONG *const posPtr, USHORT *const valuePtr)
 {
     ULONG value = 0UL;
     RK_BOOL gotDigit = RK_FALSE;
@@ -231,8 +219,7 @@ static RK_BOOL AppParseRecordCommand_(BYTE const *const linePtr,
     }
 
     tokenStart = pos;
-    while ((pos < lineBytes) &&
-           (AppIsSeparator_(linePtr[pos]) != RK_TRUE))
+    while ((pos < lineBytes) && (AppIsSeparator_(linePtr[pos]) != RK_TRUE))
     {
         pos++;
     }
@@ -254,12 +241,10 @@ static RK_BOOL AppParseRecordCommand_(BYTE const *const linePtr,
         return (RK_TRUE);
     }
 
-    if ((AppTokenEquals_(linePtr, tokenStart, tokenBytes, "SET") ==
-         RK_TRUE) ||
+    if ((AppTokenEquals_(linePtr, tokenStart, tokenBytes, "SET") == RK_TRUE) ||
         (AppTokenEquals_(linePtr, tokenStart, tokenBytes, "WRITE") ==
          RK_TRUE) ||
-        (AppTokenEquals_(linePtr, tokenStart, tokenBytes, "RECORD") ==
-         RK_TRUE))
+        (AppTokenEquals_(linePtr, tokenStart, tokenBytes, "RECORD") == RK_TRUE))
     {
         if (AppParseName_(linePtr, lineBytes, &pos, &name) != RK_TRUE)
         {
@@ -285,8 +270,7 @@ static RK_BOOL AppParseRecordCommand_(BYTE const *const linePtr,
         pos = tokenStart;
         if (AppParseName_(linePtr, lineBytes, &pos, &name) == RK_TRUE)
         {
-            if (AppParseUshort_(linePtr, lineBytes, &pos, &value) ==
-                RK_TRUE)
+            if (AppParseUshort_(linePtr, lineBytes, &pos, &value) == RK_TRUE)
             {
                 if (AppOnlySpaces_(linePtr, lineBytes, pos) == RK_TRUE)
                 {
@@ -309,12 +293,10 @@ static RK_BOOL AppLineIsSysMonExit_(BYTE const *const linePtr,
     RK_BOOL exitLine;
 
     exitLine =
-        ((AppFirstTokenEquals_(linePtr, lineBytes, "exit", &pos) ==
-          RK_TRUE) ||
-         (AppFirstTokenEquals_(linePtr, lineBytes, "quit", &pos) ==
-          RK_TRUE)) ?
-            RK_TRUE :
-            RK_FALSE;
+        ((AppFirstTokenEquals_(linePtr, lineBytes, "exit", &pos) == RK_TRUE) ||
+         (AppFirstTokenEquals_(linePtr, lineBytes, "quit", &pos) == RK_TRUE))
+            ? RK_TRUE
+            : RK_FALSE;
     if (exitLine != RK_TRUE)
     {
         return (RK_FALSE);
@@ -348,8 +330,8 @@ static RK_ERR AppMaybeSubmitSysMonCommand_(BYTE const *const linePtr,
 
     *handledPtr = RK_FALSE;
 
-    if (AppFirstTokenEquals_(linePtr, lineBytes, APP_SYSMON_TOKEN,
-                             &pos) != RK_TRUE)
+    if (AppFirstTokenEquals_(linePtr, lineBytes, APP_SYSMON_TOKEN, &pos) !=
+        RK_TRUE)
     {
         return (RK_ERR_SUCCESS);
     }
@@ -364,8 +346,8 @@ static RK_ERR AppMaybeSubmitSysMonCommand_(BYTE const *const linePtr,
                                      sysMonActivePtr));
     }
 
-    return (AppSubmitSysMonLine_(&linePtr[pos], lineBytes - pos,
-                                 sysMonActivePtr));
+    return (
+        AppSubmitSysMonLine_(&linePtr[pos], lineBytes - pos, sysMonActivePtr));
 }
 
 static RK_ERR AppRecordCall_(RK_TASK_HANDLE const serviceHandle,
@@ -400,8 +382,7 @@ static RK_ERR AppRecordCall_(RK_TASK_HANDLE const serviceHandle,
     return (RK_ERR_SUCCESS);
 }
 
-static VOID AppUlongToText_(ULONG value,
-                            CHAR *const textPtr,
+static VOID AppUlongToText_(ULONG value, CHAR *const textPtr,
                             ULONG const textBytes)
 {
     CHAR reverse[10];
@@ -627,8 +608,7 @@ VOID EchoTask(VOID *args)
     RECORD_DOMAIN_EXPORTS const *const recordExportsPtr =
         (RECORD_DOMAIN_EXPORTS const *)args;
     RK_TASK_HANDLE const recordServiceHandle =
-        (recordExportsPtr != NULL) ? recordExportsPtr->serviceHandle :
-                                     NULL;
+        (recordExportsPtr != NULL) ? recordExportsPtr->serviceHandle : NULL;
     RK_BOOL sysMonActive = RK_FALSE;
 
     AppConsoleWriteText_(banner);
@@ -642,7 +622,8 @@ VOID EchoTask(VOID *args)
         RecordReply reply;
         RK_ERR err;
 
-        AppCheck_(kSemaphorePend(lineReadySemaHandle, RK_WAIT_FOREVER));
+        err = kSemaphorePend(lineReadySemaHandle, RK_WAIT_FOREVER);
+        K_ASSERT(err == RK_ERR_SUCCESS);
 
         if (AppLineSnapshot_(line, &bytes) != RK_TRUE)
         {
@@ -708,7 +689,8 @@ VOID EchoTask(VOID *args)
                 nameText[1] = '\r';
                 nameText[2] = '\n';
                 AppConsoleWriteText_(notFound);
-                AppCheck_(kConsoleWrite(nameText, sizeof(nameText)));
+                err = kConsoleWrite(nameText, sizeof(nameText));
+                K_ASSERT(err == RK_ERR_SUCCESS);
                 break;
             }
             case RECORD_STATUS_STORAGE:

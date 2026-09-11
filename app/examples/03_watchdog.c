@@ -2,7 +2,7 @@
 /******************************************************************************/
 /*                                                                            */
 /* RK01 - Bounded Responses. Bounded domains.                                   */
-/* VERSION: V0.1.0                                                            */
+/* VERSION: V0.2.0                                                            */
 /* (C) 2026 Antonio Giacomelli <dev@kernel0.org>                               */
 /*                                                                            */
 /******************************************************************************/
@@ -25,19 +25,6 @@ RK_DECLARE_TASK(heartbeatHandle, HeartbeatTask, heartbeatStack,
 #else
 RK_DECLARE_TIMER(watchdogTimer)
 #endif
-
-RK_FORCE_INLINE
-static inline VOID AppCheck_(RK_ERR const err)
-{
-    K_ASSERT(err == RK_ERR_SUCCESS);
-    if (err != RK_ERR_SUCCESS)
-    {
-        while (1)
-        {
-            kErrHandler((RK_FAULT)err);
-        }
-    }
-}
 
 #if (K_HAL_HAS_WATCHDOG == 1U)
 static VOID WatchdogKick_(VOID *args)
@@ -65,13 +52,19 @@ VOID kApplicationInit(VOID)
 
 #if (K_HAL_HAS_WATCHDOG == 1U)
     kHalWatchdogConfigure();
-    AppCheck_(kTimerCreate(&watchdogTimer, "WdgTmr", 0UL,
-                           RK_MS_TO_TICKS(K_HAL_WATCHDOG_FEED_MS),
-                           WatchdogKick_, RK_NO_ARGS, RK_TIMER_RELOAD));
+    {
+        RK_ERR err = kTimerCreate(&watchdogTimer, "WdgTmr", 0UL,
+                                  RK_MS_TO_TICKS(K_HAL_WATCHDOG_FEED_MS),
+                                  WatchdogKick_, RK_NO_ARGS, RK_TIMER_RELOAD);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 #else
-    AppCheck_(kTaskInit(&heartbeatHandle, HeartbeatTask, RK_NO_ARGS,
-                        "Beat", heartbeatStack, HEARTBEAT_STACK_WORDS,
-                        HEARTBEAT_PRIO, RK_PREEMPT));
+    {
+        RK_ERR err = kTaskInit(&heartbeatHandle, HeartbeatTask, RK_NO_ARGS,
+                               "Beat", heartbeatStack, HEARTBEAT_STACK_WORDS,
+                               HEARTBEAT_PRIO, RK_PREEMPT);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 #endif
 }
 

@@ -2,7 +2,7 @@
 /******************************************************************************/
 /*                                                                            */
 /* RK01 - Bounded Responses. Bounded domains.                                   */
-/* VERSION: V0.1.0                                                            */
+/* VERSION: V0.2.0                                                            */
 /* (C) 2026 Antonio Giacomelli <dev@kernel0.org>                               */
 /*                                                                            */
 /******************************************************************************/
@@ -50,17 +50,18 @@ RK_ERR kEventQuery(RK_TASK_HANDLE const taskHandle,
 RK_ERR kEventClear(RK_TASK_HANDLE const taskHandle,
                    RK_TASK_EVENT const flagsToClear);
 
+RK_ERR kSignalHandlerSet(RK_SIGNAL const signal,
+                         RK_SIGNAL_HANDLER const handler,
+                         VOID *const altStackBasePtr,
+                         ULONG const altStackBytes);
+RK_ERR kSignalSend(RK_TASK_HANDLE const taskHandle, RK_SIGNAL const signal);
+RK_ERR kSignalMaskSet(RK_SIGNAL const enabledMask);
+RK_ERR kSignalReturn(VOID);
+
 #if (RK_CONF_MUTEX == ON)
 RK_ERR kMutexCreate(RK_MUTEX_HANDLE *const mutexHandlePtr,
                     RK_STRING objName,
                     UINT protocol);
-RK_ERR kMutexCreateGlobalScope(RK_MUTEX_HANDLE *const mutexHandlePtr,
-                               RK_STRING objName,
-                               UINT protocol);
-RK_ERR kMutexCreateDomainScope(RK_MUTEX_HANDLE *const mutexHandlePtr,
-                               RK_STRING objName,
-                               UINT protocol,
-                               RK_DOMAIN *const domainPtr);
 RK_ERR kMutexDestroy(RK_MUTEX_HANDLE *const mutexHandlePtr);
 RK_ERR kMutexLock(RK_MUTEX_HANDLE const mutexHandle, RK_TICK const timeout);
 RK_ERR kMutexUnlock(RK_MUTEX_HANDLE const mutexHandle);
@@ -72,15 +73,6 @@ RK_ERR kSemaphoreCreate(RK_SEMAPHORE_HANDLE *const semaphoreHandlePtr,
                         RK_STRING objName,
                         UINT const initialValue,
                         UINT const maxValue);
-RK_ERR kSemaphoreCreateGlobalScope(RK_SEMAPHORE_HANDLE *const semaphoreHandlePtr,
-                                   RK_STRING objName,
-                                   UINT const initialValue,
-                                   UINT const maxValue);
-RK_ERR kSemaphoreCreateDomainScope(RK_SEMAPHORE_HANDLE *const semaphoreHandlePtr,
-                                   RK_STRING objName,
-                                   UINT const initialValue,
-                                   UINT const maxValue,
-                                   RK_DOMAIN *const domainPtr);
 RK_ERR kSemaphoreDestroy(RK_SEMAPHORE_HANDLE *const semaphoreHandlePtr);
 RK_ERR kSemaphorePend(RK_SEMAPHORE_HANDLE const semaphoreHandle,
                       RK_TICK const timeout);
@@ -90,35 +82,30 @@ RK_ERR kSemaphoreQuery(RK_SEMAPHORE_HANDLE const semaphoreHandle,
 #endif
 
 #if (RK_CONF_SLEEP_QUEUE == ON)
-RK_ERR kSleepQueueCreate(RK_HANDLE *const sleepqHandlePtr,
+RK_ERR kSleepQueueCreate(RK_SLEEP_QUEUE_HANDLE *const sleepqHandlePtr,
                          RK_STRING objName);
-RK_ERR kSleepQueueCreateGlobalScope(RK_SLEEP_QUEUE_HANDLE *const sleepqHandlePtr,
-                                    RK_STRING objName);
-RK_ERR kSleepQueueCreateDomainScope(RK_SLEEP_QUEUE_HANDLE *const sleepqHandlePtr,
-                                    RK_STRING objName,
-                                    RK_DOMAIN *const domainPtr);
-RK_ERR kSleepQueueDestroy(RK_HANDLE *const sleepqHandlePtr);
-RK_ERR kSleepQueueSleep(RK_HANDLE const sleepqHandle,
+RK_ERR kSleepQueueDestroy(RK_SLEEP_QUEUE_HANDLE *const sleepqHandlePtr);
+RK_ERR kSleepQueueSleep(RK_SLEEP_QUEUE_HANDLE const sleepqHandle,
                         const RK_TICK timeout);
-RK_ERR kSleepQueueWake(RK_HANDLE const sleepqHandle,
+RK_ERR kSleepQueueWake(RK_SLEEP_QUEUE_HANDLE const sleepqHandle,
                        UINT nTasks,
                        UINT *uTasksPtr);
-RK_ERR kSleepQueueSignal(RK_HANDLE const sleepqHandle);
-RK_ERR kSleepQueueReady(RK_HANDLE const sleepqHandle,
+RK_ERR kSleepQueueSignal(RK_SLEEP_QUEUE_HANDLE const sleepqHandle);
+RK_ERR kSleepQueueReady(RK_SLEEP_QUEUE_HANDLE const sleepqHandle,
                         RK_TASK_HANDLE taskHandle);
-RK_ERR kSleepQueueUnready(RK_HANDLE const sleepqHandle,
+RK_ERR kSleepQueueUnready(RK_SLEEP_QUEUE_HANDLE const sleepqHandle,
                           RK_TASK_HANDLE handle);
-RK_ERR kSleepQueueQuery(RK_HANDLE const sleepqHandle,
+RK_ERR kSleepQueueQuery(RK_SLEEP_QUEUE_HANDLE const sleepqHandle,
                         ULONG *const nTasksPtr);
 #endif
 
 #if ((RK_CONF_SLEEP_QUEUE == ON) && (RK_CONF_MUTEX == ON) &&                  \
      (RK_CONF_CONDVAR == ON))
-RK_ERR kCondVarWait(RK_HANDLE const cv,
-                    RK_HANDLE const mutex,
+RK_ERR kCondVarWait(RK_SLEEP_QUEUE_HANDLE const cv,
+                    RK_MUTEX_HANDLE const mutex,
                     RK_TICK timeout);
-RK_ERR kCondVarSignal(RK_HANDLE const cv);
-RK_ERR kCondVarBroadcast(RK_HANDLE const cv);
+RK_ERR kCondVarSignal(RK_SLEEP_QUEUE_HANDLE const cv);
+RK_ERR kCondVarBroadcast(RK_SLEEP_QUEUE_HANDLE const cv);
 #endif
 
 #if (RK_CONF_MESG_QUEUE == ON)
@@ -127,17 +114,6 @@ RK_ERR kMesgQueueCreate(RK_MESG_QUEUE_HANDLE *const queueHandlePtr,
                         VOID *const queueBufPtr,
                         ULONG const mesgSizeWords,
                         ULONG const depth);
-RK_ERR kMesgQueueCreateGlobalScope(RK_MESG_QUEUE_HANDLE *const queueHandlePtr,
-                                   RK_STRING objName,
-                                   VOID *const queueBufPtr,
-                                   ULONG const mesgSizeWords,
-                                   ULONG const depth);
-RK_ERR kMesgQueueCreateDomainScope(RK_MESG_QUEUE_HANDLE *const queueHandlePtr,
-                                   RK_STRING objName,
-                                   VOID *const queueBufPtr,
-                                   ULONG const mesgSizeWords,
-                                   ULONG const depth,
-                                   RK_DOMAIN *const domainPtr);
 RK_ERR kMesgQueueDestroy(RK_MESG_QUEUE_HANDLE *const queueHandlePtr);
 RK_ERR kMesgQueueSend(RK_MESG_QUEUE_HANDLE const queueHandle,
                       VOID *const sendPtr,
@@ -222,21 +198,6 @@ RK_ERR kTimerCreate(RK_TIMER_HANDLE *const timerHandlePtr,
                     RK_TIMER_CALLOUT const callout,
                     VOID *const argsPtr,
                     RK_OPTION const opt);
-RK_ERR kTimerCreateGlobalScope(RK_TIMER_HANDLE *const timerHandlePtr,
-                               RK_STRING objName,
-                               RK_TICK const delay,
-                               RK_TICK const period,
-                               RK_TIMER_CALLOUT const callout,
-                               VOID *const argsPtr,
-                               RK_OPTION const opt);
-RK_ERR kTimerCreateDomainScope(RK_TIMER_HANDLE *const timerHandlePtr,
-                               RK_STRING objName,
-                               RK_TICK const delay,
-                               RK_TICK const period,
-                               RK_TIMER_CALLOUT const callout,
-                               VOID *const argsPtr,
-                               RK_OPTION const opt,
-                               RK_DOMAIN *const domainPtr);
 RK_ERR kTimerDestroy(RK_TIMER_HANDLE *const timerHandlePtr);
 RK_ERR kTimerCancel(RK_TIMER_HANDLE const timerHandle);
 VOID kTimerReload(RK_TIMER_HANDLE const timerHandle, RK_TICK period);

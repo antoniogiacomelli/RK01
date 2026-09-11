@@ -55,10 +55,14 @@ APP_SRCS := $(APP_DIR)/examples/05_profile_preempt.c
 else ifeq ($(APP_EXAMPLE),06-profile-ctxsw)
 APP_SRCS := $(APP_DIR)/examples/06_profile_ctxsw.c
 APP_DEFS += -DRK_CONF_PROFILE_PENDSV=1
+else ifeq ($(APP_EXAMPLE),07-signals)
+APP_SRCS := $(APP_DIR)/examples/07_signals.c
+else ifeq ($(APP_EXAMPLE),reg-origin-scoped)
+APP_SRCS := $(APP_DIR)/regression/origin_scoped_constructors.c
 else ifeq ($(APP_EXAMPLE),99-showcase)
 APP_SRCS := $(APP_DIR)/examples/99_showcase.c
 else
-$(error Unsupported APP_EXAMPLE '$(APP_EXAMPLE)': use tiny, 01-fleet, 02-isolated, 03-watchdog, 04-sysmon, 05-profile-preempt, 06-profile-ctxsw, or 99-showcase)
+$(error Unsupported APP_EXAMPLE '$(APP_EXAMPLE)': use tiny, 01-fleet, 02-isolated, 03-watchdog, 04-sysmon, 05-profile-preempt, 06-profile-ctxsw, 07-signals, reg-origin-scoped, or 99-showcase)
 endif
 endif
 
@@ -282,7 +286,7 @@ LDFLAGS += \
 
 LDLIBS ?= -lc
 
-.PHONY: all help clean size objects audit-domain-writable flash qemu-m4 qemu-m4-debug qemu-m4-debug-start qemu-m4-debug-stop run-qemu-m4 run-qemu-m4-debug run-qemu-m4-debug-start run-qemu-m4-debug-stop qemu-m33 qemu-m33-debug qemu-m33-debug-start qemu-m33-debug-stop run-qemu-m33 run-qemu-m33-debug run-qemu-m33-debug-start run-qemu-m33-debug-stop board-run FORCE
+.PHONY: all help clean size objects compile_commands audit-domain-writable flash qemu-m4 qemu-m4-debug qemu-m4-debug-start qemu-m4-debug-stop run-qemu-m4 run-qemu-m4-debug run-qemu-m4-debug-start run-qemu-m4-debug-stop qemu-m33 qemu-m33-debug qemu-m33-debug-start qemu-m33-debug-stop run-qemu-m33 run-qemu-m33-debug run-qemu-m33-debug-start run-qemu-m33-debug-stop board-run FORCE
 
 all: $(ELF) $(BIN) $(HEX) size
 
@@ -297,6 +301,7 @@ help:
 	    'Targets:' \
 	    '  make                         Build ELF/BIN/HEX for the current platform.' \
 	    '  make objects                 Compile objects only.' \
+	    '  make compile_commands        Generate compile_commands.json for the current app profile.' \
 	    '  make audit-domain-writable   Warn on writable globals in DOMAIN_IMPL_SRCS.' \
 	    '  make size                    Print section sizes for the ELF.' \
 	    '  make flash APP_EXAMPLE=name  Build and flash an explicit STM32 app profile.' \
@@ -357,6 +362,7 @@ help:
 	    '  make -j4 APP_EXAMPLE=05-profile-preempt EXTRA_DEFS="-DNDEBUG -DRK_CONF_SYSTICK_DIV=1000 -DPROFILE_PREEMPT_CLASS=PROFILE_PREEMPT_CLASS_PER_TASK_DOMAIN"' \
 	    '  make -j4 APP_EXAMPLE=06-profile-ctxsw EXTRA_DEFS="-DNDEBUG"' \
 	    '  make -j4 APP_EXAMPLE=06-profile-ctxsw EXTRA_DEFS="-DNDEBUG -DPROFILE_CTXSW_CLASS=PROFILE_CTXSW_CLASS_INTER_DOMAIN"' \
+	    '  make -j4 APP_EXAMPLE=07-signals' \
 	    '  make -j4 APP_EXAMPLE=99-showcase' \
 	    '  make -j4 ARCH=armv7m PLATFORM=stm32f401re FPU=ON' \
 	    '  make -j4 ARCH=armv7m PLATFORM=mps2-an386' \
@@ -373,6 +379,31 @@ help:
 	    '  make board-run SERIAL_PORT=/dev/cu.usbmodemXXXX'
 
 objects: $(OBJS)
+
+compile_commands:
+	@tmp="compile_commands.json.tmp"; \
+	printf '[\n' > "$$tmp"; \
+	first=1; \
+	for src in $(C_SRCS); do \
+	    obj="$(BUILD_DIR)/$${src%.c}.o"; \
+	    dep="$${obj%.o}.d"; \
+	    flags="$(CFLAGS)"; \
+	    case "$$src" in \
+	        $(MIDDLEWARE_DIR)/littlefs/*.c) \
+	            flags="$$flags -Wno-error=sign-conversion -Wno-error=sign-compare";; \
+	    esac; \
+	    if [ "$$first" -eq 0 ]; then printf ',\n' >> "$$tmp"; fi; \
+	    first=0; \
+	    printf '  {\n' >> "$$tmp"; \
+	    printf '    "directory": "%s",\n' '$(CURDIR)' >> "$$tmp"; \
+	    printf '    "file": "%s",\n' "$$src" >> "$$tmp"; \
+	    printf '    "output": "%s",\n' "$$obj" >> "$$tmp"; \
+	    printf '    "command": "%s %s -MMD -MP -MF %s -c %s -o %s"\n' \
+	        '$(CC)' "$$flags" "$$dep" "$$src" "$$obj" >> "$$tmp"; \
+	    printf '  }' >> "$$tmp"; \
+	done; \
+	printf '\n]\n' >> "$$tmp"; \
+	mv "$$tmp" compile_commands.json
 
 audit-domain-writable: $(DOMAIN_IMPL_OBJS)
 	@if [ -n "$(strip $(DOMAIN_IMPL_OBJS))" ]; then \

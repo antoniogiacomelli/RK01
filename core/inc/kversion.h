@@ -2,7 +2,7 @@
 /******************************************************************************/
 /*                                                                            */
 /* RK01 - Bounded Responses. Bounded domains.                                   */
-/* VERSION: V0.1.0                                                            */
+/* VERSION: V0.2.0                                                            */
 /* (C) 2026 Antonio Giacomelli <dev@kernel0.org>                               */
 /*                                                                            */
 /******************************************************************************/
@@ -23,7 +23,7 @@ struct RK_gKversion
 };
 
 #define RK_VERSION_MAJOR 0
-#define RK_VERSION_MINOR 1
+#define RK_VERSION_MINOR 2
 #define RK_VERSION_PATCH 0
 
 

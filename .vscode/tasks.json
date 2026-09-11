@@ -2,6 +2,22 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "RK01: generate compile_commands",
+      "type": "shell",
+      "command": "make",
+      "args": [
+        "ARCH=armv7m",
+        "PLATFORM=stm32f401re",
+        "APP_EXAMPLE=${input:appExample}",
+        "compile_commands"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build",
+      "problemMatcher": "$gcc"
+    },
+    {
       "label": "RK01: build board debug",
       "type": "shell",
       "command": "make",

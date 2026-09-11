@@ -2,7 +2,7 @@
 /******************************************************************************/
 /*                                                                            */
 /* RK01 - Bounded Responses. Bounded domains.                                   */
-/* VERSION: V0.1.0                                                            */
+/* VERSION: V0.2.0                                                            */
 /* (C) 2026 Antonio Giacomelli <dev@kernel0.org>                               */
 /*                                                                            */
 /******************************************************************************/
@@ -20,13 +20,8 @@
 #if (RK_CONF_FILESYSTEM == ON)
 #include <rkfs.h>
 
-static CHAR const recordSlotPath[RECORD_SLOT_COUNT][6] =
-{
-    "/rec0",
-    "/rec1",
-    "/rec2",
-    "/rec3"
-};
+static CHAR const recordSlotPath[RECORD_SLOT_COUNT][6] = {"/rec0", "/rec1",
+                                                          "/rec2", "/rec3"};
 
 _Static_assert(RECORD_PERSIST_TEXT_BYTES <= RKFS_RECORD_BYTES,
                "Persisted RECORD text must fit one rkfs record");
@@ -42,8 +37,7 @@ static CHAR RecordHexNibble_(BYTE value)
     return ((CHAR)('A' + (CHAR)(value - (BYTE)10U)));
 }
 
-static VOID RecordStoreByte_(CHAR *const textPtr,
-                             ULONG const pos,
+static VOID RecordStoreByte_(CHAR *const textPtr, ULONG const pos,
                              BYTE const value)
 {
     textPtr[pos] = RecordHexNibble_((BYTE)(value >> 4U));
@@ -83,8 +77,7 @@ static RK_BOOL RecordHexValue_(CHAR const ch, BYTE *const valuePtr)
     return (RK_FALSE);
 }
 
-static RK_BOOL RecordLoadByte_(CHAR const *const textPtr,
-                               ULONG const pos,
+static RK_BOOL RecordLoadByte_(CHAR const *const textPtr, ULONG const pos,
                                BYTE *const valuePtr)
 {
     BYTE hi;
@@ -126,34 +119,32 @@ static RK_BOOL RecordFromPersistText_(CHAR const *const textPtr,
         return (RK_FALSE);
     }
 
-    recordPtr->valor =
-        (USHORT)(((USHORT)valueHi << 8U) | (USHORT)valueLo);
+    recordPtr->valor = (USHORT)(((USHORT)valueHi << 8U) | (USHORT)valueLo);
     return (RK_TRUE);
 }
 #endif
 
 static RK_BOOL RecordNameSeparator_(BYTE const ch)
 {
-    return (((ch == (BYTE)' ') || (ch == (BYTE)'\t') ||
-             (ch == (BYTE)',') || (ch == (BYTE)'=')) ?
-                RK_TRUE :
-                RK_FALSE);
+    return (((ch == (BYTE)' ') || (ch == (BYTE)'\t') || (ch == (BYTE)',') ||
+             (ch == (BYTE)'='))
+                ? RK_TRUE
+                : RK_FALSE);
 }
 
 static RK_BOOL RecordNameValid_(BYTE const name)
 {
     return (((name >= (BYTE)'!') && (name <= (BYTE)'~') &&
-             (RecordNameSeparator_(name) != RK_TRUE)) ?
-                RK_TRUE :
-                RK_FALSE);
+             (RecordNameSeparator_(name) != RK_TRUE))
+                ? RK_TRUE
+                : RK_FALSE);
 }
 
 static RK_BOOL RecordSeqNewer_(BYTE const candidate, BYTE const current)
 {
     BYTE const diff = (BYTE)(candidate - current);
 
-    return (((diff != (BYTE)0U) && (diff < (BYTE)128U)) ? RK_TRUE :
-                                                               RK_FALSE);
+    return (((diff != (BYTE)0U) && (diff < (BYTE)128U)) ? RK_TRUE : RK_FALSE);
 }
 
 static RK_BOOL RecordSeqOlder_(BYTE const candidate, BYTE const current)
@@ -173,8 +164,8 @@ static BYTE RecordNextSeq_(RecordState const *const statePtr)
             continue;
         }
         if ((found != RK_TRUE) ||
-            (RecordSeqNewer_(statePtr->slots[i].record.seq,
-                             newestSeq) == RK_TRUE))
+            (RecordSeqNewer_(statePtr->slots[i].record.seq, newestSeq) ==
+             RK_TRUE))
         {
             newestSeq = statePtr->slots[i].record.seq;
             found = RK_TRUE;
@@ -209,8 +200,7 @@ static ULONG RecordOldestSlot_(RecordState const *const statePtr)
 }
 
 static RK_BOOL RecordFindNewest_(RecordState const *const statePtr,
-                                 BYTE const name,
-                                 ULONG *const slotPtr)
+                                 BYTE const name, ULONG *const slotPtr)
 {
     ULONG selected = 0UL;
     RK_BOOL found = RK_FALSE;
@@ -264,9 +254,8 @@ static VOID RecordLoad_(RecordState *const statePtr)
         RECORD record;
 
         RK_MEMSET(&reply, 0, sizeof(reply));
-        if (rkFsClientReadRecord(fsTaskHandle,
-                                 recordSlotPath[i],
-                                 &reply) != RK_ERR_SUCCESS)
+        if (rkFsClientReadRecord(fsTaskHandle, recordSlotPath[i], &reply) !=
+            RK_ERR_SUCCESS)
         {
             continue;
         }
@@ -362,8 +351,8 @@ VOID RecordTask(VOID *args)
         RecordReply reply;
         ULONG reqBytes = 0UL;
 
-        if (kSynchMesgAccept(&call, &req, &reqBytes,
-                             RK_WAIT_FOREVER) != RK_ERR_SUCCESS)
+        if (kSynchMesgAccept(&call, &req, &reqBytes, RK_WAIT_FOREVER) !=
+            RK_ERR_SUCCESS)
         {
             continue;
         }
@@ -389,6 +378,9 @@ VOID RecordTask(VOID *args)
             }
         }
 
-        AppCheck_(kSynchMesgReply(&call, &reply, sizeof(reply)));
+        {
+            RK_ERR err = kSynchMesgReply(&call, &reply, sizeof(reply));
+            K_ASSERT(err == RK_ERR_SUCCESS);
+        }
     }
 }

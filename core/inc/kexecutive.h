@@ -2,7 +2,7 @@
 /******************************************************************************/
 /*                                                                            */
 /* RK01 - Bounded Responses. Bounded domains.                                   */
-/* VERSION: V0.1.0                                                            */
+/* VERSION: V0.2.0                                                            */
 /* (C) 2026 Antonio Giacomelli <dev@kernel0.org>                               */
 /*                                                                            */
 /******************************************************************************/
@@ -26,6 +26,7 @@ extern "C" {
 #include <kmem.h>
 #include <kdynobjs.h>
 #include <ktaskevents.h>
+#include <ksignal.h>
 #include <ksleepq.h>
 #include <ksema.h>
 #include <kmutex.h>

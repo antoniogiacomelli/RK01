@@ -2,7 +2,7 @@
 /******************************************************************************/
 /*                                                                            */
 /* RK01 - Bounded Responses. Bounded domains.                                  */
-/* VERSION: V0.1.0                                                            */
+/* VERSION: V0.2.0                                                            */
 /* (C) 2026 Antonio Giacomelli <dev@kernel0.org>                              */
 /*                                                                            */
 /******************************************************************************/
@@ -1214,6 +1214,17 @@ RK_ERR kSleepQueueQuery(RK_HANDLE const sleepqHandle,
                         ULONG *const nTasksPtr);
 
 #endif
+
+/******************************************************************************/
+/* TASK SIGNALS                                                               */
+/******************************************************************************/
+RK_ERR kSignalHandlerSet(RK_SIGNAL const signal,
+                         RK_SIGNAL_HANDLER const handler,
+                         VOID *const altStackBasePtr,
+                         ULONG const altStackBytes);
+RK_ERR kSignalSend(RK_TASK_HANDLE const taskHandle, RK_SIGNAL const signal);
+RK_ERR kSignalMaskSet(RK_SIGNAL const enabledMask);
+RK_ERR kSignalReturn(VOID);
 
 #if (RK_CONF_MESG_QUEUE == ON)
 /******************************************************************************/

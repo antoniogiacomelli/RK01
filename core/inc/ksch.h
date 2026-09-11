@@ -2,7 +2,7 @@
 /******************************************************************************/
 /*                                                                            */
 /* RK01 - Bounded Responses. Bounded domains.                                   */
-/* VERSION: V0.1.0                                                            */
+/* VERSION: V0.2.0                                                            */
 /* (C) 2026 Antonio Giacomelli <dev@kernel0.org>                               */
 /*                                                                            */
 /******************************************************************************/
@@ -83,6 +83,7 @@ RK_ERR kTaskHandleResolve(RK_TASK_HANDLE const taskHandle,
 RK_ERR kTaskHandleResolveOrRunning(RK_TASK_HANDLE const taskHandle,
                                    RK_TCB **const taskPPtr);
 RK_ERR kTaskTerminateTcb(RK_TCB *const taskPtr);
+RK_ERR kTaskSignalReady(RK_TCB *const taskPtr);
 #ifndef kPreemptEnable
 #define kPreemptEnable kSchUnlock
 #endif

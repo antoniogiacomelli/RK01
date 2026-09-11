@@ -2,7 +2,7 @@
 /******************************************************************************/
 /*                                                                            */
 /* RK01 - Bounded Responses. Bounded domains.                                   */
-/* VERSION: V0.1.0                                                            */
+/* VERSION: V0.2.0                                                            */
 /* (C) 2026 Antonio Giacomelli <dev@kernel0.org>                               */
 /*                                                                            */
 /******************************************************************************/
@@ -130,6 +130,7 @@ typedef UINT RK_ID;
 typedef UINT RK_STACK;
 typedef UINT RK_BOOL;
 typedef ULONG RK_TASK_EVENT;
+typedef ULONG RK_SIGNAL;
 typedef UINT RK_OPTION;
 typedef VOID* RK_ADDR;
 typedef CHAR *const RK_STRING;
@@ -286,6 +287,7 @@ typedef RK_HANDLE RK_SHARED_MEM_HANDLE;
 /* Function pointers */
 typedef void (*RK_TASKENTRY)(void*);         /* Task entry function pointer */
 typedef void (*RK_TIMER_CALLOUT)(void*);     /* Callout (timers)             */
+typedef void (*RK_SIGNAL_HANDLER)(RK_SIGNAL); /* Task signal handler          */
 
 struct RK_STRUCT_TASK_MEMORY
 {
@@ -499,6 +501,19 @@ struct RK_STRUCT_TASK_MEMORY
 #define RK_EVENT_31 ((RK_TASK_EVENT)0x40000000)
 #define RK_EVENT_32 ((RK_TASK_EVENT)0x80000000)
 
+#define RK_SIGNAL_MAX (8U)
+#define RK_SIGNAL_NONE ((RK_SIGNAL)0UL)
+#define RK_ALL_SIGNALS ((RK_SIGNAL)0x000000FFUL)
+#define RK_SIGNAL_ALT_STACK_MIN_BYTES (64UL)
+#define RK_SIGNAL_1 ((RK_SIGNAL)1UL)
+#define RK_SIGNAL_2 ((RK_SIGNAL)2UL)
+#define RK_SIGNAL_3 ((RK_SIGNAL)3UL)
+#define RK_SIGNAL_4 ((RK_SIGNAL)4UL)
+#define RK_SIGNAL_5 ((RK_SIGNAL)5UL)
+#define RK_SIGNAL_6 ((RK_SIGNAL)6UL)
+#define RK_SIGNAL_7 ((RK_SIGNAL)7UL)
+#define RK_SIGNAL_8 ((RK_SIGNAL)8UL)
+
 
 /* Mutex locking protocols */
 #define RK_PRIO_NONE ((UINT)0)
@@ -547,6 +562,7 @@ struct RK_STRUCT_TASK_MEMORY
 #define RK_ERR_SEMA_FULL ((RK_ERR)306)
 #define RK_ERR_NOWAIT ((RK_ERR)307)
 #define RK_ERR_MUTEX_OWNER_FAULTED ((RK_ERR)308)
+#define RK_ERR_SIGNAL_INTERRUPTED ((RK_ERR)309)
 
 
 /* Message Passing Services retval (400) */

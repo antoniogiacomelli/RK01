@@ -2,7 +2,7 @@
 /******************************************************************************/
 /*                                                                            */
 /* RK01 - Bounded Responses. Bounded domains.                                   */
-/* VERSION: V0.1.0                                                            */
+/* VERSION: V0.2.0                                                            */
 /* (C) 2026 Antonio Giacomelli <dev@kernel0.org>                               */
 /*                                                                            */
 /******************************************************************************/
@@ -50,34 +50,6 @@ RK_DECLARE_DOMAIN_TASK_STACK(fleetLinkStack, TASK_STACK_WORDS)
 static FleetControlState *fleetControlState;
 static FleetCommsState *fleetCommsState;
 
-RK_FORCE_INLINE
-static inline VOID AppCheck_(RK_ERR const err)
-{
-    K_ASSERT(err == RK_ERR_SUCCESS);
-    if (err != RK_ERR_SUCCESS)
-    {
-        while (1)
-        {
-            kErrHandler((RK_FAULT)err);
-        }
-    }
-}
-
-RK_FORCE_INLINE
-static inline VOID *AppCheckPtr_(VOID *const ptr)
-{
-    K_ASSERT(ptr != NULL);
-    if (ptr == NULL)
-    {
-        while (1)
-        {
-            kErrHandler(RK_FAULT_INVALID_PARAM);
-        }
-    }
-
-    return (ptr);
-}
-
 int main(void)
 {
     kCoreInit();
@@ -93,25 +65,41 @@ VOID kApplicationInit(VOID)
 {
     kLogInit(APP_LOG_PRIO);
 
-    AppCheck_(kDomainInit(&fleetControlDomain, fleetControlRam,
-                          sizeof(fleetControlRam), "FleetC"));
-    AppCheck_(kDomainInit(&fleetCommsDomain, fleetCommsRam,
-                          sizeof(fleetCommsRam), "FleetM"));
+    {
+        RK_ERR err = kDomainInit(&fleetControlDomain, fleetControlRam,
+                                 sizeof(fleetControlRam), "FleetC");
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err = kDomainInit(&fleetCommsDomain, fleetCommsRam,
+                                 sizeof(fleetCommsRam), "FleetM");
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 
-    fleetControlState =
-        AppCheckPtr_(RK_DOMAIN_ALLOC(&fleetControlDomain,
-                                     FleetControlState));
-    fleetCommsState =
-        AppCheckPtr_(RK_DOMAIN_ALLOC(&fleetCommsDomain, FleetCommsState));
+    fleetControlState = RK_DOMAIN_ALLOC(&fleetControlDomain, FleetControlState);
+    K_ASSERT(fleetControlState != NULL);
 
-    AppCheck_(kTaskInitDomain(&fleetPlannerHandle, FleetPlannerTask,
-                              fleetControlState, "Plan", fleetPlannerStack,
-                              TASK_STACK_WORDS, PLANNER_PRIO, RK_PREEMPT,
-                              &fleetControlDomain));
-    AppCheck_(kTaskInitDomain(&fleetLinkHandle, FleetLinkTask, fleetCommsState,
-                              "Link", fleetLinkStack, TASK_STACK_WORDS,
-                              LINK_PRIO, RK_PREEMPT, &fleetCommsDomain));
-    AppCheck_(kMesgCopyEndpointInit(fleetLinkHandle));
+    fleetCommsState = RK_DOMAIN_ALLOC(&fleetCommsDomain, FleetCommsState);
+    K_ASSERT(fleetCommsState != NULL);
+
+    {
+        RK_ERR err = kTaskInitDomain(
+            &fleetPlannerHandle, FleetPlannerTask, fleetControlState, "Plan",
+            fleetPlannerStack, TASK_STACK_WORDS, PLANNER_PRIO, RK_PREEMPT,
+            &fleetControlDomain);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err =
+            kTaskInitDomain(&fleetLinkHandle, FleetLinkTask, fleetCommsState,
+                            "Link", fleetLinkStack, TASK_STACK_WORDS, LINK_PRIO,
+                            RK_PREEMPT, &fleetCommsDomain);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
+    {
+        RK_ERR err = kMesgCopyEndpointInit(fleetLinkHandle);
+        K_ASSERT(err == RK_ERR_SUCCESS);
+    }
 }
 
 VOID FleetPlannerTask(VOID *args)
@@ -131,7 +119,10 @@ VOID FleetPlannerTask(VOID *args)
         order.demand = statePtr->demand;
         order.checksum = order.seq ^ order.demand;
 
-        AppCheck_(kMesgSendCopy(fleetLinkHandle, &order, sizeof(order)));
+        {
+            RK_ERR err = kMesgSendCopy(fleetLinkHandle, &order, sizeof(order));
+            K_ASSERT(err == RK_ERR_SUCCESS);
+        }
         kLog("fleet plan seq=%lu demand=%lu", order.seq, order.demand);
         kSleep(RK_MS_TO_TICKS(1000UL));
     }
@@ -148,8 +139,11 @@ VOID FleetLinkTask(VOID *args)
         FleetOrder order;
         ULONG rxBytes = 0UL;
 
-        AppCheck_(kMesgRecvCopy(RK_ANY_TASK, &order, sizeof(order),
-                                &rxBytes, RK_WAIT_FOREVER));
+        {
+            RK_ERR err = kMesgRecvCopy(RK_ANY_TASK, &order, sizeof(order),
+                                       &rxBytes, RK_WAIT_FOREVER);
+            K_ASSERT(err == RK_ERR_SUCCESS);
+        }
         K_ASSERT(rxBytes == sizeof(order));
         K_ASSERT(order.checksum == (order.seq ^ order.demand));
 
@@ -157,7 +151,7 @@ VOID FleetLinkTask(VOID *args)
         statePtr->lastDemand = order.demand;
         statePtr->rxCount++;
 
-        kLog("fleet link rx=%lu seq=%lu demand=%lu",
-             statePtr->rxCount, statePtr->lastSeq, statePtr->lastDemand);
+        kLog("fleet link rx=%lu seq=%lu demand=%lu", statePtr->rxCount,
+             statePtr->lastSeq, statePtr->lastDemand);
     }
 }
