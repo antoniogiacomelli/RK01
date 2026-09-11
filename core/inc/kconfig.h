@@ -101,6 +101,18 @@
 /********* 1. TASKS AND SCHEDULER *********************************************/
 /******************************************************************************/
 
+/***[ MINIMUM TASK STACK SIZE (WORDS) *****************************************/
+#ifndef RK_CONF_MIN_STACKSIZE
+#define RK_CONF_MIN_STACKSIZE (128U)
+#endif
+
+#if (RK_CONF_MIN_STACKSIZE < 32U)
+#error "RK_CONF_MIN_STACKSIZE must be at least 32 words"
+#endif
+#if ((RK_CONF_MIN_STACKSIZE & 1U) != 0U)
+#error "RK_CONF_MIN_STACKSIZE must be even"
+#endif
+
 /*** [  SYSTEM TASKS STACK SIZE (WORDS) **************************************/
 /******************************************************************************/
 /* This configuration is exposed so the system programmer can adjust          */
@@ -108,7 +120,7 @@
 /*                                                                            */
 /* The Post-Processing system task stack size must be adjusted to support     */
 /* Application Timers callouts.                                               */
-/* (!) Minimal stack size is 128                                              */
+/* (!) Minimal stack size is RK_CONF_MIN_STACKSIZE                            */
 /* (!) Keep it aligned to a double-word (8-byte) boundary.                    */
 /******************************************************************************/
 #ifndef RK_CONF_IDLE_STACKSIZE
@@ -117,6 +129,13 @@
 
 #ifndef RK_CONF_POSTPROC_STACKSIZE
 #define RK_CONF_POSTPROC_STACKSIZE (256U) /* Words */
+#endif
+
+#if (RK_CONF_IDLE_STACKSIZE < RK_CONF_MIN_STACKSIZE)
+#error "RK_CONF_IDLE_STACKSIZE must be >= RK_CONF_MIN_STACKSIZE"
+#endif
+#if (RK_CONF_POSTPROC_STACKSIZE < RK_CONF_MIN_STACKSIZE)
+#error "RK_CONF_POSTPROC_STACKSIZE must be >= RK_CONF_MIN_STACKSIZE"
 #endif
 
 /***[ OBJECT NAME LENGTH ****************************************************/
@@ -131,6 +150,18 @@
 
 #ifndef RK_CONF_MIN_PRIO
 #define RK_CONF_MIN_PRIO 31
+#endif
+
+/***[ TASK SIGNALS ***********************************************************/
+#ifndef RK_CONF_SIGNAL_MAX
+#define RK_CONF_SIGNAL_MAX (8U)
+#endif
+
+#if (RK_CONF_SIGNAL_MAX == 0U)
+#error "RK_CONF_SIGNAL_MAX must be greater than zero"
+#endif
+#if (RK_CONF_SIGNAL_MAX > 32U)
+#error "RK_CONF_SIGNAL_MAX must be <= 32"
 #endif
 
 /***[ KERNEL CONSOLE UART SERVICE ********************************************/
@@ -170,8 +201,8 @@
     (RK_CONF_CONSOLE_LINE_MAX_BYTES + 1UL)
 #endif
 
-#if (RK_CONF_CONSOLE_SERVICE_STACKSIZE < 128U)
-#error "RK_CONF_CONSOLE_SERVICE_STACKSIZE must be at least 128 words"
+#if (RK_CONF_CONSOLE_SERVICE_STACKSIZE < RK_CONF_MIN_STACKSIZE)
+#error "RK_CONF_CONSOLE_SERVICE_STACKSIZE must be >= RK_CONF_MIN_STACKSIZE"
 #endif
 #if (RK_CONF_CONSOLE_SERVICE_PRIO > RK_CONF_MIN_PRIO)
 #error "RK_CONF_CONSOLE_SERVICE_PRIO must be <= RK_CONF_MIN_PRIO"
@@ -221,6 +252,10 @@
 #else
 #define RK_CONF_SYSMON_SNAPSHOT_MAX (16U)
 #endif
+#endif
+
+#if (RK_CONF_SYSMON_STACKSIZE < RK_CONF_MIN_STACKSIZE)
+#error "RK_CONF_SYSMON_STACKSIZE must be >= RK_CONF_MIN_STACKSIZE"
 #endif
 #if (RK_CONF_SYSMON_LINE_LEN < 8U)
 #error "RK_CONF_SYSMON_LINE_LEN must be at least 8"

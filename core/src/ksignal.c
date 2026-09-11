@@ -11,6 +11,14 @@
  * File intent:
  *   Per-task software signals. A signal is pending state owned by the target
  *   TCB; delivery is a controlled user-context redirect at SVC return.
+ *
+ * Delivery model:
+ *   kSignalSend() only sets a pending bit and makes the target runnable. At a
+ *   kernel-to-user return boundary, kSignalMaybeDeliverOnReturn() selects the
+ *   first enabled pending signal with a registered handler and builds a fake
+ *   Cortex-M exception frame on the task's alternate signal stack. Exception
+ *   return then resumes into kSignalTrampoline_(), which calls the user handler
+ *   and uses kSignalReturn() to restore the task's original PSP.
  */
 
 #define RK_SOURCE_CODE
@@ -31,6 +39,11 @@ static VOID kSignalTrampoline_(RK_SIGNAL const signal,
                                RK_SIGNAL_HANDLER const handler)
     __attribute__((noreturn));
 
+/*
+ * Function pointers move through syscall ULONG slots and exception-frame
+ * registers. Keep the conversions in one place so the rest of the code can
+ * keep type intent visible.
+ */
 static VOID const *kSignalHandlerPtr_(RK_SIGNAL_HANDLER const handler)
 {
     union
@@ -64,6 +77,11 @@ static ULONG kSignalTrampolineThumbAddr_(VOID)
 static VOID kSignalTrampoline_(RK_SIGNAL const signal,
                                RK_SIGNAL_HANDLER const handler)
 {
+    /*
+     * The synthetic exception frame enters here rather than entering the user
+     * handler directly. That gives every handler a single exit path back to the
+     * interrupted task context, even when the handler simply returns.
+     */
     if (handler != NULL)
     {
         handler(signal);
@@ -113,6 +131,11 @@ static RK_ERR kSignalReturnKernel_(VOID **const savedPspPtr)
         return (RK_ERR_INVALID_PHASE);
     }
 
+    /*
+     * kSignalMaybeDeliverOnReturn() saved the interrupted process stack
+     * pointer before redirecting to the alternate stack. Restore it once, and
+     * clear signalActive so later pending signals can be delivered.
+     */
     *savedPspPtr = taskPtr->signalSavedPsp;
     RK_CR_ENTER
     taskPtr->signalActive = RK_FALSE;
@@ -124,7 +147,7 @@ static RK_ERR kSignalReturnKernel_(VOID **const savedPspPtr)
 
 static RK_BOOL kSignalValid_(RK_SIGNAL const signal)
 {
-    return (((signal >= 1UL) && (signal <= (RK_SIGNAL)RK_SIGNAL_MAX)) ?
+    return (((signal >= 1UL) && (signal <= (RK_SIGNAL)RK_CONF_SIGNAL_MAX)) ?
                 RK_TRUE :
                 RK_FALSE);
 }
@@ -132,6 +155,24 @@ static RK_BOOL kSignalValid_(RK_SIGNAL const signal)
 static RK_SIGNAL kSignalBit_(RK_SIGNAL const signal)
 {
     return ((RK_SIGNAL)1UL << (UINT)(signal - 1UL));
+}
+
+static RK_BOOL kSignalAnyHandlerRegistered_(RK_TCB const *const taskPtr)
+{
+    if (taskPtr == NULL)
+    {
+        return (RK_FALSE);
+    }
+
+    for (UINT i = 0U; i < RK_CONF_SIGNAL_MAX; i++)
+    {
+        if (taskPtr->signalHandler[i] != NULL)
+        {
+            return (RK_TRUE);
+        }
+    }
+
+    return (RK_FALSE);
 }
 
 static RK_BOOL kSignalUserTask_(RK_TCB const *const taskPtr)
@@ -154,8 +195,13 @@ static RK_SIGNAL kSignalDeliverableMask_(RK_TCB const *const taskPtr)
         return (0UL);
     }
 
+    /*
+     * Signals are delivered only to unprivileged task context, and only one
+     * signal handler may be active per task. Drop bits that no longer have a
+     * handler so stale pending state cannot redirect execution.
+     */
     deliverable = taskPtr->signalPending & taskPtr->signalEnabledMask;
-    for (UINT i = 0U; i < RK_SIGNAL_MAX; i++)
+    for (UINT i = 0U; i < RK_CONF_SIGNAL_MAX; i++)
     {
         RK_SIGNAL const bit = ((RK_SIGNAL)1UL << i);
 
@@ -175,9 +221,12 @@ static RK_BOOL kSignalAltStackValid_(RK_TCB const *const taskPtr,
 {
     UINTPTR const base = (UINTPTR)altStackBasePtr;
     UINTPTR const top = base + altStackBytes;
+    /* altStackBytes is bytes; RK_CONF_MIN_STACKSIZE is words. */
+    ULONG const minStackBytes =
+        ((ULONG)RK_CONF_MIN_STACKSIZE * (ULONG)sizeof(RK_STACK));
 
     if ((taskPtr == NULL) || (altStackBasePtr == NULL) ||
-        (altStackBytes < RK_SIGNAL_ALT_STACK_MIN_BYTES) ||
+        (altStackBytes < minStackBytes) ||
         (top < base) || ((top & 0x7UL) != 0UL))
     {
         return (RK_FALSE);
@@ -227,10 +276,16 @@ RK_ERR kSignalHandlerSet(RK_SIGNAL const signal,
 
     if (handler == NULL)
     {
+        /* NULL handler unregisters the signal and clears any stale instance. */
         RK_CR_ENTER
         taskPtr->signalHandler[signal - 1UL] = NULL;
         taskPtr->signalEnabledMask &= ~bit;
         taskPtr->signalPending &= ~bit;
+        if (kSignalAnyHandlerRegistered_(taskPtr) == RK_FALSE)
+        {
+            taskPtr->signalAltStackBasePtr = NULL;
+            taskPtr->signalAltStackBytes = 0UL;
+        }
         RK_CR_EXIT
         return (RK_ERR_SUCCESS);
     }
@@ -278,6 +333,10 @@ RK_ERR kSignalSend(RK_TASK_HANDLE const taskHandle, RK_SIGNAL const signal)
 
     bit = kSignalBit_(signal);
 
+    /*
+     * Sending does not run user code immediately. It records pending state and
+     * lets the scheduler arrange a safe return boundary for delivery.
+     */
     RK_CR_ENTER
     if (taskPtr->signalHandler[signal - 1UL] != NULL)
     {
@@ -307,6 +366,7 @@ RK_ERR kSignalMaskSet(RK_SIGNAL const enabledMask)
     }
 
     RK_CR_ENTER
+    /* Ignore bits outside the configured signal set. */
     taskPtr->signalEnabledMask = enabledMask & RK_ALL_SIGNALS;
     RK_CR_EXIT
     return (RK_ERR_SUCCESS);
@@ -329,6 +389,7 @@ RK_ERR kSignalReturn(VOID)
         return (err);
     }
 
+    /* Continue on the stack that was interrupted before signal delivery. */
     RK_ASM volatile("MSR PSP, %0" :: "r"(savedPsp) : "memory");
     return (RK_ERR_SUCCESS);
 }
@@ -373,7 +434,7 @@ VOID *kSignalMaybeDeliverOnReturn(RK_EXCEPTION_FRAME *const framePtr)
         return (framePtr);
     }
 
-    for (UINT i = 0U; i < RK_SIGNAL_MAX; i++)
+    for (UINT i = 0U; i < RK_CONF_SIGNAL_MAX; i++)
     {
         bit = ((RK_SIGNAL)1UL << i);
         if ((deliverable & bit) != 0UL)
@@ -388,6 +449,11 @@ VOID *kSignalMaybeDeliverOnReturn(RK_EXCEPTION_FRAME *const framePtr)
     taskPtr->signalActive = RK_TRUE;
     taskPtr->signalSavedPsp = framePtr;
 
+    /*
+     * Build the frame that hardware exception return expects to pop. The PSP is
+     * switched to this frame by the caller, so returning from SVC enters the
+     * trampoline in unprivileged thread mode on the alternate signal stack.
+     */
     stackTop = ((UINTPTR)taskPtr->signalAltStackBasePtr) +
                taskPtr->signalAltStackBytes;
     stackTop &= ~((UINTPTR)0x7UL);

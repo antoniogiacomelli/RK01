@@ -1138,7 +1138,7 @@ static inline RK_BOOL kTaskStackGeometryValid_(RK_STACK const *const stackBufPtr
         return (RK_FALSE);
     }
 
-    if ((stackSize < RK_MIN_STACKSIZE) || ((stackSize & 1UL) != 0UL) ||
+    if ((stackSize < RK_CONF_MIN_STACKSIZE) || ((stackSize & 1UL) != 0UL) ||
         (stackSize > (RK_ULONG_MAX / (ULONG)sizeof(RK_STACK))))
     {
         return (RK_FALSE);
@@ -1158,9 +1158,9 @@ static VOID kTaskStackGeometryFault_(RK_STRING const taskName,
     {
         reasonPtr = "null stack pointer";
     }
-    else if (stackSize < RK_MIN_STACKSIZE)
+    else if (stackSize < RK_CONF_MIN_STACKSIZE)
     {
-        reasonPtr = "stack size below RK_MIN_STACKSIZE";
+        reasonPtr = "stack size below RK_CONF_MIN_STACKSIZE";
     }
     else if ((stackSize & 1UL) != 0UL)
     {
@@ -1180,7 +1180,7 @@ static VOID kTaskStackGeometryFault_(RK_STRING const taskName,
            (taskName != NULL) ? taskName : "(null)",
            (ULONG)stackBufPtr,
            stackSize,
-           (ULONG)RK_MIN_STACKSIZE,
+           (ULONG)RK_CONF_MIN_STACKSIZE,
            reasonPtr);
 #else
     K_UNUSE(taskName);
@@ -2890,7 +2890,7 @@ RK_ERR kTaskSpawn(RK_DYNAMIC_TASK_ATTR const *taskAttrPtr,
     }
 
     ULONG const stackSize = (stackMemPtr->blkSize / RK_WORD_SIZE);
-    if ((stackSize < RK_MIN_STACKSIZE) || ((stackSize & 1U) != 0U))
+    if ((stackSize < RK_CONF_MIN_STACKSIZE) || ((stackSize & 1U) != 0U))
     {
 #if (RK_CONF_ERR_CHECK == ON)
         kErrHandler(RK_FAULT_INVALID_PARAM);

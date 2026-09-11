@@ -28,6 +28,7 @@ compile_commands.json
 # Local/editor state
 .DS_Store
 .vscode/
+.vscode_local/
 docs_local/
 
 # Scratch or private harness material

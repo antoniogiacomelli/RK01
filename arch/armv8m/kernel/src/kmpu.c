@@ -269,7 +269,7 @@ RK_BOOL kMpuTaskMemoryValid(RK_TASK_MEMORY const *const memoryPtr)
         return (RK_FALSE);
     }
 
-    if ((memoryPtr->stackWords < RK_MIN_STACKSIZE) ||
+    if ((memoryPtr->stackWords < RK_CONF_MIN_STACKSIZE) ||
         (memoryPtr->stackWords >
          (RK_ULONG_MAX / (ULONG)sizeof(RK_STACK))))
     {
@@ -1240,7 +1240,7 @@ static RK_ERR kMpuLayoutValidateTask_(RK_TCB const *const taskPtr)
     }
 
     if ((taskPtr->stackBufPtr == NULL) ||
-        (taskPtr->stackSize < RK_MIN_STACKSIZE) ||
+        (taskPtr->stackSize < RK_CONF_MIN_STACKSIZE) ||
         ((taskPtr->stackSize & 1UL) != 0UL) ||
         (taskPtr->stackSize > (RK_ULONG_MAX / (ULONG)sizeof(RK_STACK))) ||
         (((UINTPTR)taskPtr->stackBufPtr & 0x7U) != 0U))

@@ -1,8 +1,0 @@
-{
-  "C_Cpp.default.compileCommands": "${workspaceFolder}/compile_commands.json",
-  "C_Cpp.formatting": "clangFormat",
-  "C_Cpp.clang_format_style": "{ BasedOnStyle: LLVM, ColumnLimit: 80, IndentWidth: 4, TabWidth: 4, UseTab: Never, BreakBeforeBraces: Allman, IndentCaseLabels: true, PointerAlignment: Right, SortIncludes: false, AlignAfterOpenBracket: Align, StatementMacros: [RK_DECLARE_TASK, RK_DECLARE_TIMER, RK_DECLARE_SEMAPHORE, RK_DECLARE_MUTEX, RK_DECLARE_DOMAIN, RK_DECLARE_DOMAIN_RAM, RK_DECLARE_TYPED_DOMAIN, RK_DECLARE_DOMAIN_TASK, RK_DECLARE_DOMAIN_TASK_STACK, RK_DECLARE_ISOLATED_TASK, RK_DECLARE_MESG_QUEUE_BUF, RK_DECLARE_MESG_QUEUE_HANDLE, RK_DECLARE_GLOBAL_SEMAPHORE] }",
-  "[c]": {
-    "editor.defaultFormatter": "ms-vscode.cpptools"
-  }
-}

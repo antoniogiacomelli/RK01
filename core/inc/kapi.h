@@ -38,7 +38,7 @@
  *                        must not be NULL.
  *
  * @param stackSize    Size of the task stack, in words. Must be at least
- *                     RK_MIN_STACKSIZE and even, so the initial stack frame
+ *                     RK_CONF_MIN_STACKSIZE and even, so the initial stack frame
  *                     remains 8-byte aligned.
  *
  *
