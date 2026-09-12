@@ -67,6 +67,7 @@ RK_DECLARE_TASK(controllerHandle, ControllerTask, controllerStack,
                 REG_TASK_STACK_WORDS)
 RK_DECLARE_TASK(serverHandle, ServerTask, serverStack, REG_TASK_STACK_WORDS)
 RK_DECLARE_TASK(callerHandle, CallerTask, callerStack, REG_TASK_STACK_WORDS)
+RK_DECLARE_TASK_HANDLE(overlapHandle)
 
 static RK_STACK callerAltStack[REG_ALT_STACK_WORDS] K_ALIGN(8)
     RK_SECTION_APP_RAM;
@@ -77,6 +78,16 @@ static VOID SignalHandler_(RK_SIGNAL const signal)
     if (signal == REG_SIGNAL)
     {
         signalCount++;
+    }
+}
+
+static VOID OverlapTask_(VOID *args)
+{
+    RK_UNUSEARGS
+
+    while (1)
+    {
+        (VOID)kSleepDelay(RK_MS_TO_TICKS(1000UL));
     }
 }
 
@@ -184,6 +195,14 @@ VOID CallerTask(VOID *args)
                                              callerAltStack,
                                              sizeof(callerAltStack));
         Expect_((err == RK_ERR_SUCCESS) ? RK_TRUE : RK_FALSE,
+                (RK_FAULT)err);
+    }
+    {
+        RK_ERR const err = kTaskInit(&overlapHandle, OverlapTask_,
+                                     RK_NO_ARGS, "Ovl", callerAltStack,
+                                     REG_ALT_STACK_WORDS, REG_CALLER_PRIO,
+                                     RK_PREEMPT);
+        Expect_((err == RK_ERR_INVALID_PARAM) ? RK_TRUE : RK_FALSE,
                 (RK_FAULT)err);
     }
 

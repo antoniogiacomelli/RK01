@@ -863,19 +863,34 @@ static RK_BOOL kMpuTaskStackOverlapsLive_(RK_TCB const *const skipTaskPtr,
         RK_TCB const *const taskPtr = RK_gTaskHandleByPid[idx];
 
         if ((taskPtr == NULL) || (taskPtr == skipTaskPtr) ||
-            (taskPtr->init != RK_TRUE) || (taskPtr->stackBufPtr == NULL) ||
-            (taskPtr->stackSize == 0UL))
+            (taskPtr->init != RK_TRUE))
         {
             continue;
         }
 
-        UINTPTR const otherBegin = (UINTPTR)taskPtr->stackBufPtr;
-        UINTPTR const otherBytes =
-            (UINTPTR)taskPtr->stackSize * sizeof(RK_STACK);
-        UINTPTR const otherEnd = otherBegin + otherBytes;
+        if ((taskPtr->stackBufPtr != NULL) && (taskPtr->stackSize != 0UL))
+        {
+            UINTPTR const otherBegin = (UINTPTR)taskPtr->stackBufPtr;
+            UINTPTR const otherBytes =
+                (UINTPTR)taskPtr->stackSize * sizeof(RK_STACK);
+            UINTPTR const otherEnd = otherBegin + otherBytes;
 
-        if ((otherEnd < otherBegin) ||
-            ((stackBegin < otherEnd) && (stackEnd > otherBegin)))
+            if ((otherEnd < otherBegin) ||
+                ((stackBegin < otherEnd) && (stackEnd > otherBegin)))
+            {
+                return (RK_TRUE);
+            }
+        }
+
+        /*
+         * A registered signal stack is stack-like storage too. A later task
+         * must not be allowed to reuse it as its ordinary process stack.
+         */
+        if ((taskPtr->signalAltStackBasePtr != NULL) &&
+            (taskPtr->signalAltStackBytes != 0UL) &&
+            (kMpuRangesOverlap_((BYTE const *)stackBasePtr, (ULONG)stackBytes,
+                                (BYTE const *)taskPtr->signalAltStackBasePtr,
+                                taskPtr->signalAltStackBytes) == RK_TRUE))
         {
             return (RK_TRUE);
         }
@@ -1546,7 +1561,7 @@ RK_ERR kMpuTaskMemoryReserve(RK_TCB *const taskPtr,
             kMpuDomainMemoryRelease_(&taskPtr->privateDomain);
             RK_MEMSET(&taskPtr->privateDomain, 0, sizeof(RK_DOMAIN));
         }
-        return (RK_ERR_INVALID_OBJ);
+        return (RK_ERR_INVALID_PARAM);
     }
 
     taskPtr->taskMemoryBasePtr = taskMemory.regionBasePtr;

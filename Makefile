@@ -61,6 +61,7 @@ else ifeq ($(APP_EXAMPLE),reg-origin-scoped)
 APP_SRCS := $(APP_DIR)/regression/origin_scoped_constructors.c
 else ifeq ($(APP_EXAMPLE),reg-signal-synch)
 APP_SRCS := $(APP_DIR)/regression/signal_synch_wait_cleanup.c
+APP_DEFS += -DRK_CONF_ERR_CHECK=OFF
 else ifeq ($(APP_EXAMPLE),99-showcase)
 APP_SRCS := $(APP_DIR)/examples/99_showcase.c
 else
