@@ -59,10 +59,12 @@ else ifeq ($(APP_EXAMPLE),07-signals)
 APP_SRCS := $(APP_DIR)/examples/07_signals.c
 else ifeq ($(APP_EXAMPLE),reg-origin-scoped)
 APP_SRCS := $(APP_DIR)/regression/origin_scoped_constructors.c
+else ifeq ($(APP_EXAMPLE),reg-signal-synch)
+APP_SRCS := $(APP_DIR)/regression/signal_synch_wait_cleanup.c
 else ifeq ($(APP_EXAMPLE),99-showcase)
 APP_SRCS := $(APP_DIR)/examples/99_showcase.c
 else
-$(error Unsupported APP_EXAMPLE '$(APP_EXAMPLE)': use tiny, 01-fleet, 02-isolated, 03-watchdog, 04-sysmon, 05-profile-preempt, 06-profile-ctxsw, 07-signals, reg-origin-scoped, or 99-showcase)
+$(error Unsupported APP_EXAMPLE '$(APP_EXAMPLE)': use tiny, 01-fleet, 02-isolated, 03-watchdog, 04-sysmon, 05-profile-preempt, 06-profile-ctxsw, 07-signals, reg-origin-scoped, reg-signal-synch, or 99-showcase)
 endif
 endif
 
@@ -363,6 +365,7 @@ help:
 	    '  make -j4 APP_EXAMPLE=06-profile-ctxsw EXTRA_DEFS="-DNDEBUG"' \
 	    '  make -j4 APP_EXAMPLE=06-profile-ctxsw EXTRA_DEFS="-DNDEBUG -DPROFILE_CTXSW_CLASS=PROFILE_CTXSW_CLASS_INTER_DOMAIN"' \
 	    '  make -j4 APP_EXAMPLE=07-signals' \
+	    '  make -j4 APP_EXAMPLE=reg-signal-synch' \
 	    '  make -j4 APP_EXAMPLE=99-showcase' \
 	    '  make -j4 ARCH=armv7m PLATFORM=stm32f401re FPU=ON' \
 	    '  make -j4 ARCH=armv7m PLATFORM=mps2-an386' \

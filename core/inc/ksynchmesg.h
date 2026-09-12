@@ -30,6 +30,9 @@ RK_ERR kSynchMesgAccept(RK_SYNCH_CALL_DATA *const, VOID *const,
                         ULONG *const, RK_TICK const);
 RK_ERR kSynchMesgReply(RK_SYNCH_CALL_DATA const *const, VOID const *const,
                        ULONG const);
+VOID kSynchMesgSignalSend(RK_TCB *const);
+VOID kSynchMesgSignalCall(RK_TCB *const);
+VOID kSynchMesgTimeoutSend(RK_TCB *const);
 VOID kSynchMesgTimeoutCall(RK_TCB *const);
 VOID kSynchMesgTaskCleanup(RK_TCB *const);
 #endif

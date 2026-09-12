@@ -30,6 +30,7 @@
 #include <kmem.h>
 #include <kmesg.h>
 #include <kmrm.h>
+#include <kmutex.h>
 #include <ksystasks.h>
 #include <ksyscall.h>
 #include <ksignal.h>
@@ -1598,6 +1599,8 @@ static RK_BOOL kTaskNodeLinked_(RK_TCB const *const taskPtr)
 
 RK_ERR kTaskSignalReady(RK_TCB *const taskPtr)
 {
+    RK_BOOL waitObjectDetached = RK_FALSE;
+
     if ((taskPtr == NULL) || (taskPtr->init != RK_TRUE))
     {
         return (RK_ERR_INVALID_OBJ);
@@ -1625,13 +1628,43 @@ RK_ERR kTaskSignalReady(RK_TCB *const taskPtr)
             return (RK_ERR_TASK_INVALID_ST);
     }
 
-    if (taskPtr->timeoutNode.waitingQueuePtr != NULL)
+#if (RK_CONF_SYNCH_MESG == ON)
+    /*
+     * Synchronous-message waits own more than the generic TCB queue link. A
+     * queued sender/caller points back to its receiver/server and may be
+     * contributing effective priority. Let that object detach the wait before
+     * the syscall continuation is completed as signal-interrupted.
+     */
+    if ((taskPtr->syscallNumber == RK_SYSCALL_SYNCH_SEND_WAIT) &&
+        (taskPtr->synchMesgReceiverPtr != NULL) &&
+        (taskPtr->synchMesgCallState == RK_SYNCH_CALL_IDLE))
+    {
+        kSynchMesgSignalSend(taskPtr);
+        waitObjectDetached = RK_TRUE;
+    }
+    else if ((taskPtr->syscallNumber == RK_SYSCALL_SYNCH_MESG_CALL) &&
+             ((taskPtr->synchMesgReceiverPtr != NULL) ||
+              (taskPtr->synchMesgCallState != RK_SYNCH_CALL_IDLE)))
+    {
+        kSynchMesgSignalCall(taskPtr);
+        waitObjectDetached = RK_TRUE;
+    }
+#endif
+
+    if ((waitObjectDetached == RK_FALSE) &&
+        (taskPtr->timeoutNode.waitingQueuePtr != NULL))
     {
         if (kTaskNodeLinked_(taskPtr) == RK_TRUE)
         {
             RK_TCB *remPtr = taskPtr;
             kTCBQRem(taskPtr->timeoutNode.waitingQueuePtr, &remPtr);
         }
+#if (RK_CONF_MUTEX == ON)
+        if (taskPtr->waitingForMutexPtr != NULL)
+        {
+            kMutexWaiterRemoved(taskPtr);
+        }
+#endif
     }
 
     if (kTimeoutNodeIsArmed(&taskPtr->timeoutNode) == RK_TRUE)

@@ -29,6 +29,7 @@ RK_ERR kMutexDestroy(RK_MUTEX_HANDLE *const);
 RK_ERR kMutexLock(RK_MUTEX_HANDLE const, RK_TICK const);
 RK_ERR kMutexUnlock(RK_MUTEX_HANDLE const);
 RK_ERR kMutexQuery(RK_MUTEX_HANDLE const, UINT *const);
+VOID kMutexWaiterRemoved(RK_TCB *const);
 #endif
 
 #ifdef __cplusplus

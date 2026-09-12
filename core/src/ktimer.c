@@ -23,18 +23,12 @@
 
 #define RK_SOURCE_CODE
 #include <kdynobjs.h>
+#include <kmutex.h>
+#include <ksynchmesg.h>
 #include "ktimer.h"
 #include <ksch.h>
 #include <ksyscall.h>
 #include <ktrace.h>
-
-#if (RK_CONF_MUTEX == ON)
-extern VOID kMutexTimeoutWaiter(RK_TCB *const waiterPtr);
-#endif
-#if (RK_CONF_SYNCH_MESG == ON)
-extern VOID kSynchMesgTimeoutSend(RK_TCB *const senderPtr);
-extern VOID kSynchMesgTimeoutCall(RK_TCB *const callerPtr);
-#endif
 
 /******************************************************************************
  * GLOBAL TICK RETURN
@@ -951,7 +945,7 @@ RK_ERR kTimeoutNodeReady(volatile RK_TIMEOUT_NODE *node)
 #if (RK_CONF_MUTEX == ON)
         if (taskPtr->waitingForMutexPtr != NULL)
         {
-            kMutexTimeoutWaiter(taskPtr);
+            kMutexWaiterRemoved(taskPtr);
         }
 #endif
         err = kTCBQEnq(&RK_gReadyQueue[taskPtr->priority], taskPtr);

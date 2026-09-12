@@ -19,6 +19,11 @@
  *   Cortex-M exception frame on the task's alternate signal stack. Exception
  *   return then resumes into kSignalTrampoline_(), which calls the user handler
  *   and uses kSignalReturn() to restore the task's original PSP.
+ *
+ *   The current frame builder supports only basic, non-FPU exception frames.
+ *   FPU builds keep the rest of the kernel usable by rejecting signal-handler
+ *   registration until the architecture ports save/restore the raw interrupted
+ *   PSP and EXC_RETURN for extended FP frames.
  */
 
 #define RK_SOURCE_CODE
@@ -112,6 +117,15 @@ static ULONG kSignalReturnThumbAddr_(VOID)
     return (((ULONG)(UINTPTR)conv.ptr) | 1UL);
 }
 
+static RK_BOOL kSignalExceptionFrameSupported_(VOID)
+{
+#if (RK_CONF_FPU == ON)
+    return (RK_FALSE);
+#else
+    return (RK_TRUE);
+#endif
+}
+
 static RK_ERR kSignalReturnKernel_(VOID **const savedPspPtr)
 {
     RK_TCB *taskPtr;
@@ -185,6 +199,85 @@ static RK_BOOL kSignalUserTask_(RK_TCB const *const taskPtr)
     return (((taskPtr->savedControl & 0x1UL) != 0UL) ? RK_TRUE : RK_FALSE);
 }
 
+static RK_BOOL kSignalRangesOverlap_(UINTPTR const baseA,
+                                     ULONG const bytesA,
+                                     UINTPTR const baseB,
+                                     ULONG const bytesB)
+{
+    UINTPTR const endA = baseA + (UINTPTR)bytesA;
+    UINTPTR const endB = baseB + (UINTPTR)bytesB;
+
+    if ((bytesA == 0UL) || (bytesB == 0UL))
+    {
+        return (RK_FALSE);
+    }
+
+    if ((endA < baseA) || (endB < baseB))
+    {
+        return (RK_TRUE);
+    }
+
+    return (((baseA < endB) && (baseB < endA)) ? RK_TRUE : RK_FALSE);
+}
+
+static RK_BOOL kSignalAltStackDisjoint_(RK_TCB const *const taskPtr,
+                                        VOID const *const altStackBasePtr,
+                                        ULONG const altStackBytes)
+{
+    UINTPTR const altBase = (UINTPTR)altStackBasePtr;
+
+    if ((taskPtr != NULL) && (taskPtr->stackBufPtr != NULL) &&
+        (taskPtr->stackSize <= (RK_ULONG_MAX / (ULONG)sizeof(RK_STACK))))
+    {
+        ULONG const stackBytes =
+            taskPtr->stackSize * (ULONG)sizeof(RK_STACK);
+
+        if (kSignalRangesOverlap_(altBase, altStackBytes,
+                                  (UINTPTR)taskPtr->stackBufPtr,
+                                  stackBytes) == RK_TRUE)
+        {
+            return (RK_FALSE);
+        }
+    }
+
+    for (UINT i = 0U; i < RK_NTHREADS; i++)
+    {
+        RK_TCB const *const otherPtr = RK_gTaskHandleByPid[i];
+
+        if ((otherPtr == NULL) || (otherPtr->init != RK_TRUE))
+        {
+            continue;
+        }
+
+        if ((otherPtr->stackBufPtr != NULL) &&
+            (otherPtr->stackSize <=
+             (RK_ULONG_MAX / (ULONG)sizeof(RK_STACK))))
+        {
+            ULONG const stackBytes =
+                otherPtr->stackSize * (ULONG)sizeof(RK_STACK);
+
+            if (kSignalRangesOverlap_(
+                    altBase, altStackBytes, (UINTPTR)otherPtr->stackBufPtr,
+                    stackBytes) == RK_TRUE)
+            {
+                return (RK_FALSE);
+            }
+        }
+
+        if ((otherPtr != taskPtr) &&
+            (otherPtr->signalAltStackBasePtr != NULL) &&
+            (kSignalRangesOverlap_(
+                 altBase, altStackBytes,
+                 (UINTPTR)otherPtr->signalAltStackBasePtr,
+                 otherPtr->signalAltStackBytes) == RK_TRUE))
+        {
+            return (RK_FALSE);
+        }
+    }
+
+    return (RK_TRUE);
+}
+
 static RK_SIGNAL kSignalDeliverableMask_(RK_TCB const *const taskPtr)
 {
     RK_SIGNAL deliverable = 0UL;
@@ -228,6 +321,12 @@ static RK_BOOL kSignalAltStackValid_(RK_TCB const *const taskPtr,
     if ((taskPtr == NULL) || (altStackBasePtr == NULL) ||
         (altStackBytes < minStackBytes) ||
         (top < base) || ((top & 0x7UL) != 0UL))
+    {
+        return (RK_FALSE);
+    }
+
+    if (kSignalAltStackDisjoint_(taskPtr, altStackBasePtr,
+                                 altStackBytes) != RK_TRUE)
     {
         return (RK_FALSE);
     }
@@ -290,7 +389,8 @@ RK_ERR kSignalHandlerSet(RK_SIGNAL const signal,
         return (RK_ERR_SUCCESS);
     }
 
-    if ((kMpuUserFunctionValid(kSignalHandlerPtr_(handler)) != RK_TRUE) ||
+    if ((kSignalExceptionFrameSupported_() != RK_TRUE) ||
+        (kMpuUserFunctionValid(kSignalHandlerPtr_(handler)) != RK_TRUE) ||
         (kSignalAltStackValid_(taskPtr, altStackBasePtr,
                                altStackBytes) != RK_TRUE))
     {
@@ -341,7 +441,10 @@ RK_ERR kSignalSend(RK_TASK_HANDLE const taskHandle, RK_SIGNAL const signal)
     if (taskPtr->signalHandler[signal - 1UL] != NULL)
     {
         taskPtr->signalPending |= bit;
-        err = kTaskSignalReady(taskPtr);
+        if ((kSignalDeliverableMask_(taskPtr) & bit) != 0UL)
+        {
+            err = kTaskSignalReady(taskPtr);
+        }
     }
     RK_CR_EXIT
     return (kSignalPublicReadyErr_(err));
@@ -375,6 +478,7 @@ RK_ERR kSignalMaskSet(RK_SIGNAL const enabledMask)
 RK_ERR kSignalReturn(VOID)
 {
     VOID *savedPsp = NULL;
+    VOID *returnPsp = NULL;
     RK_ERR err;
 
     if (kSyscallRequired() == RK_TRUE)
@@ -389,8 +493,13 @@ RK_ERR kSignalReturn(VOID)
         return (err);
     }
 
-    /* Continue on the stack that was interrupted before signal delivery. */
-    RK_ASM volatile("MSR PSP, %0" :: "r"(savedPsp) : "memory");
+    /*
+     * Continue from the interrupted frame. If another enabled signal arrived
+     * while the handler was active, build the next alternate-stack frame from
+     * that restored context now: sequential delivery, not nesting.
+     */
+    returnPsp = kSignalMaybeDeliverOnReturn((RK_EXCEPTION_FRAME *)savedPsp);
+    RK_ASM volatile("MSR PSP, %0" :: "r"(returnPsp) : "memory");
     return (RK_ERR_SUCCESS);
 }
 
@@ -421,7 +530,8 @@ VOID *kSignalMaybeDeliverOnReturn(RK_EXCEPTION_FRAME *const framePtr)
     RK_SIGNAL_HANDLER handler;
     RK_CR_AREA
 
-    if ((taskPtr == NULL) || (framePtr == NULL))
+    if ((taskPtr == NULL) || (framePtr == NULL) ||
+        (kSignalExceptionFrameSupported_() != RK_TRUE))
     {
         return (framePtr);
     }

@@ -177,6 +177,10 @@ static VOID kSynchMesgWakeAcceptor_(RK_TCB *const serverPtr)
     {
         kSynchMesgDisarmTimeout_(acceptorPtr);
     }
+    else
+    {
+        kTimeoutNodeReset(&acceptorPtr->timeoutNode);
+    }
     kReadySwtch(acceptorPtr);
 }
 
@@ -336,7 +340,8 @@ static RK_ERR kSynchMesgConsumePendingSend_(RK_TCB *const receiverPtr,
     return (RK_ERR_SUCCESS);
 }
 
-VOID kSynchMesgTimeoutSend(RK_TCB *const senderPtr)
+static VOID kSynchMesgAbortSend_(RK_TCB *const senderPtr,
+                                 RK_ERR const status)
 {
     RK_TCB *const receiverPtr = senderPtr->synchMesgReceiverPtr;
     if (receiverPtr == NULL)
@@ -354,12 +359,24 @@ VOID kSynchMesgTimeoutSend(RK_TCB *const senderPtr)
     RK_ERR err = kTCBQRem(&receiverPtr->synchMesgSenders, &remPtr);
     K_ASSERT(err == RK_ERR_SUCCESS);
 
+    senderPtr->synchMesgStatus = status;
     kSynchMesgClearSender_(senderPtr);
     kSynchMesgPromoteNext_(receiverPtr);
     kSynchMesgUpdateReceiverPrio_(receiverPtr);
 }
 
-VOID kSynchMesgTimeoutCall(RK_TCB *const callerPtr)
+VOID kSynchMesgSignalSend(RK_TCB *const senderPtr)
+{
+    kSynchMesgAbortSend_(senderPtr, RK_ERR_SIGNAL_INTERRUPTED);
+}
+
+VOID kSynchMesgTimeoutSend(RK_TCB *const senderPtr)
+{
+    kSynchMesgAbortSend_(senderPtr, RK_ERR_TIMEOUT);
+}
+
+static VOID kSynchMesgAbortCall_(RK_TCB *const callerPtr,
+                                 RK_ERR const status)
 {
     RK_TCB *const serverPtr = callerPtr->synchMesgReceiverPtr;
     if (serverPtr == NULL)
@@ -385,10 +402,20 @@ VOID kSynchMesgTimeoutCall(RK_TCB *const callerPtr)
         callerPtr->synchMesgCallReplyBufPtr = NULL;
         callerPtr->synchMesgCallReplyBytesPtr = NULL;
         callerPtr->synchMesgCallReplyMaxBytes = 0UL;
-        callerPtr->synchMesgStatus = RK_ERR_TIMEOUT;
+        callerPtr->synchMesgStatus = status;
         callerPtr->synchMesgCallState = RK_SYNCH_CALL_ABANDONED;
         kSynchMesgUpdateReceiverPrio_(serverPtr);
     }
+}
+
+VOID kSynchMesgSignalCall(RK_TCB *const callerPtr)
+{
+    kSynchMesgAbortCall_(callerPtr, RK_ERR_SIGNAL_INTERRUPTED);
+}
+
+VOID kSynchMesgTimeoutCall(RK_TCB *const callerPtr)
+{
+    kSynchMesgAbortCall_(callerPtr, RK_ERR_TIMEOUT);
 }
 
 static VOID kSynchMesgReadyWithStatus_(RK_TCB *const taskPtr,
@@ -1619,6 +1646,11 @@ RK_ERR kSynchMesgAccept(RK_SYNCH_CALL_DATA *const callPtr,
                 return (err);
             }
         }
+        else
+        {
+            RK_gRunPtr->timeoutNode.waitingQueuePtr =
+                &RK_gRunPtr->synchMesgAcceptWaiters;
+        }
 
         RK_gRunPtr->status = RK_RECEIVING;
         RK_ERR err = kTCBQEnq(&RK_gRunPtr->synchMesgAcceptWaiters,
@@ -1629,6 +1661,10 @@ RK_ERR kSynchMesgAccept(RK_SYNCH_CALL_DATA *const callPtr,
             if (timeout != RK_WAIT_FOREVER)
             {
                 kSynchMesgDisarmTimeout_(RK_gRunPtr);
+            }
+            else
+            {
+                kTimeoutNodeReset(&RK_gRunPtr->timeoutNode);
             }
             RK_gRunPtr->status = RK_RUNNING;
             RK_CR_EXIT
@@ -1808,6 +1844,11 @@ RK_ERR kSynchMesgAcceptSyscall(RK_EXCEPTION_FRAME *const framePtr,
                 return (err);
             }
         }
+        else
+        {
+            RK_gRunPtr->timeoutNode.waitingQueuePtr =
+                &RK_gRunPtr->synchMesgAcceptWaiters;
+        }
 
         RK_gRunPtr->status = RK_RECEIVING;
         RK_ERR err = kTCBQEnq(&RK_gRunPtr->synchMesgAcceptWaiters,
@@ -1818,6 +1859,10 @@ RK_ERR kSynchMesgAcceptSyscall(RK_EXCEPTION_FRAME *const framePtr,
             if (timeout != RK_WAIT_FOREVER)
             {
                 kSynchMesgDisarmTimeout_(RK_gRunPtr);
+            }
+            else
+            {
+                kTimeoutNodeReset(&RK_gRunPtr->timeoutNode);
             }
             RK_gRunPtr->status = RK_RUNNING;
             RK_CR_EXIT

@@ -134,11 +134,12 @@ static RK_ERR kMutexReportErr_(RK_ERR const err)
     return (err);
 }
 
-VOID kMutexTimeoutWaiter(RK_TCB *const waiterPtr)
+VOID kMutexWaiterRemoved(RK_TCB *const waiterPtr)
 {
     /*
-     * Timeout removes a waiter from the dependency graph. If the mutex uses
-     * priority inheritance, the owner's effective priority may drop.
+     * Timeout, signal interruption and fault cleanup remove a waiter from the
+     * dependency graph. If the mutex uses priority inheritance, the owner's
+     * effective priority may drop.
      */
     if ((waiterPtr == NULL) || (waiterPtr->waitingForMutexPtr == NULL))
     {
