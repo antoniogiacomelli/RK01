@@ -366,7 +366,114 @@ dispatch(next)
 The same-domain optimisation shall never reuse a stack slot from the previous task. The optimisation reuses only domain and shared-region descriptors.
 
 ## Kernel object lifecycle and access design
+```
+                         RK01 OBJECT DISCIPLINE
 
+ ┌──────────────────────────── USER DOMAIN ───────────────────────────┐
+ │                                                                    │
+ │   Task                                                             │
+ │     │                                                              │
+ │     │  RK_HANDLE.                                                  │
+ │     │                                                              │
+ │     ▼                                                              │
+ │   ┌─────────────────────────────┐                                  │
+ │   │  32-bit Object Handle       │                                  │
+ │   │                             │                                  │
+ │   │ RK tag | KIND | GEN | SLOT  │                                  │
+ │   └──────────────┬──────────────┘                                  │
+ │                  │                                                 │
+ └──────────────────┼─────────────────────────────────────────────────┘
+                    │
+                    │ SVC / syscall boundary
+ ═══════════════════╪══════════════════════════════════════════════════
+                    ▼
+ ┌──────────────────────────── KERNEL ────────────────────────────────┐
+ │                                                                    │
+ │                  HANDLE RESOLUTION                                 │
+ │                         │                                          │
+ │              ┌──────────▼──────────┐                               │
+ │              │ Decode + validate   │                               │
+ │              │ tag / kind / slot   │                               │
+ │              └──────────┬──────────┘                               │
+ │                         │                                          │
+ │                         ▼                                          │
+ │                ┌─────────────────┐                                 │
+ │                │ Object Registry │                                 │
+ │                │                 │                                 │
+ │        SLOT ──►│ entry[slot]     │                                 │
+ │                │  • object ptr   │                                 │
+ │                │  • generation   │                                 │
+ │                └────────┬────────┘                                 │
+ │                         │                                          │
+ │                  GEN matches?                                      │
+ │                         │                                          │
+ │                         ▼                                          │
+ │             ┌───────────────────────┐                              │
+ │             │ Provenance validation │                              │
+ │             │                       │                              │
+ │             │ ptr ∈ expected pool?  │                              │
+ │             │ object.kind == KIND?  │                              │
+ │             │ object still live?    │                              │
+ │             └───────────┬───────────┘                              │
+ │                         │                                          │
+ │                         ▼                                          │
+ │               ┌──────────────────┐                                 │
+ │               │ Authority check  │                                 │
+ │               │                  │                                 │
+ │               │ DOMAIN_LOCAL?    │──► caller owns domain?          │
+ │               │ KERNEL_GLOBAL?   │──► permitted operation?         │
+ │               └────────┬─────────┘                                 │
+ │                        │                                           │
+ │                        ▼                                           │
+ │                 ┌──────────────┐                                   │
+ │                 │ REAL OBJECT  │                                   │
+ │                 │              │                                   │
+ │                 │ mutex/queue  │                                   │
+ │                 └──────────────┘                                   │
+ │                                                                    │
+ └────────────────────────────────────────────────────────────────────┘
+
+
+                      OBJECT LIFETIME
+
+       fixed pool
+           │
+           ▼
+       ┌─────────┐
+       │ RESERVE │
+       └────┬────┘
+            ▼
+       ┌────────────┐
+       │ INITIALISE │
+       └─────┬──────┘
+             ▼
+       ┌─────────┐
+       │ PUBLISH │──────► handle becomes resolvable
+       └────┬────┘
+            │
+            ▼
+       ┌─────────┐
+       │  LIVE   │
+       └────┬────┘
+            │ destroy
+            ▼
+       ┌───────────┐
+       │ UNPUBLISH │──────► old handle stops resolving
+       └─────┬─────┘
+             ▼
+       generation++
+             │
+             ▼
+       ┌─────────┐
+       │  REUSE  │
+       └─────────┘
+
+       old {slot, generation=N}
+                    │
+                    └──────────────► REJECTED
+                         because slot now has generation N+1
+
+```
 ### Object requirements
 
 | ID            | Requirement                                                                                                               | Owner / verification                       |
