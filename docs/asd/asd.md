@@ -697,6 +697,82 @@ svc_continue(caller)
 }
 ```
 
+### Syscall flow
+
+```
+TASK A
+Thread mode
+unprivileged
+PSP_A
+CONTROL.nPRIV = 1
+        │
+        │ kCall(object handle, ....)
+        │
+        ▼
+      SVC #N
+        │
+        ▼
+CPU automatically stacks
+R0 R1 R2 R3 R12 LR PC xPSR
+onto PSP_A
+        │
+        ▼
+================================================
+        RK01 PRIVILEGED WORLD
+================================================
+        │
+        ▼
+SVC_Handler on MSP
+        │
+        ├── identify current TCB
+        ├── decode service
+        ├── resolve handle
+        ├── verify domain scope
+        ├── validate pointers
+        │
+        └── caused task to block
+                 │
+                 ▼
+       save syscall continuation
+                 │
+       Task A → BLOCKED
+                 │
+        pend PendSV
+                 │
+                 ▼
+           PendSV_Handler
+                 │
+       save remaining A context
+                 │
+                 ▼
+           scheduler()
+                 │
+                 ▼
+             choose C
+                 │
+        C.domain != A.domain
+                 │
+                 ▼
+        change MPU region 1
+        change MPU region 3
+        change MPU regions 4-7
+        change MPU region 2
+                 │
+              barriers
+                 │
+        restore PSP_C/context
+                 │
+                 ▼
+          exception return
+================================================
+        UNPRIVILEGED WORLD
+================================================
+                 │
+                 ▼
+               TASK C
+```
+               
+
 ### Timing accounting rule
 
 The `SVC` instruction is only the entry point. Syscall timing may include exception entry and exit, validation, object lookup, wait-queue operations, PendSV, an MPU update, later wakeup and continuation. A client/server service also adds server dispatch, service execution, reply and client redispatch.
