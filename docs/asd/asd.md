@@ -709,7 +709,7 @@ CONTROL.nPRIV = 1
         │ kCall(object handle, ....)
         │
         ▼
-      SVC #N
+      SVC #0 
         │
         ▼
 CPU automatically stacks
@@ -735,13 +735,21 @@ SVC_Handler on MSP
                  ▼
        save syscall continuation
                  │
+                 │
        Task A → BLOCKED
                  │
         pend PendSV
                  │
                  ▼
-           PendSV_Handler
+       finish SVC_Handler
                  │
+     exception return attempts
+                 │
+     tail-chain to pending PendSV
+                 │
+                 ▼
+           PendSV_Handler
+                 
        save remaining A context
                  │
                  ▼
@@ -764,6 +772,7 @@ SVC_Handler on MSP
                  │
                  ▼
           exception return
+                
 ================================================
         UNPRIVILEGED WORLD
 ================================================
