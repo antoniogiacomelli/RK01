@@ -12,7 +12,12 @@ system calls, and domain-owned writable state is enforced by the MPU.
 
 This adds substantial complexity to the design and to the analysis. The gain is
 that bounded memory regions can confine a fault. Recovering from that fault is
-still application-specific.
+still application-specific, RK01 treats MPUs not as a 'poor's man MMU' and keeps the
+static nature desirable for real-time systems: MPUs are
+memory firewalls, whose contract is frozen during boot. Tasks belonging to a same
+domain have their own stack protected from each other but share memory on that domain
+normally. If your budget allows you can have more than one domain in user space:
+
 
 This repository is the first public RK01 source drop.
 
