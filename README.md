@@ -16,9 +16,6 @@ still application-specific.
 
 This repository is the first public RK01 source drop.
 
-For a design overview, read the
-[blog post](https://rkernel0.org/rk01-user-kernel-and-memory-domain-boundaries/).
-
 For a detailed view, read the [Architecture Specification](docs/asd/asd.md).
 
 ## Supported Targets
