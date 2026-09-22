@@ -8,16 +8,20 @@ corruption/fault-containment drawbacks that come with that model.
 
 RK01 keeps the RK0 real-time model, but changes what happens when ordinary task
 code is wrong: task code runs unprivileged, kernel services are reached through
-system calls, and domain-owned writable state is enforced by the MPU.
+system calls, and domain-owned writable state is enforced by the MPU. 
+Unprivileged tasks even within the same domain have their stacks protected.
 
 This adds substantial complexity to the design and to the analysis. The gain is
 that bounded memory regions can confine a fault. Recovering from that fault is
-still application-specific.
+still application-specific. 
+
+Still RK01 treats MPUs not as a 'poor's man MMU' and keeps the
+static nature desirable for real-time systems: MPUs are
+memory firewalls, whose contract that is realised as domains, privileged and unprivileged 
+tasks is frozen during boot time and cannot change on run-time. 
+
 
 This repository is the first public RK01 source drop.
-
-For a design overview, read the
-[blog post](https://rkernel0.org/rk01-user-kernel-and-memory-domain-boundaries/).
 
 For a detailed view, read the [Architecture Specification](docs/asd/asd.md).
 

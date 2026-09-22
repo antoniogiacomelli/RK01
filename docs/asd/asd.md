@@ -366,7 +366,114 @@ dispatch(next)
 The same-domain optimisation shall never reuse a stack slot from the previous task. The optimisation reuses only domain and shared-region descriptors.
 
 ## Kernel object lifecycle and access design
+```
+                         RK01 OBJECT DISCIPLINE
 
+ ┌──────────────────────────── USER DOMAIN ───────────────────────────┐
+ │                                                                    │
+ │   Task                                                             │
+ │     │                                                              │
+ │     │  RK_HANDLE.                                                  │
+ │     │                                                              │
+ │     ▼                                                              │
+ │   ┌─────────────────────────────┐                                  │
+ │   │  32-bit Object Handle       │                                  │
+ │   │                             │                                  │
+ │   │ RK tag | KIND | GEN | SLOT  │                                  │
+ │   └──────────────┬──────────────┘                                  │
+ │                  │                                                 │
+ └──────────────────┼─────────────────────────────────────────────────┘
+                    │
+                    │ SVC / syscall boundary
+ ═══════════════════╪══════════════════════════════════════════════════
+                    ▼
+ ┌──────────────────────────── KERNEL ────────────────────────────────┐
+ │                                                                    │
+ │                  HANDLE RESOLUTION                                 │
+ │                         │                                          │
+ │              ┌──────────▼──────────┐                               │
+ │              │ Decode + validate   │                               │
+ │              │ tag / kind / slot   │                               │
+ │              └──────────┬──────────┘                               │
+ │                         │                                          │
+ │                         ▼                                          │
+ │                ┌─────────────────┐                                 │
+ │                │ Object Registry │                                 │
+ │                │                 │                                 │
+ │        SLOT ──►│ entry[slot]     │                                 │
+ │                │  • object ptr   │                                 │
+ │                │  • generation   │                                 │
+ │                └────────┬────────┘                                 │
+ │                         │                                          │
+ │                  GEN matches?                                      │
+ │                         │                                          │
+ │                         ▼                                          │
+ │             ┌───────────────────────┐                              │
+ │             │ Provenance validation │                              │
+ │             │                       │                              │
+ │             │ ptr ∈ expected pool?  │                              │
+ │             │ object.kind == KIND?  │                              │
+ │             │ object still live?    │                              │
+ │             └───────────┬───────────┘                              │
+ │                         │                                          │
+ │                         ▼                                          │
+ │               ┌──────────────────┐                                 │
+ │               │ Authority check  │                                 │
+ │               │                  │                                 │
+ │               │ DOMAIN_LOCAL?    │──► caller owns domain?          │
+ │               │ KERNEL_GLOBAL?   │──► permitted operation?         │
+ │               └────────┬─────────┘                                 │
+ │                        │                                           │
+ │                        ▼                                           │
+ │                 ┌──────────────┐                                   │
+ │                 │ REAL OBJECT  │                                   │
+ │                 │              │                                   │
+ │                 │ mutex/queue  │                                   │
+ │                 └──────────────┘                                   │
+ │                                                                    │
+ └────────────────────────────────────────────────────────────────────┘
+
+
+                      OBJECT LIFETIME
+
+       fixed pool
+           │
+           ▼
+       ┌─────────┐
+       │ RESERVE │
+       └────┬────┘
+            ▼
+       ┌────────────┐
+       │ INITIALISE │
+       └─────┬──────┘
+             ▼
+       ┌─────────┐
+       │ PUBLISH │──────► handle becomes resolvable
+       └────┬────┘
+            │
+            ▼
+       ┌─────────┐
+       │  LIVE   │
+       └────┬────┘
+            │ destroy
+            ▼
+       ┌───────────┐
+       │ UNPUBLISH │──────► old handle stops resolving
+       └─────┬─────┘
+             ▼
+       generation++
+             │
+             ▼
+       ┌─────────┐
+       │  REUSE  │
+       └─────────┘
+
+       old {slot, generation=N}
+                    │
+                    └──────────────► REJECTED
+                         because slot now has generation N+1
+
+```
 ### Object requirements
 
 | ID            | Requirement                                                                                                               | Owner / verification                       |
@@ -589,6 +696,91 @@ svc_continue(caller)
     clear_continuation(caller);
 }
 ```
+
+### Syscall flow
+
+```
+TASK A
+Thread mode
+unprivileged
+PSP_A
+CONTROL.nPRIV = 1
+        │
+        │ kCall(object handle, ....)
+        │
+        ▼
+      SVC #0 
+        │
+        ▼
+CPU automatically stacks
+R0 R1 R2 R3 R12 LR PC xPSR
+onto PSP_A
+        │
+        ▼
+================================================
+        RK01 PRIVILEGED WORLD
+================================================
+        │
+        ▼
+SVC_Handler on MSP
+        │
+        ├── identify current TCB
+        ├── decode service
+        ├── resolve handle
+        ├── verify domain scope
+        ├── validate pointers
+        │
+        └── caused task to block
+                 │
+                 ▼
+       save syscall continuation
+                 │
+                 │
+       Task A → BLOCKED
+                 │
+        pend PendSV
+                 │
+                 ▼
+       finish SVC_Handler
+                 │
+     exception return attempts
+                 │
+     tail-chain to pending PendSV
+                 │
+                 ▼
+           PendSV_Handler
+                 
+       save remaining A context
+                 │
+                 ▼
+           scheduler()
+                 │
+                 ▼
+             choose C
+                 │
+        C.domain != A.domain
+                 │
+                 ▼
+        change MPU region 1
+        change MPU region 3
+        change MPU regions 4-7
+        change MPU region 2
+                 │
+              barriers
+                 │
+        restore PSP_C/context
+                 │
+                 ▼
+          exception return
+                
+================================================
+        UNPRIVILEGED WORLD
+================================================
+                 │
+                 ▼
+               TASK C
+```
+               
 
 ### Timing accounting rule
 
