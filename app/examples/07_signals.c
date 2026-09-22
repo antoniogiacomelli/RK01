@@ -27,13 +27,13 @@
 #define DEMO_SIGNAL RK_SIGNAL_1
 
 RK_DECLARE_DOMAIN_RAM(SignalDemoState,
-                      RK_DOMAIN_RAM_ARRAY(RK_STACK, signalStack,
-                                          SIGNAL_ALT_STACK_WORDS)
-                          RK_DOMAIN_RAM_MEMBER(ULONG, signalCount)
-                              RK_DOMAIN_RAM_MEMBER(ULONG, sentCount)
-                                  RK_DOMAIN_RAM_MEMBER(ULONG, task1RunCount)
-                                      RK_DOMAIN_RAM_MEMBER(ULONG,
-                                                           task2RunCount))
+    RK_DOMAIN_RAM_ARRAY(RK_STACK, signalStack, SIGNAL_ALT_STACK_WORDS)
+    RK_DOMAIN_RAM_MEMBER(ULONG, signalCount)
+    RK_DOMAIN_RAM_MEMBER(ULONG, sentCount)
+    RK_DOMAIN_RAM_MEMBER(ULONG, task1RunCount)
+    RK_DOMAIN_RAM_MEMBER(ULONG, task2RunCount)
+    RK_DOMAIN_RAM_MEMBER(ULONG, lastSignalValue)
+)
 
 RK_DECLARE_TYPED_DOMAIN(signalDomain, signalRam, SignalDemoState,
                         SIGNAL_DOMAIN_BYTES)
@@ -42,13 +42,25 @@ RK_DECLARE_DOMAIN_TASK(signalTask2Handle, SignalTask2)
 RK_DECLARE_DOMAIN_TASK_STACK(signalTask1Stack, TASK_STACK_WORDS)
 RK_DECLARE_DOMAIN_TASK_STACK(signalTask2Stack, TASK_STACK_WORDS)
 
-static VOID SignalHandler_(RK_SIGNAL const signal)
+static VOID SignalHandler_(RK_UPCALL_EVENT const *const eventPtr)
 {
     SignalDemoState *const statePtr = RK_DOMAIN_STATE(signalRam);
 
-    if (signal == DEMO_SIGNAL)
+    if ((eventPtr != NULL) &&
+        (eventPtr->type == RK_UPCALL_TYPE_SIGNAL) &&
+        (eventPtr->as.signal.signal == DEMO_SIGNAL))
     {
+        RK_UPCALL_DATA const *const dataPtr =
+            &eventPtr->as.signal.data;
+
         statePtr->signalCount++;
+        if ((dataPtr->type == RK_UPCALL_DATA_BUFFER) &&
+            (dataPtr->as.buffer.ptr != NULL) &&
+            (dataPtr->as.buffer.bytes == sizeof(ULONG)))
+        {
+            statePtr->lastSignalValue =
+                *(ULONG const *)dataPtr->as.buffer.ptr;
+        }
     }
 }
 
@@ -103,8 +115,9 @@ VOID SignalTask1(VOID *args)
     while (1)
     {
         statePtr->task1RunCount++;
-        kLog("signal task1 run=%lu signals=%lu",
-             statePtr->task1RunCount, statePtr->signalCount);
+        kLog("signal task1 run=%lu signals=%lu last=%lu",
+             statePtr->task1RunCount, statePtr->signalCount,
+             statePtr->lastSignalValue);
 
         {
             RK_ERR err = kSleepRelease(RK_MS_TO_TICKS(TASK1_PERIOD_MS));
@@ -129,7 +142,15 @@ VOID SignalTask2(VOID *args)
             statePtr->sentCount++;
             kLog("signal task2 will signal sent=%lu", statePtr->sentCount);
             {
-                RK_ERR err = kSignalSend(signalTask1Handle, DEMO_SIGNAL);
+                RK_UPCALL_DATA data = {
+                    .type = RK_UPCALL_DATA_BUFFER,
+                    .as.buffer = {
+                        .ptr = &statePtr->sentCount,
+                        .bytes = sizeof(statePtr->sentCount),
+                    },
+                };
+                RK_ERR err = kSignalSend(signalTask1Handle, DEMO_SIGNAL,
+                                         &data);
                 K_ASSERT(err == RK_ERR_SUCCESS);
             }
         }

@@ -347,6 +347,8 @@ static const CHAR *kTraceStatusName_(RK_TASK_STATUS const status)
             return ("SLPQBLK");
         case RK_PENDING:
             return ("PEND");
+        case RK_SELF_SUSPENDED:
+            return ("SELFSUSP");
         case RK_TASK_TERMINATED:
             return ("TERM");
         default:

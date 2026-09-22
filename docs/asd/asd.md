@@ -731,7 +731,7 @@ return_to_user_boundary(frame, task)
     prepare_signal_frame(task->signal.alt_stack,
                          signal_trampoline,
                          task->signal.handler[sig],
-                         sig);
+                         upcall_event_for(sig));
 
     exception_return(frame);
 }
@@ -750,21 +750,41 @@ kSignalReturn()
 The implementation should keep the public API small and explicit:
 
 ```
-typedef VOID (*RK_SIGNAL_HANDLER)(RK_SIGNAL signal);
+typedef enum
+{
+    RK_UPCALL_TYPE_NONE = 0U,
+    RK_UPCALL_TYPE_SIGNAL
+} RK_UPCALL_TYPE;
+
+typedef enum
+{
+    RK_UPCALL_DATA_NONE = 0U,
+    RK_UPCALL_DATA_PTR,
+    RK_UPCALL_DATA_BUFFER
+} RK_UPCALL_DATA_TYPE;
+
+typedef struct RK_STRUCT_UPCALL_DATA RK_UPCALL_DATA;
+typedef struct RK_STRUCT_UPCALL_EVENT RK_UPCALL_EVENT;
+
+typedef VOID (*RK_SIGNAL_HANDLER)(RK_UPCALL_EVENT const *eventPtr);
 
 RK_ERR kSignalHandlerSet(RK_SIGNAL signal,
                          RK_SIGNAL_HANDLER handler,
                          VOID *altStackBasePtr,
                          ULONG altStackBytes);
-RK_ERR kSignalSend(RK_TASK_HANDLE taskHandle, RK_SIGNAL signal);
+RK_ERR kSignalSend(RK_TASK_HANDLE taskHandle,
+                   RK_SIGNAL signal,
+                   RK_UPCALL_DATA const *dataPtr);
 RK_ERR kSignalMaskSet(RK_SIGNAL enabledMask);
 RK_ERR kSignalReturn(VOID);
 ```
 
-The exact payload shape is a service-family decision. A signal may be only a bit
-in the pending mask, or it may carry a bounded copied record. Pointer-bearing
-signal payloads shall obey the same mapped-storage rules as any other ITC
-protocol.
+Signals are aggregated, not queued. Repeated sends of the same signal keep one
+pending bit and update that signal's latest payload. A `NULL` data pointer sends
+no payload. `RK_UPCALL_DATA_PTR` is an opaque pointer-sized value.
+`RK_UPCALL_DATA_BUFFER` is a borrowed pointer/size descriptor: the kernel
+validates that the range is readable by both sender and target, but it does not
+copy bytes. Buffer lifetime and mutation remain application responsibility.
 
 ### Fault and timing consequences
 

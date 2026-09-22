@@ -163,24 +163,8 @@ static VOID ProfileReport_(RK_TICK const time0, RK_TICK const time1)
     kPuts("\r\n");
 }
 
-#define kSuspendSelf(timeout)                                                  \
-    do                                                                         \
-    {                                                                          \
-        {                                                                      \
-            RK_ERR err =                                                       \
-                kEventGet(TM_FLAG, RK_OPT_EVENT_ANY, NULL, (timeout));         \
-            K_ASSERT(err == RK_ERR_SUCCESS);                                   \
-        }                                                                      \
-    } while (0)
-
-#define kResumeTask(taskHandle)                                                \
-    do                                                                         \
-    {                                                                          \
-        {                                                                      \
-            RK_ERR err = kEventSet((taskHandle), TM_FLAG);                     \
-            K_ASSERT(err == RK_ERR_SUCCESS);                                   \
-        }                                                                      \
-    } while (0)
+#define kSuspendSelf() kTaskSelfSuspend()
+#define kResumeTask(taskHandle) kTaskResume(taskHandle)
 
 int main(void)
 {
@@ -317,13 +301,13 @@ VOID Task2(VOID *args)
 {
     RK_UNUSEARGS
 
-    kSuspendSelf(RK_WAIT_FOREVER);
+    kSuspendSelf();
 
     while (1)
     {
         kResumeTask(task3Handle);
         counter2++;
-        kSuspendSelf(RK_WAIT_FOREVER);
+        kSuspendSelf();
     }
 }
 
@@ -331,7 +315,7 @@ VOID Task3(VOID *args)
 {
     RK_UNUSEARGS
 
-    kSuspendSelf(RK_WAIT_FOREVER);
+    kSuspendSelf();
 
     while (1)
     {
@@ -345,13 +329,13 @@ VOID Task4(VOID *args)
 {
     RK_UNUSEARGS
 
-    kSuspendSelf(RK_WAIT_FOREVER);
+    kSuspendSelf();
 
     while (1)
     {
         kResumeTask(task5Handle);
         counter4++;
-        kSuspendSelf(RK_WAIT_FOREVER);
+        kSuspendSelf();
     }
 }
 
@@ -359,12 +343,12 @@ VOID Task5(VOID *args)
 {
     RK_UNUSEARGS
 
-    kSuspendSelf(RK_WAIT_FOREVER);
+    kSuspendSelf();
 
     while (1)
     {
         counter5++;
-        kSuspendSelf(RK_WAIT_FOREVER);
+        kSuspendSelf();
     }
 }
 

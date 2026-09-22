@@ -305,6 +305,39 @@ RK_ERR kTaskTerminateSelf(VOID);
 #endif
 
 /**
+ * @brief Suspend the running task until another task or ISR resumes it.
+ *
+ *        The caller is not placed on a wait queue and no timeout is attached;
+ *        its TCB status becomes RK_SELF_SUSPENDED and a context switch is
+ *        requested immediately.
+ *
+ * @return
+ *                  RK_ERR_SUCCESS            Caller suspended and later resumed.
+ *                  RK_ERR_INVALID_ISR_PRIMITIVE
+ *                                              Called from ISR context.
+ *                  RK_ERR_TASK_INVALID_ST    Called while scheduler is locked,
+ *                                              IRQs are disabled, or no task is
+ *                                              currently running.
+ */
+RK_ERR kTaskSelfSuspend(VOID);
+
+/**
+ * @brief Resume a task that suspended itself with kTaskSelfSuspend().
+ *
+ *        May be called from task or ISR context. The target task is moved to
+ *        READY with the normal scheduler wake path.
+ *
+ * @param taskHandle Target task handle. It must not be the caller/running task.
+ * @return
+ *                  RK_ERR_SUCCESS            Target task was readied.
+ *                  RK_ERR_OBJ_NULL           Target handle is NULL.
+ *                  RK_ERR_INVALID_PARAM      Target is the running task.
+ *                  RK_ERR_INVALID_OBJ        Target is not an initialised task.
+ *                  RK_ERR_TASK_INVALID_ST    Target is not RK_SELF_SUSPENDED.
+ */
+RK_ERR kTaskResume(RK_TASK_HANDLE const taskHandle);
+
+/**
  * @brief Initialise kernel-owned dynamic object partitions.
  *        Each enabled runtime object family owns a fixed partition pool with
  *        RK_CONF_DYNAMIC_*_MAX slots. Normal startup calls this from kInit()
@@ -1222,7 +1255,9 @@ RK_ERR kSignalHandlerSet(RK_SIGNAL const signal,
                          RK_SIGNAL_HANDLER const handler,
                          VOID *const altStackBasePtr,
                          ULONG const altStackBytes);
-RK_ERR kSignalSend(RK_TASK_HANDLE const taskHandle, RK_SIGNAL const signal);
+RK_ERR kSignalSend(RK_TASK_HANDLE const taskHandle,
+                   RK_SIGNAL const signal,
+                   RK_UPCALL_DATA const *const dataPtr);
 RK_ERR kSignalMaskSet(RK_SIGNAL const enabledMask);
 RK_ERR kSignalReturn(VOID);
 

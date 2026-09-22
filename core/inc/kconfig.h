@@ -164,6 +164,15 @@
 #error "RK_CONF_SIGNAL_MAX must be <= 32"
 #endif
 
+/* Max tasks that may have signal handlers/payload slots registered at once. */
+#ifndef RK_CONF_SIGNAL_TASK_MAX
+#define RK_CONF_SIGNAL_TASK_MAX (4U)
+#endif
+
+#if (RK_CONF_SIGNAL_TASK_MAX == 0U)
+#error "RK_CONF_SIGNAL_TASK_MAX must be greater than zero"
+#endif
+
 /***[ KERNEL CONSOLE UART SERVICE ********************************************/
 /*
  * The console UART is owned by a privileged kernel driver task. The low-level

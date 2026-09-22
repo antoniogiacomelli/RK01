@@ -279,6 +279,8 @@ static CHAR const *kSysMonStatusName_(RK_TASK_STATUS const status)
             return ("PEND");
         case RK_TASK_FAULT_PENDING:
             return ("FAULT");
+        case RK_SELF_SUSPENDED:
+            return ("SUSP");
         case RK_TASK_TERMINATED:
             return ("TERM");
         default:

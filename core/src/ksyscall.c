@@ -32,6 +32,7 @@
 #include <ksleepq.h>
 #include <ksynchmesg.h>
 #include <ksysmon.h>
+#include <ktasksuspend.h>
 #include <ktaskevents.h>
 #include <ktimer.h>
 #include <ktrace.h>
@@ -426,6 +427,7 @@ VOID kSyscallTaskWake(RK_TCB *const taskPtr)
         case RK_SYSCALL_SLEEP_DELAY:
         case RK_SYSCALL_SLEEP_RELEASE:
         case RK_SYSCALL_SLEEP_UNTIL:
+        case RK_SYSCALL_TASK_SELF_SUSPEND:
         case RK_SYSCALL_SEMAPHORE_PEND:
         case RK_SYSCALL_SLEEP_QUEUE_SLEEP:
         case RK_SYSCALL_MESG_ALLOC:
@@ -1040,6 +1042,14 @@ static VOID kSyscallDispatchActive_(RK_EXCEPTION_FRAME *const framePtr,
             break;
 #endif
 
+        case RK_SYSCALL_TASK_SELF_SUSPEND:
+            ret = kTaskSelfSuspendSyscall(framePtr);
+            break;
+
+        case RK_SYSCALL_TASK_RESUME:
+            ret = kTaskResume((RK_TASK_HANDLE)(UINTPTR)arg0);
+            break;
+
         case RK_SYSCALL_DOMAIN_INIT:
             ret = kSyscallUserWriteRequired_((RK_DOMAIN *)(UINTPTR)arg0,
                                              sizeof(RK_DOMAIN));
@@ -1336,7 +1346,8 @@ static VOID kSyscallDispatchActive_(RK_EXCEPTION_FRAME *const framePtr,
 
         case RK_SYSCALL_SIGNAL_SEND:
             ret = kSignalSend((RK_TASK_HANDLE)(UINTPTR)arg0,
-                              (RK_SIGNAL)arg1);
+                              (RK_SIGNAL)arg1,
+                              (RK_UPCALL_DATA const *)(UINTPTR)arg2);
             break;
 
         case RK_SYSCALL_SIGNAL_MASK_SET:

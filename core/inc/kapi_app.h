@@ -31,6 +31,8 @@ RK_ERR kTaskInit(RK_TASK_HANDLE *taskHandlePtr,
                  const RK_PRIO priority,
                  const RK_OPTION preempt);
 VOID kYield(VOID);
+RK_ERR kTaskSelfSuspend(VOID);
+RK_ERR kTaskResume(RK_TASK_HANDLE const taskHandle);
 RK_TASK_HANDLE kTaskGetRunningHandle(VOID);
 const CHAR *kTaskGetRunningName(VOID);
 RK_TID kTaskGetID(RK_TASK_HANDLE taskHandle);
@@ -54,7 +56,9 @@ RK_ERR kSignalHandlerSet(RK_SIGNAL const signal,
                          RK_SIGNAL_HANDLER const handler,
                          VOID *const altStackBasePtr,
                          ULONG const altStackBytes);
-RK_ERR kSignalSend(RK_TASK_HANDLE const taskHandle, RK_SIGNAL const signal);
+RK_ERR kSignalSend(RK_TASK_HANDLE const taskHandle,
+                   RK_SIGNAL const signal,
+                   RK_UPCALL_DATA const *const dataPtr);
 RK_ERR kSignalMaskSet(RK_SIGNAL const enabledMask);
 RK_ERR kSignalReturn(VOID);
 

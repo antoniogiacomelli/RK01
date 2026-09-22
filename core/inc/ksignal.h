@@ -23,7 +23,9 @@ RK_ERR kSignalHandlerSet(RK_SIGNAL const signal,
                          RK_SIGNAL_HANDLER const handler,
                          VOID *const altStackBasePtr,
                          ULONG const altStackBytes);
-RK_ERR kSignalSend(RK_TASK_HANDLE const taskHandle, RK_SIGNAL const signal);
+RK_ERR kSignalSend(RK_TASK_HANDLE const taskHandle,
+                   RK_SIGNAL const signal,
+                   RK_UPCALL_DATA const *const dataPtr);
 RK_ERR kSignalMaskSet(RK_SIGNAL const enabledMask);
 RK_ERR kSignalReturn(VOID);
 

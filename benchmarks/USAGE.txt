@@ -1,0 +1,79 @@
+RK01 F401RE Singleton-Domain Thread-Metric Benchmarks
+=====================================================
+
+https://github.com/eclipse-threadx/threadx/tree/master/utility/benchmarks/thread_metric
+
+This directory contains an RK01 adaptation of the RK0 Thread-Metric benchmark
+batch. It is narrowed to the STM32F401RE target, and every benchmark task is
+created as the only task in its own RK domain.
+
+Host Requirements
+-----------------
+
+Use a Unix-like host environment:
+
+  - Linux
+  - macOS
+  In Windows:
+  - MSYS2
+  - WSL
+
+Required tools:
+
+  - Bash
+  - Python 3
+  - GNU make
+  - ARM GNU Toolchain
+  - A supported flash tool (ST-FLASH, OpenOCD or J-Link)
+  - Access to the board serial port
+
+Supported Board
+---------------
+
+  - PLATFORM=stm32f401re
+
+Build Benchmark Images
+----------------------
+
+Build all benchmark images for F401RE:
+
+  make -f benchmarks/Makefile build-f401re
+
+Build one benchmark image:
+
+  make -f benchmarks/Makefile build-f401re BENCHES=preemptive-scheduling
+
+Run Benchmarks On Hardware
+--------------------------
+
+The runner flashes each benchmark image, waits for the serial TM PASS line, and
+writes summary logs under:
+
+  build/thread-metric-stm32f401re-run-<stamp>/
+
+Example F401RE run with OpenOCD:
+
+  make -f benchmarks/Makefile run-f401re SERIAL_PORT=/dev/ttyACM0 FLASH_TOOL=openocd
+
+Use the serial device name from your host, such as:
+
+  - /dev/ttyACM0
+  - /dev/ttyUSB0
+  - /dev/tty.usbmodem...
+
+Options
+-------
+
+  BENCHES='<bench...>'   Select benchmarks; default is all.
+  DURATION_MS=<ms>       Report period compiled into each image.
+  CYCLES=<n>             Stop after n report periods.
+  TIMEOUT_SEC=<s>        Serial wait timeout per benchmark.
+  SERIAL_BAUD=<baud>     Serial baud rate; default is 115200.
+  FLASH_TOOL=<tool>      jlink, openocd, st-flash, or stm32programmer.
+  LOG_DIR=<dir>          Summary and per-benchmark logs.
+
+Run:
+
+  make -f benchmarks/Makefile help
+
+for the current benchmark list.

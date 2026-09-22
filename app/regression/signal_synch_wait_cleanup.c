@@ -51,6 +51,8 @@
 #define REQ_QUEUED (0x51554555UL)
 #define REQ_ACTIVE (0x41435456UL)
 #define REPLY_OK (0x5245504CUL)
+#define MASK_PAYLOAD_FIRST (0x11112222UL)
+#define MASK_PAYLOAD_SECOND (0x33334444UL)
 
 typedef struct SignalSynchReq
 {
@@ -72,12 +74,28 @@ RK_DECLARE_TASK_HANDLE(overlapHandle)
 static RK_STACK callerAltStack[REG_ALT_STACK_WORDS] K_ALIGN(8)
     RK_SECTION_APP_RAM;
 static volatile ULONG signalCount RK_SHARED_RAM_ATTR;
+static volatile ULONG signalLastValue RK_SHARED_RAM_ATTR;
 
-static VOID SignalHandler_(RK_SIGNAL const signal)
+static VOID SignalHandler_(RK_UPCALL_EVENT const *const eventPtr)
 {
-    if (signal == REG_SIGNAL)
+    if ((eventPtr != NULL) &&
+        (eventPtr->type == RK_UPCALL_TYPE_SIGNAL) &&
+        (eventPtr->as.signal.signal == REG_SIGNAL))
     {
+        RK_UPCALL_DATA const *const dataPtr =
+            &eventPtr->as.signal.data;
+
         signalCount++;
+        if (dataPtr->type == RK_UPCALL_DATA_PTR)
+        {
+            signalLastValue = (ULONG)(UINTPTR)dataPtr->as.ptr;
+        }
+        else if ((dataPtr->type == RK_UPCALL_DATA_BUFFER) &&
+            (dataPtr->as.buffer.ptr != NULL) &&
+            (dataPtr->as.buffer.bytes == sizeof(ULONG)))
+        {
+            signalLastValue = *(ULONG const *)dataPtr->as.buffer.ptr;
+        }
     }
 }
 
@@ -227,6 +245,9 @@ VOID CallerTask(VOID *args)
                 (RK_FAULT)err);
         Expect_((signalCount == (before + 1UL)) ? RK_TRUE : RK_FALSE,
                 RK_FAULT_APP_CRASH);
+        Expect_((signalLastValue == MASK_PAYLOAD_SECOND) ? RK_TRUE :
+                                                            RK_FALSE,
+                RK_FAULT_APP_CRASH);
     }
     SetEvent_(controllerHandle, EV_MASK_DONE);
 
@@ -288,7 +309,7 @@ VOID ServerTask(VOID *args)
                     RK_FALSE,
                 RK_FAULT_APP_CRASH);
 
-        err = kSignalSend(call.caller, REG_SIGNAL);
+        err = kSignalSend(call.caller, REG_SIGNAL, NULL);
         Expect_((err == RK_ERR_SUCCESS) ? RK_TRUE : RK_FALSE,
                 (RK_FAULT)err);
         Expect_((kTaskGetPrio(serverHandle) == REG_SERVER_PRIO) ? RK_TRUE :
@@ -317,7 +338,16 @@ VOID ControllerTask(VOID *args)
 
     WaitEvent_(EV_MASK_WAITING);
     {
-        RK_ERR const err = kSignalSend(callerHandle, REG_SIGNAL);
+        RK_UPCALL_DATA data = {
+            .type = RK_UPCALL_DATA_PTR,
+            .as.ptr = (VOID *)(UINTPTR)MASK_PAYLOAD_FIRST,
+        };
+        RK_ERR err = kSignalSend(callerHandle, REG_SIGNAL, &data);
+        Expect_((err == RK_ERR_SUCCESS) ? RK_TRUE : RK_FALSE,
+                (RK_FAULT)err);
+
+        data.as.ptr = (VOID *)(UINTPTR)MASK_PAYLOAD_SECOND;
+        err = kSignalSend(callerHandle, REG_SIGNAL, &data);
         Expect_((err == RK_ERR_SUCCESS) ? RK_TRUE : RK_FALSE,
                 (RK_FAULT)err);
     }
@@ -329,7 +359,7 @@ VOID ControllerTask(VOID *args)
                                                            RK_FALSE,
             RK_FAULT_APP_CRASH);
     {
-        RK_ERR const err = kSignalSend(callerHandle, REG_SIGNAL);
+        RK_ERR const err = kSignalSend(callerHandle, REG_SIGNAL, NULL);
         Expect_((err == RK_ERR_SUCCESS) ? RK_TRUE : RK_FALSE,
                 (RK_FAULT)err);
     }

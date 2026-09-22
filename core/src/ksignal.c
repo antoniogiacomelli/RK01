@@ -13,12 +13,18 @@
  *   TCB; delivery is a controlled user-context redirect at SVC return.
  *
  * Delivery model:
- *   kSignalSend() only sets a pending bit and makes the target runnable. At a
- *   kernel-to-user return boundary, kSignalMaybeDeliverOnReturn() selects the
- *   first enabled pending signal with a registered handler and builds a fake
- *   Cortex-M exception frame on the task's alternate signal stack. Exception
- *   return then resumes into kSignalTrampoline_(), which calls the user handler
- *   and uses kSignalReturn() to restore the task's original PSP.
+ *   kSignalSend() records one aggregated pending occurrence per signal. A
+ *   repeated send of the same signal updates that signal's payload slot rather
+ *   than appending work to a queue. At a kernel-to-user return boundary,
+ *   kSignalMaybeDeliverOnReturn() selects the first enabled pending signal
+ *   with a registered handler and builds a fake Cortex-M exception frame on the
+ *   task's alternate signal stack. Exception return then resumes into
+ *   kSignalTrampoline_(), which calls the user handler and uses
+ *   kSignalReturn() to restore the task's original PSP.
+ *
+ *   Buffer payloads are borrowed descriptors. The kernel validates that the
+ *   range is readable by both sender and target, then stores the pointer/size;
+ *   it does not copy bytes or create a hidden message queue.
  *
  *   The current frame builder supports only basic, non-FPU exception frames.
  *   FPU builds keep the rest of the kernel usable by rejecting signal-handler
@@ -35,12 +41,21 @@
 #include <ksyscall.h>
 
 #define RK_SIGNAL_XPSR_THUMB (0x01000000UL)
+#define RK_SIGNAL_STACK_ALIGN (8UL)
 
-typedef VOID (*RK_SIGNAL_TRAMPOLINE_ENTRY)(RK_SIGNAL signal,
+typedef VOID (*RK_SIGNAL_TRAMPOLINE_ENTRY)(RK_UPCALL_EVENT const *eventPtr,
                                            RK_SIGNAL_HANDLER handler);
 typedef RK_ERR (*RK_SIGNAL_RETURN_ENTRY)(VOID);
 
-static VOID kSignalTrampoline_(RK_SIGNAL const signal,
+typedef struct RK_STRUCT_SIGNAL_DATA_OWNER
+{
+    RK_TCB *taskPtr;
+    RK_UPCALL_DATA data[RK_CONF_SIGNAL_MAX];
+} RK_SIGNAL_DATA_OWNER;
+
+static RK_SIGNAL_DATA_OWNER RK_gSignalDataOwner[RK_CONF_SIGNAL_TASK_MAX];
+
+static VOID kSignalTrampoline_(RK_UPCALL_EVENT const *const eventPtr,
                                RK_SIGNAL_HANDLER const handler)
     __attribute__((noreturn));
 
@@ -79,7 +94,7 @@ static ULONG kSignalTrampolineThumbAddr_(VOID)
     return (((ULONG)(UINTPTR)kSignalTrampolinePtr_(kSignalTrampoline_)) | 1UL);
 }
 
-static VOID kSignalTrampoline_(RK_SIGNAL const signal,
+static VOID kSignalTrampoline_(RK_UPCALL_EVENT const *const eventPtr,
                                RK_SIGNAL_HANDLER const handler)
 {
     /*
@@ -89,7 +104,7 @@ static VOID kSignalTrampoline_(RK_SIGNAL const signal,
      */
     if (handler != NULL)
     {
-        handler(signal);
+        handler(eventPtr);
     }
 
     (VOID)kSignalReturn();
@@ -171,6 +186,90 @@ static RK_SIGNAL kSignalBit_(RK_SIGNAL const signal)
     return ((RK_SIGNAL)1UL << (UINT)(signal - 1UL));
 }
 
+static ULONG kSignalStackAlign_(ULONG const bytes)
+{
+    return ((bytes + (RK_SIGNAL_STACK_ALIGN - 1UL)) &
+            ~(RK_SIGNAL_STACK_ALIGN - 1UL));
+}
+
+static ULONG kSignalMaxUpcallStackBytes_(VOID)
+{
+    return (sizeof(RK_EXCEPTION_FRAME) +
+            kSignalStackAlign_((ULONG)sizeof(RK_UPCALL_EVENT)));
+}
+
+static VOID kSignalEventClear_(RK_TCB *const taskPtr, UINT const index)
+{
+    if ((taskPtr == NULL) || (taskPtr->signalDataPtr == NULL) ||
+        (index >= RK_CONF_SIGNAL_MAX))
+    {
+        return;
+    }
+
+    RK_MEMSET(&taskPtr->signalDataPtr[index], 0,
+              sizeof(taskPtr->signalDataPtr[index]));
+}
+
+static RK_UPCALL_DATA *kSignalDataEnsure_(RK_TCB *const taskPtr)
+{
+    RK_SIGNAL_DATA_OWNER *freePtr = NULL;
+
+    if (taskPtr == NULL)
+    {
+        return (NULL);
+    }
+
+    if (taskPtr->signalDataPtr != NULL)
+    {
+        return (taskPtr->signalDataPtr);
+    }
+
+    for (UINT i = 0U; i < RK_CONF_SIGNAL_TASK_MAX; i++)
+    {
+        if (RK_gSignalDataOwner[i].taskPtr == taskPtr)
+        {
+            taskPtr->signalDataPtr = RK_gSignalDataOwner[i].data;
+            return (taskPtr->signalDataPtr);
+        }
+
+        if ((freePtr == NULL) && (RK_gSignalDataOwner[i].taskPtr == NULL))
+        {
+            freePtr = &RK_gSignalDataOwner[i];
+        }
+    }
+
+    if (freePtr == NULL)
+    {
+        return (NULL);
+    }
+
+    RK_MEMSET(freePtr->data, 0, sizeof(freePtr->data));
+    freePtr->taskPtr = taskPtr;
+    taskPtr->signalDataPtr = freePtr->data;
+    return (taskPtr->signalDataPtr);
+}
+
+static VOID kSignalDataRelease_(RK_TCB *const taskPtr)
+{
+    if (taskPtr == NULL)
+    {
+        return;
+    }
+
+    for (UINT i = 0U; i < RK_CONF_SIGNAL_TASK_MAX; i++)
+    {
+        if (RK_gSignalDataOwner[i].taskPtr == taskPtr)
+        {
+            RK_gSignalDataOwner[i].taskPtr = NULL;
+            RK_MEMSET(RK_gSignalDataOwner[i].data, 0,
+                      sizeof(RK_gSignalDataOwner[i].data));
+            break;
+        }
+    }
+
+    taskPtr->signalDataPtr = NULL;
+}
+
 static RK_BOOL kSignalAnyHandlerRegistered_(RK_TCB const *const taskPtr)
 {
     if (taskPtr == NULL)
@@ -197,6 +296,91 @@ static RK_BOOL kSignalUserTask_(RK_TCB const *const taskPtr)
     }
 
     return (((taskPtr->savedControl & 0x1UL) != 0UL) ? RK_TRUE : RK_FALSE);
+}
+
+static RK_ERR kSignalCallerReadValid_(VOID const *const ptr,
+                                      ULONG const bytes)
+{
+    if (bytes == 0UL)
+    {
+        return (RK_ERR_SUCCESS);
+    }
+
+    if (ptr == NULL)
+    {
+        return (RK_ERR_OBJ_NULL);
+    }
+
+    if ((kSignalUserTask_(RK_gRunPtr) == RK_TRUE) &&
+        (kMpuUserReadValid(RK_gRunPtr, ptr, bytes) != RK_TRUE))
+    {
+        return (RK_ERR_INVALID_PARAM);
+    }
+
+    return (RK_ERR_SUCCESS);
+}
+
+static RK_ERR kSignalDataSet_(RK_TCB *const taskPtr,
+                              UINT const index,
+                              RK_UPCALL_DATA const *const dataPtr)
+{
+    RK_UPCALL_DATA data;
+    RK_ERR err;
+
+    if ((taskPtr == NULL) || (taskPtr->signalDataPtr == NULL) ||
+        (index >= RK_CONF_SIGNAL_MAX))
+    {
+        return (RK_ERR_INVALID_PARAM);
+    }
+
+    RK_MEMSET(&data, 0, sizeof(data));
+    data.type = RK_UPCALL_DATA_NONE;
+
+    if (dataPtr != NULL)
+    {
+        err = kSignalCallerReadValid_(dataPtr, sizeof(data));
+        if (err != RK_ERR_SUCCESS)
+        {
+            return (err);
+        }
+
+        RK_MEMCPY(&data, dataPtr, sizeof(data));
+
+        switch (data.type)
+        {
+            case RK_UPCALL_DATA_NONE:
+                break;
+
+            case RK_UPCALL_DATA_PTR:
+                break;
+
+            case RK_UPCALL_DATA_BUFFER:
+                /*
+                 * This is a borrowed buffer, not a copied message. Validate
+                 * both views now; the application owns lifetime and mutation.
+                 */
+                err = kSignalCallerReadValid_(data.as.buffer.ptr,
+                                              data.as.buffer.bytes);
+                if (err != RK_ERR_SUCCESS)
+                {
+                    return (err);
+                }
+
+                if ((data.as.buffer.bytes > 0UL) &&
+                    (kMpuUserReadValid(taskPtr, data.as.buffer.ptr,
+                                       data.as.buffer.bytes) != RK_TRUE))
+                {
+                    return (RK_ERR_INVALID_PARAM);
+                }
+                break;
+
+            default:
+                return (RK_ERR_INVALID_PARAM);
+        }
+    }
+
+    RK_MEMCPY(&taskPtr->signalDataPtr[index], &data, sizeof(data));
+    return (RK_ERR_SUCCESS);
 }
 
 static RK_BOOL kSignalRangesOverlap_(UINTPTR const baseA,
@@ -317,9 +501,11 @@ static RK_BOOL kSignalAltStackValid_(RK_TCB const *const taskPtr,
     /* altStackBytes is bytes; RK_CONF_MIN_STACKSIZE is words. */
     ULONG const minStackBytes =
         ((ULONG)RK_CONF_MIN_STACKSIZE * (ULONG)sizeof(RK_STACK));
+    ULONG const upcallStackBytes = kSignalMaxUpcallStackBytes_();
 
     if ((taskPtr == NULL) || (altStackBasePtr == NULL) ||
         (altStackBytes < minStackBytes) ||
+        (altStackBytes < upcallStackBytes) ||
         (top < base) || ((top & 0x7UL) != 0UL))
     {
         return (RK_FALSE);
@@ -380,10 +566,12 @@ RK_ERR kSignalHandlerSet(RK_SIGNAL const signal,
         taskPtr->signalHandler[signal - 1UL] = NULL;
         taskPtr->signalEnabledMask &= ~bit;
         taskPtr->signalPending &= ~bit;
+        kSignalEventClear_(taskPtr, (UINT)(signal - 1UL));
         if (kSignalAnyHandlerRegistered_(taskPtr) == RK_FALSE)
         {
             taskPtr->signalAltStackBasePtr = NULL;
             taskPtr->signalAltStackBytes = 0UL;
+            kSignalDataRelease_(taskPtr);
         }
         RK_CR_EXIT
         return (RK_ERR_SUCCESS);
@@ -398,6 +586,12 @@ RK_ERR kSignalHandlerSet(RK_SIGNAL const signal,
     }
 
     RK_CR_ENTER
+    if (kSignalDataEnsure_(taskPtr) == NULL)
+    {
+        RK_CR_EXIT
+        return (RK_ERR_BUFFER_FULL);
+    }
+
     taskPtr->signalAltStackBasePtr = altStackBasePtr;
     taskPtr->signalAltStackBytes = altStackBytes;
     taskPtr->signalHandler[signal - 1UL] = handler;
@@ -406,18 +600,22 @@ RK_ERR kSignalHandlerSet(RK_SIGNAL const signal,
     return (RK_ERR_SUCCESS);
 }
 
-RK_ERR kSignalSend(RK_TASK_HANDLE const taskHandle, RK_SIGNAL const signal)
+RK_ERR kSignalSend(RK_TASK_HANDLE const taskHandle,
+                   RK_SIGNAL const signal,
+                   RK_UPCALL_DATA const *const dataPtr)
 {
     RK_TCB *taskPtr = NULL;
     RK_ERR err = RK_ERR_SUCCESS;
     RK_SIGNAL bit;
+    UINT index;
     RK_CR_AREA
 
     if (kSyscallRequired() == RK_TRUE)
     {
         return ((RK_ERR)kSyscallInvoke4(RK_SYSCALL_SIGNAL_SEND,
                                         (ULONG)(UINTPTR)taskHandle,
-                                        (ULONG)signal, 0UL, 0UL));
+                                        (ULONG)signal,
+                                        (ULONG)(UINTPTR)dataPtr, 0UL));
     }
 
     if (kSignalValid_(signal) == RK_FALSE)
@@ -432,14 +630,24 @@ RK_ERR kSignalSend(RK_TASK_HANDLE const taskHandle, RK_SIGNAL const signal)
     }
 
     bit = kSignalBit_(signal);
+    index = (UINT)(signal - 1UL);
 
     /*
-     * Sending does not run user code immediately. It records pending state and
-     * lets the scheduler arrange a safe return boundary for delivery.
+     * Sending does not run user code immediately. It records one pending bit
+     * and the latest payload for that signal, then lets the scheduler arrange a
+     * safe return boundary for delivery. Repeated sends of the same signal
+     * coalesce by overwriting the payload slot.
      */
     RK_CR_ENTER
-    if (taskPtr->signalHandler[signal - 1UL] != NULL)
+    if (taskPtr->signalHandler[index] != NULL)
     {
+        err = kSignalDataSet_(taskPtr, index, dataPtr);
+        if (err != RK_ERR_SUCCESS)
+        {
+            RK_CR_EXIT
+            return (err);
+        }
+
         taskPtr->signalPending |= bit;
         if ((kSignalDeliverableMask_(taskPtr) & bit) != 0UL)
         {
@@ -517,6 +725,7 @@ VOID kSignalTaskCleanup(RK_TCB *const taskPtr)
     taskPtr->signalActive = RK_FALSE;
     taskPtr->signalSavedPsp = NULL;
     RK_MEMSET(taskPtr->signalHandler, 0, sizeof(taskPtr->signalHandler));
+    kSignalDataRelease_(taskPtr);
 }
 
 VOID *kSignalMaybeDeliverOnReturn(RK_EXCEPTION_FRAME *const framePtr)
@@ -526,8 +735,12 @@ VOID *kSignalMaybeDeliverOnReturn(RK_EXCEPTION_FRAME *const framePtr)
     RK_SIGNAL signal = RK_SIGNAL_NONE;
     RK_SIGNAL bit = 0UL;
     RK_EXCEPTION_FRAME *signalFramePtr;
+    RK_UPCALL_EVENT *eventPtr;
+    RK_UPCALL_EVENT event;
     UINTPTR stackTop;
+    ULONG eventStackBytes;
     RK_SIGNAL_HANDLER handler;
+    UINT signalIndex = 0U;
     RK_CR_AREA
 
     if ((taskPtr == NULL) || (framePtr == NULL) ||
@@ -550,11 +763,22 @@ VOID *kSignalMaybeDeliverOnReturn(RK_EXCEPTION_FRAME *const framePtr)
         if ((deliverable & bit) != 0UL)
         {
             signal = (RK_SIGNAL)(i + 1U);
+            signalIndex = i;
             break;
         }
     }
 
-    handler = taskPtr->signalHandler[signal - 1UL];
+    handler = taskPtr->signalHandler[signalIndex];
+    RK_MEMSET(&event, 0, sizeof(event));
+    event.type = RK_UPCALL_TYPE_SIGNAL;
+    event.as.signal.signal = signal;
+    if (taskPtr->signalDataPtr != NULL)
+    {
+        RK_MEMCPY(&event.as.signal.data,
+                  &taskPtr->signalDataPtr[signalIndex],
+                  sizeof(event.as.signal.data));
+    }
+
     taskPtr->signalPending &= ~bit;
     taskPtr->signalActive = RK_TRUE;
     taskPtr->signalSavedPsp = framePtr;
@@ -567,11 +791,16 @@ VOID *kSignalMaybeDeliverOnReturn(RK_EXCEPTION_FRAME *const framePtr)
     stackTop = ((UINTPTR)taskPtr->signalAltStackBasePtr) +
                taskPtr->signalAltStackBytes;
     stackTop &= ~((UINTPTR)0x7UL);
+    eventStackBytes = kSignalStackAlign_((ULONG)sizeof(RK_UPCALL_EVENT));
     signalFramePtr =
-        (RK_EXCEPTION_FRAME *)(stackTop - sizeof(RK_EXCEPTION_FRAME));
+        (RK_EXCEPTION_FRAME *)(stackTop - eventStackBytes -
+                               sizeof(RK_EXCEPTION_FRAME));
+    eventPtr = (RK_UPCALL_EVENT *)((BYTE *)signalFramePtr +
+                                   sizeof(RK_EXCEPTION_FRAME));
 
     RK_MEMSET(signalFramePtr, 0, sizeof(RK_EXCEPTION_FRAME));
-    signalFramePtr->r0 = (ULONG)signal;
+    RK_MEMCPY(eventPtr, &event, sizeof(*eventPtr));
+    signalFramePtr->r0 = (ULONG)(UINTPTR)eventPtr;
     signalFramePtr->r1 = kSignalHandlerArg_(handler);
     signalFramePtr->lr = kSignalReturnThumbAddr_();
     signalFramePtr->pc = kSignalTrampolineThumbAddr_();

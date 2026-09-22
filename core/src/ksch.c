@@ -3150,6 +3150,7 @@ static RK_ERR kTaskTerminateResolved_(RK_TCB *const taskPtr,
             break;
 
         case RK_PENDING: /* deferred self-termination path */
+        case RK_SELF_SUSPENDED:
             break;
 
         default:

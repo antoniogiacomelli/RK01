@@ -274,6 +274,7 @@ struct  RK_OBJ_TCB
     RK_SIGNAL signalPending;
     RK_SIGNAL signalEnabledMask;
     RK_SIGNAL_HANDLER signalHandler[RK_CONF_SIGNAL_MAX];
+    RK_UPCALL_DATA *signalDataPtr;
     VOID *signalAltStackBasePtr;
     ULONG signalAltStackBytes;
     RK_BOOL signalActive;

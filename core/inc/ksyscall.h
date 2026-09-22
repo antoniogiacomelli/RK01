@@ -41,6 +41,8 @@ extern "C"
 #define RK_SYSCALL_DOMAIN_MAP_SHARED_REGION (17UL)
 #define RK_SYSCALL_OBJ_PARTITIONS_INIT (18UL)
 #define RK_SYSCALL_TASK_GET_NOM_PRIO (19UL)
+#define RK_SYSCALL_TASK_SELF_SUSPEND (26UL)
+#define RK_SYSCALL_TASK_RESUME (27UL)
 
 #define RK_SYSCALL_SHARED_MEM_CREATE (30UL)
 #define RK_SYSCALL_SHARED_MEM_DESTROY (31UL)
@@ -339,6 +341,7 @@ RK_ERR kSleepReleaseSyscall(RK_EXCEPTION_FRAME *const framePtr,
 RK_ERR kSleepUntilSyscall(RK_EXCEPTION_FRAME *const framePtr,
                           RK_TICK *const lastTickPtr,
                           RK_TICK const ticks);
+RK_ERR kTaskSelfSuspendSyscall(RK_EXCEPTION_FRAME *const framePtr);
 
 RK_ERR kEventGetSyscall(RK_EXCEPTION_FRAME *const framePtr,
                         RK_TASK_EVENT const requiredFlags,

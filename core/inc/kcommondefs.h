@@ -284,10 +284,55 @@ typedef RK_HANDLE RK_MRM_HANDLE;
 
 typedef RK_HANDLE RK_SHARED_MEM_HANDLE;
 
+typedef enum
+{
+    RK_UPCALL_TYPE_NONE = 0U,
+    RK_UPCALL_TYPE_SIGNAL
+} RK_UPCALL_TYPE;
+
+typedef enum
+{
+    RK_UPCALL_DATA_NONE = 0U,
+    RK_UPCALL_DATA_PTR,
+    RK_UPCALL_DATA_BUFFER
+} RK_UPCALL_DATA_TYPE;
+
+typedef struct RK_STRUCT_UPCALL_BUFFER
+{
+    VOID const *ptr;
+    ULONG bytes;
+} RK_UPCALL_BUFFER;
+
+typedef struct RK_STRUCT_UPCALL_DATA
+{
+    RK_UPCALL_DATA_TYPE type;
+    union
+    {
+        VOID *ptr;
+        RK_UPCALL_BUFFER buffer;
+    } as;
+} RK_UPCALL_DATA;
+
+typedef struct RK_STRUCT_UPCALL_SIGNAL
+{
+    RK_SIGNAL signal;
+    RK_UPCALL_DATA data;
+} RK_UPCALL_SIGNAL;
+
+typedef struct RK_STRUCT_UPCALL_EVENT
+{
+    RK_UPCALL_TYPE type;
+    union
+    {
+        RK_UPCALL_SIGNAL signal;
+    } as;
+} RK_UPCALL_EVENT;
+
 /* Function pointers */
 typedef void (*RK_TASKENTRY)(void*);         /* Task entry function pointer */
 typedef void (*RK_TIMER_CALLOUT)(void*);     /* Callout (timers)             */
-typedef void (*RK_SIGNAL_HANDLER)(RK_SIGNAL); /* Task signal handler          */
+typedef void (*RK_UPCALL_HANDLER)(RK_UPCALL_EVENT const *eventPtr);
+typedef RK_UPCALL_HANDLER RK_SIGNAL_HANDLER; /* Task signal handler          */
 
 struct RK_STRUCT_TASK_MEMORY
 {
@@ -692,6 +737,9 @@ struct RK_STRUCT_TASK_MEMORY
 /* Slot belonged to a task that has been terminated and released */
 #define RK_TASK_TERMINATED ((RK_TASK_STATUS)0x4B)
 #define RK_TERMINATED RK_TASK_TERMINATED
+
+/* Task suspended itself until another task or ISR resumes it */
+#define RK_SELF_SUSPENDED ((RK_TASK_STATUS)0x4C)
 
 /* KERNEL OBJECT IDS */
 #define RK_INVALID_KOBJ ((RK_ID)0x00000000)
