@@ -1402,9 +1402,7 @@ RK01 remains one statically linked, fixed-priority real-time kernel. A product m
 
 
 > RK01 supports service-oriented, microkernel-like system composition while retaining direct bounded kernel mechanisms where another service boundary would not justify its real-time cost.
-
->
-> SVC, validation, continuation, ITC and MPU installation shall be charged to the path that executes them. Report measurements by path class. Do not publish one universal “context-switch” number for RK01.
+> SVC, validation, continuation, ITC and MPU installation shall be charged to the path that executes them. Report measurements by path class. 
 
 ### Timing and resource requirements
 
