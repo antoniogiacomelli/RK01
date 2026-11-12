@@ -267,7 +267,7 @@ The kernel shall not discover or construct an address space inside every context
 **Required BOOT finalisation order**
 
 ```
-boot_finalize()
+boot_finalise()
 {
     require(scheduler_started == false);
 
